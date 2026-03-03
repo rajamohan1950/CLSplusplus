@@ -1,0 +1,11 @@
+# CLS++ Render Blueprint
+# Connect repo at https://dashboard.render.com/blueprints
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: clsplusplus-website
+    runtime: static
+    buildCommand: "true"
+    staticPublishPath: ./website
+    plan: free
