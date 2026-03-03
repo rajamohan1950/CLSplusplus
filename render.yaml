@@ -1,11 +1,75 @@
-# CLS++ Render Blueprint
-# Connect repo at https://dashboard.render.com/blueprints
+# CLS++ Full Stack - Render Blueprint
+# Deploy: https://dashboard.render.com/blueprints → Connect repo
 # Docs: https://render.com/docs/blueprint-spec
 
 services:
+  # Marketing website (static)
   - type: web
     name: clsplusplus-website
     runtime: static
     buildCommand: "true"
     staticPublishPath: ./website
     plan: free
+
+  # CLS++ API backend
+  - type: web
+    name: clsplusplus-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /v1/memory/health
+    envVars:
+      - key: CLS_REDIS_URL
+        fromService:
+          type: keyvalue
+          name: clsplusplus-redis
+          property: connectionString
+      - key: CLS_DATABASE_URL
+        fromDatabase:
+          name: clsplusplus-db
+          property: connectionString
+      - key: CLS_MINIO_ENDPOINT
+        fromService:
+          type: pserv
+          name: clsplusplus-minio
+          property: hostport
+      - key: CLS_MINIO_ACCESS_KEY
+        fromService:
+          type: pserv
+          name: clsplusplus-minio
+          envVarKey: MINIO_ROOT_USER
+      - key: CLS_MINIO_SECRET_KEY
+        fromService:
+          type: pserv
+          name: clsplusplus-minio
+          envVarKey: MINIO_ROOT_PASSWORD
+
+  # MinIO for L3 storage (private service)
+  - type: pserv
+    name: clsplusplus-minio
+    runtime: image
+    image:
+      url: docker.io/minio/minio:latest
+    dockerCommand: server /data
+    disk:
+      name: minio-data
+      mountPath: /data
+      sizeGB: 10
+    envVars:
+      - key: MINIO_ROOT_USER
+        generateValue: true
+      - key: MINIO_ROOT_PASSWORD
+        generateValue: true
+
+  # Redis for L0 working buffer
+  - type: keyvalue
+    name: clsplusplus-redis
+    plan: free
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: allow-all
+
+databases:
+  - name: clsplusplus-db
+    plan: free
+    databaseName: cls

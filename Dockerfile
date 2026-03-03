@@ -25,4 +25,5 @@ ENV CLS_MINIO_SECRET_KEY=minioadmin
 
 EXPOSE 8080
 
-CMD ["python", "-m", "uvicorn", "clsplusplus.api:app", "--host", "0.0.0.0", "--port", "8080"]
+# Render sets PORT; default to 8080 for local/Docker
+CMD ["sh", "-c", "uvicorn clsplusplus.api:app --host 0.0.0.0 --port ${PORT:-8080}"]

@@ -1,50 +1,76 @@
 # Deploy CLS++ on Render
 
-## Website (Static Site)
+## Full Stack (Website + Backend)
+
+The `render.yaml` blueprint deploys:
+
+| Service | Type | URL |
+|---------|------|-----|
+| **Website** | Static | `https://clsplusplus-website.onrender.com` |
+| **API** | Web (Docker) | `https://clsplusplus-api.onrender.com` |
+| **Redis** | Key Value | Internal |
+| **PostgreSQL** | Database | Internal |
+| **MinIO** | Private Service | Internal |
+
+### Deploy Steps
 
 1. Go to [Render Dashboard](https://dashboard.render.com/)
-2. **New** → **Static Site**
-3. Connect your GitHub repo: `rajamohan1950/CLSplusplus`
-4. Configure:
-   - **Build Command:** `true`
-   - **Publish Directory:** `website`
-   - **Branch:** `main`
-5. Click **Create Static Site**
-6. Your site will be live at `https://clsplusplus-website.onrender.com` (or your custom domain)
+2. **New** → **Blueprint**
+3. Connect GitHub repo: `rajamohan1950/CLSplusplus`
+4. Render will detect `render.yaml` and create all services
+5. **Enable pgvector** (one-time): After first deploy, open your Postgres in Render Dashboard → **Connect** → run:
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS vector;
+   ```
+6. If the API fails on first deploy (MinIO still starting), click **Manual Deploy** to retry
 
-### Using Blueprint (render.yaml)
+### First Deploy Notes
 
-1. **New** → **Blueprint**
-2. Connect repo `rajamohan1950/CLSplusplus`
-3. Render will detect `render.yaml` and create the static site automatically
+- **Build time:** API build takes ~5–10 min (sentence-transformers download)
+- **Cold start:** Free/starter services spin down after inactivity; first request may take 30–60s
+- **pgvector:** Must run `CREATE EXTENSION vector` in Postgres before L1/L2 work
+
+### Environment Variables (auto-configured)
+
+The blueprint wires:
+
+- `CLS_REDIS_URL` ← from Redis
+- `CLS_DATABASE_URL` ← from PostgreSQL
+- `CLS_MINIO_ENDPOINT`, `CLS_MINIO_ACCESS_KEY`, `CLS_MINIO_SECRET_KEY` ← from MinIO
+
+### Test the API
+
+```bash
+# Health
+curl https://clsplusplus-api.onrender.com/v1/memory/health
+
+# Write
+curl -X POST https://clsplusplus-api.onrender.com/v1/memory/write \
+  -H "Content-Type: application/json" \
+  -d '{"text": "User prefers dark mode", "namespace": "user:123"}'
+
+# Read
+curl -X POST https://clsplusplus-api.onrender.com/v1/memory/read \
+  -H "Content-Type: application/json" \
+  -d '{"query": "user preferences", "namespace": "user:123"}'
+```
 
 ---
 
-## Backend API (Optional)
+## Website Only (Static)
 
-To deploy the CLS++ API on Render:
+To deploy just the marketing site:
 
-1. **Create Redis:** New → Redis (Key Value) → Free plan
-2. **Create PostgreSQL:** New → PostgreSQL → Free plan
-3. Run in Postgres shell: `CREATE EXTENSION IF NOT EXISTS vector;`
-4. **Create MinIO:** Use a Docker private service or external S3-compatible storage (e.g., Cloudflare R2)
-5. **Create Web Service:** New → Web Service
-   - Connect repo
-   - **Runtime:** Docker
-   - **Dockerfile Path:** `./Dockerfile`
-   - **Environment Variables:**
-     - `CLS_REDIS_URL` → from Redis connection string
-     - `CLS_DATABASE_URL` → from Postgres connection string
-     - `CLS_MINIO_ENDPOINT`, `CLS_MINIO_ACCESS_KEY`, `CLS_MINIO_SECRET_KEY` → from MinIO or S3
+1. **New** → **Static Site**
+2. Connect repo, set **Publish Directory:** `website`
+3. **Build Command:** `true`
 
 ---
 
-## Video Embed
+## Backend Only (Manual)
 
-After recording your demo video:
+To add the backend without the blueprint:
 
-1. Upload to YouTube, Vimeo, or Loom
-2. Get the embed URL (e.g., `https://www.youtube.com/embed/VIDEO_ID`)
-3. Edit `website/index.html` and set the iframe `src` attribute
-4. Remove or hide the `.video-overlay` div
-5. Push to GitHub — Render will auto-redeploy
+1. Create **Redis** (Key Value), **PostgreSQL**, and optionally **MinIO** (Docker pserv)
+2. Create **Web Service** (Docker), point to repo
+3. Set env vars manually (see above)

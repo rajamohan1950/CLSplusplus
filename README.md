@@ -5,7 +5,7 @@
 [![Provisional Patent Filed](https://img.shields.io/badge/Patent-Oct%202025-blue)]()
 [![AlphaForge AI Labs](https://img.shields.io/badge/AlphaForge-AI%20Labs-orange)]()
 
-**Website:** [Deploy on Render](docs/DEPLOY_RENDER.md) | **GitHub:** [rajamohan1950/CLSplusplus](https://github.com/rajamohan1950/CLSplusplus)
+**Website:** [clsplusplus-website.onrender.com](https://clsplusplus-website.onrender.com) | **API:** [clsplusplus-api.onrender.com](https://clsplusplus-api.onrender.com/docs) | **GitHub:** [rajamohan1950/CLSplusplus](https://github.com/rajamohan1950/CLSplusplus) | [Deploy guide](docs/DEPLOY_RENDER.md)
 
 ---
 
