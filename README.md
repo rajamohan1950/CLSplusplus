@@ -1,9 +1,11 @@
 # CLS++ — Continuous Learning System++
 
-**A brain-inspired, model-agnostic persistent memory architecture for LLMs**
+**Switch AI models. Never lose context.**
 
 [![Provisional Patent Filed](https://img.shields.io/badge/Patent-Oct%202025-blue)]()
 [![AlphaForge AI Labs](https://img.shields.io/badge/AlphaForge-AI%20Labs-orange)]()
+
+**Website:** [Deploy on Render](docs/DEPLOY_RENDER.md) | **GitHub:** [rajamohan1950/CLSplusplus](https://github.com/rajamohan1950/CLSplusplus)
 
 ---
 
