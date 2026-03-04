@@ -389,8 +389,24 @@ body {
   margin: 0 auto;
 }
 
+.demo-panels-two {
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  max-width: 900px;
+}
+
+.demo-panels-two .demo-panel {
+  min-height: 420px;
+}
+
+.demo-panels-two .demo-panel-messages {
+  min-height: 260px;
+  max-height: 360px;
+}
+
 @media (max-width: 900px) {
-  .demo-panels {
+  .demo-panels,
+  .demo-panels-two {
     grid-template-columns: 1fr;
   }
 }

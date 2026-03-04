@@ -52,22 +52,14 @@
   <section id="tryit" class="section tryit">
     <div class="container">
       <h2>Try It Yourself</h2>
-      <p class="section-lead">Tell Claude. Ask OpenAI. Or vice versa. Same memory, all three. No sign-up.</p>
-      <div class="demo-panels">
+      <p class="section-lead">Tell Claude. Ask OpenAI. Same memory. No sign-up.</p>
+      <div class="demo-panels demo-panels-two">
         <div class="demo-panel" data-model="claude">
           <div class="demo-panel-header claude">Claude</div>
           <div class="demo-panel-messages" id="chat-claude"></div>
           <div class="demo-panel-input">
             <input type="text" placeholder="Tell or ask..." maxlength="500" data-input="claude">
-            <button class="btn btn-primary" data-send="claude">Send</button>
-          </div>
-        </div>
-        <div class="demo-panel" data-model="gemini">
-          <div class="demo-panel-header gemini">Gemini</div>
-          <div class="demo-panel-messages" id="chat-gemini"></div>
-          <div class="demo-panel-input">
-            <input type="text" placeholder="Tell or ask..." maxlength="500" data-input="gemini">
-            <button class="btn btn-primary" data-send="gemini">Send</button>
+            <button type="button" class="btn btn-primary" data-send="claude">Send</button>
           </div>
         </div>
         <div class="demo-panel" data-model="openai">
@@ -75,11 +67,11 @@
           <div class="demo-panel-messages" id="chat-openai"></div>
           <div class="demo-panel-input">
             <input type="text" placeholder="Tell or ask..." maxlength="500" data-input="openai">
-            <button class="btn btn-primary" data-send="openai">Send</button>
+            <button type="button" class="btn btn-primary" data-send="openai">Send</button>
           </div>
         </div>
       </div>
-      <p class="demo-hint" id="demo-hint">Tell one AI a fact. Ask another. Memory is shared across all three.</p>
+      <p class="demo-hint" id="demo-hint">Tell one, ask the other. Memory is shared.</p>
       <p class="demo-pitch">Pitch in 10 words: <strong>Your memory lives here. Switch AI anytime. No reset.</strong></p>
     </div>
   </section>
@@ -110,7 +102,7 @@
       <h2>See the Problem. See the Fix.</h2>
       <p class="section-lead">Without CLS++: switch models and your context is gone. With CLS++: your memory follows you.</p>
       <div class="demo-cta">
-        <p><strong>Experience it live above.</strong> Tell Claude a fact. Ask OpenAI. Or tell Gemini, ask Claude. Same memory across all three.</p>
+        <p><strong>Experience it live above.</strong> Tell Claude a fact. Ask OpenAI. Same memory.</p>
         <a href="#tryit" class="btn btn-primary">Go to live demo ↑</a>
       </div>
     </div>
@@ -246,6 +238,11 @@
   </footer>
 
   <script src="script.js"></script>
+  <script>
+    if (window.location.search.includes('local=1') || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      window.CLS_API_URL = 'http://localhost:8080';
+    }
+  </script>
   <script src="demo.js"></script>
 </body>
 </html>

@@ -9,6 +9,8 @@ services:
     build: .
     ports:
       - "8080:8080"
+    env_file:
+      - .env  # optional: add for demo LLM keys (CLS_ANTHROPIC_API_KEY, etc.)
     environment:
       - CLS_REDIS_URL=redis://redis:6379
       - CLS_DATABASE_URL=postgresql://cls:cls@postgres:5432/cls

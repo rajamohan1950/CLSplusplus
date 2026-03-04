@@ -3,11 +3,12 @@
  * Tell one, ask another. Memory lives in CLS++, all three use real LLMs.
  */
 (function () {
+  function init() {
   const API_URL = (typeof window !== 'undefined' && window.CLS_API_URL) || 'https://clsplusplus-api.onrender.com';
   const NAMESPACE = 'demo-' + Math.random().toString(36).slice(2, 10);
   const FETCH_TIMEOUT_MS = 90000;  // Render cold start can take 60s
 
-  const MODELS = ['claude', 'gemini', 'openai'];
+  const MODELS = ['claude', 'openai'];
 
   function addMsg(container, text, isUser, isPreserved) {
     const div = document.createElement('div');
@@ -47,6 +48,7 @@
   async function onSend(model) {
     const input = document.querySelector(`[data-input="${model}"]`);
     const container = document.getElementById(`chat-${model}`);
+    if (!container || !input) return;
     const text = input.value.trim();
     if (!text) return;
 
@@ -72,13 +74,19 @@
 
   MODELS.forEach((model) => {
     const container = document.getElementById(`chat-${model}`);
-    if (container) addMsg(container, "Tell me something or ask me anything. Memory is shared across all three.", false);
+    if (container) addMsg(container, "Tell me something or ask me anything. Memory is shared.", false);
   });
 
   MODELS.forEach((model) => {
     const btn = document.querySelector(`[data-send="${model}"]`);
     const input = document.querySelector(`[data-input="${model}"]`);
-    if (btn) btn.addEventListener('click', () => onSend(model));
-    if (input) input.addEventListener('keypress', (e) => e.key === 'Enter' && onSend(model));
+    if (btn) btn.addEventListener('click', (e) => { e.preventDefault(); onSend(model); });
+    if (input) input.addEventListener('keypress', (e) => { if (e.key === 'Enter') { e.preventDefault(); onSend(model); } });
   });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 })();

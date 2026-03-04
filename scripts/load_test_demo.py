@@ -10,6 +10,7 @@ Usage:
   python scripts/load_test_demo.py 5 seq     # 5 users sequential
 """
 import asyncio
+import os
 import sys
 import time
 from dataclasses import dataclass, field
@@ -21,7 +22,7 @@ except ImportError:
     print("pip install httpx")
     raise
 
-API_URL = "https://clsplusplus-api.onrender.com"
+API_URL = os.environ.get("CLS_API_URL", "https://clsplusplus-api.onrender.com")
 TIMEOUT = 120.0  # Cold start can take 60-90s
 DELAY_BETWEEN_REQUESTS = 3.0  # Avoid overwhelming free tier; 5 users * 11 req = 55 req
 
