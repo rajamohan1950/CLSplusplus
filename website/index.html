@@ -69,28 +69,43 @@
     </div>
   </section>
 
+  <section id="tryit" class="section tryit">
+    <div class="container">
+      <h2>Try It Yourself</h2>
+      <p class="section-lead">Talk to Claude. Switch to OpenAI. Your conversation stays. No sign-up.</p>
+      <div class="demo-chat">
+        <div class="demo-model-bar">
+          <span class="demo-model-label">You're talking to:</span>
+          <span class="demo-model-badge claude" id="current-model">Claude</span>
+          <button class="btn btn-primary demo-switch-btn" id="switch-btn">Switch to OpenAI</button>
+        </div>
+        <div class="demo-chat-messages" id="chat-messages">
+          <div class="demo-msg demo-msg-ai" id="welcome-msg">
+            <strong>Hi!</strong> Type anything. I'll remember it. Then click "Switch to OpenAI" — and watch your words follow you. Magic.
+          </div>
+        </div>
+        <div class="demo-chat-input">
+          <input type="text" id="chat-input" placeholder="Type something... (e.g. My name is Alex, I love pizza)" maxlength="500">
+          <button class="btn btn-primary" id="send-btn">Send</button>
+        </div>
+        <p class="demo-hint" id="demo-hint">Step 1: Type a message and press Send. Step 2: Click Switch. Step 3: See your memory preserved.</p>
+        <p class="demo-pitch">Pitch in 10 words: <strong>Your memory lives here. Switch AI anytime. No reset.</strong></p>
+      </div>
+    </div>
+  </section>
+
   <section id="demo" class="section demo">
     <div class="container">
       <h2>See the Problem. See the Fix.</h2>
       <p class="section-lead">One minute: What happens when you switch models without CLS++.</p>
       <div class="video-wrapper">
         <div class="video-placeholder" id="video-container">
-          <!-- Replace src with your video embed URL (YouTube, Vimeo, or Loom) -->
-          <iframe 
-            id="demo-video"
-            src="" 
-            title="CLS++ Demo: Multi-Model Context Loss"
-            frameborder="0" 
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-            allowfullscreen>
-          </iframe>
+          <iframe id="demo-video" src="" title="CLS++ Demo" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
           <div class="video-overlay visible" id="video-overlay">
             <p class="video-instruction">Add your demo video URL to the iframe src in index.html</p>
-            <p class="video-script">Suggested script: Sarah uses Claude, establishes context. Switches to GPT-4. Context is gone. With CLS++: context persists. See VIDEO_SCRIPT.md for full script.</p>
           </div>
         </div>
       </div>
-      <p class="video-caption">With CLS++, context persists—no matter which model you use.</p>
     </div>
   </section>
 
@@ -224,5 +239,6 @@
   </footer>
 
   <script src="script.js"></script>
+  <script src="demo.js"></script>
 </body>
 </html>
