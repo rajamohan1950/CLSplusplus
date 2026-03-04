@@ -7,7 +7,7 @@ from clsplusplus.embeddings import EmbeddingService
 from clsplusplus.models import MemoryItem, ReadRequest, ReadResponse, WriteRequest
 from clsplusplus.plasticity import PlasticityEngine
 from clsplusplus.reconsolidation import ReconsolidationGate
-from clsplusplus.stores import L0WorkingBuffer, L1IndexingStore, L2SchemaGraph, L3DeepRecess
+from clsplusplus.stores import L0WorkingBuffer, L1IndexingStore, L2SchemaGraph, L3PostgresStore
 
 
 class MemoryService:
@@ -21,7 +21,7 @@ class MemoryService:
         self.l0 = L0WorkingBuffer(settings)
         self.l1 = L1IndexingStore(settings)
         self.l2 = L2SchemaGraph(settings)
-        self.l3 = L3DeepRecess(settings)
+        self.l3 = L3PostgresStore(settings)  # Postgres-backed (free tier, no MinIO)
 
     def _request_to_item(self, req: WriteRequest) -> MemoryItem:
         """Convert write request to MemoryItem."""

@@ -1,87 +1,49 @@
-# Deploy CLS++ on Render
+# Deploy CLS++ on Render — 100% Free, No Credit Card
+
+Render's free tier requires **no credit card**. Deploy the full stack at zero cost.
+
+## What's Free
+
+| Service | Free Tier |
+|---------|-----------|
+| **Static site** | Unlimited |
+| **Web service** | 750 hrs/month (spins down after 15 min idle) |
+| **Redis** | Free |
+| **PostgreSQL** | Free (expires after 30 days — recreate if needed) |
+
+**Note:** L3 storage uses PostgreSQL instead of MinIO (no persistent disk = no cost).
+
+---
 
 ## One-Click Deploy
 
 1. **Click:** [Deploy to Render](https://render.com/deploy?repo=https://github.com/rajamohan1950/CLSplusplus)
-2. **Sign in** to Render (or create a free account)
-3. **Approve** the blueprint — Render creates all 5 services
-4. **Wait** ~10 min for the API build (first deploy)
+2. **Sign up** with GitHub (no credit card)
+3. **Approve** the blueprint
+4. **Wait** ~10 min for the API build
 5. **Enable pgvector:** Postgres → Connect → run `CREATE EXTENSION IF NOT EXISTS vector;`
-6. **Done.** Website and API will be live.
+6. **Done.** Website and API are live.
 
 ---
 
-## Full Stack (Website + Backend)
+## Free Tier Limits
 
-The `render.yaml` blueprint deploys:
+- **API cold start:** First request after 15 min idle takes ~1 min to wake
+- **Postgres:** Free DB expires after 30 days — export data and recreate if needed
+- **750 hours:** Shared across all free web services; usually enough for one API
 
-| Service | Type | URL |
-|---------|------|-----|
-| **Website** | Static | `https://clsplusplus-website.onrender.com` |
-| **API** | Web (Docker) | `https://clsplusplus-api.onrender.com` |
-| **Redis** | Key Value | Internal |
-| **PostgreSQL** | Database | Internal |
-| **MinIO** | Private Service | Internal |
+---
 
-### Deploy Steps
+## URLs After Deploy
 
-1. Go to [Render Dashboard](https://dashboard.render.com/)
-2. **New** → **Blueprint**
-3. Connect GitHub repo: `rajamohan1950/CLSplusplus`
-4. Render will detect `render.yaml` and create all services
-5. **Enable pgvector** (one-time): After first deploy, open your Postgres in Render Dashboard → **Connect** → run:
-   ```sql
-   CREATE EXTENSION IF NOT EXISTS vector;
-   ```
-6. If the API fails on first deploy (MinIO still starting), click **Manual Deploy** to retry
+- **Website:** `https://clsplusplus-website.onrender.com`
+- **API:** `https://clsplusplus-api.onrender.com`
+- **API docs:** `https://clsplusplus-api.onrender.com/docs`
 
-### First Deploy Notes
+---
 
-- **Build time:** API build takes ~5–10 min (sentence-transformers download)
-- **Cold start:** Free/starter services spin down after inactivity; first request may take 30–60s
-- **pgvector:** Must run `CREATE EXTENSION vector` in Postgres before L1/L2 work
-
-### Environment Variables (auto-configured)
-
-The blueprint wires:
-
-- `CLS_REDIS_URL` ← from Redis
-- `CLS_DATABASE_URL` ← from PostgreSQL
-- `CLS_MINIO_ENDPOINT`, `CLS_MINIO_ACCESS_KEY`, `CLS_MINIO_SECRET_KEY` ← from MinIO
-
-### Test the API
+## Test the API
 
 ```bash
-# Health
 curl https://clsplusplus-api.onrender.com/v1/memory/health
-
-# Write
-curl -X POST https://clsplusplus-api.onrender.com/v1/memory/write \
-  -H "Content-Type: application/json" \
-  -d '{"text": "User prefers dark mode", "namespace": "user:123"}'
-
-# Read
-curl -X POST https://clsplusplus-api.onrender.com/v1/memory/read \
-  -H "Content-Type: application/json" \
-  -d '{"query": "user preferences", "namespace": "user:123"}'
 ```
-
----
-
-## Website Only (Static)
-
-To deploy just the marketing site:
-
-1. **New** → **Static Site**
-2. Connect repo, set **Publish Directory:** `website`
-3. **Build Command:** `true`
-
----
-
-## Backend Only (Manual)
-
-To add the backend without the blueprint:
-
-1. Create **Redis** (Key Value), **PostgreSQL**, and optionally **MinIO** (Docker pserv)
-2. Create **Web Service** (Docker), point to repo
-3. Set env vars manually (see above)

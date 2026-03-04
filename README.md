@@ -7,7 +7,7 @@
 [![Provisional Patent Filed](https://img.shields.io/badge/Patent-Oct%202025-blue)]()
 [![AlphaForge AI Labs](https://img.shields.io/badge/AlphaForge-AI%20Labs-orange)]()
 
-**Deploy:** Click the button above → sign in to Render → approve. [Full guide](docs/DEPLOY_RENDER.md)
+**Deploy free (no credit card):** Click the button → sign in with GitHub → approve. [Guide](docs/DEPLOY_RENDER.md)
 
 ---
 

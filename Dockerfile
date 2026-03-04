@@ -16,12 +16,7 @@ ENV PYTHONPATH=/app/src
 ENV CLS_HOST=0.0.0.0
 ENV CLS_PORT=8080
 
-# Default to Redis/Postgres/MinIO from docker-compose
-ENV CLS_REDIS_URL=redis://redis:6379
-ENV CLS_DATABASE_URL=postgresql://cls:cls@postgres:5432/cls
-ENV CLS_MINIO_ENDPOINT=minio:9000
-ENV CLS_MINIO_ACCESS_KEY=minioadmin
-ENV CLS_MINIO_SECRET_KEY=minioadmin
+# Render / docker-compose inject these at runtime
 
 EXPOSE 8080
 

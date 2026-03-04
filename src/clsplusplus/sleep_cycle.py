@@ -11,7 +11,7 @@ from clsplusplus.config import Settings
 from clsplusplus.embeddings import EmbeddingService
 from clsplusplus.models import MemoryItem, StoreLevel
 from clsplusplus.plasticity import PlasticityEngine
-from clsplusplus.stores import L0WorkingBuffer, L1IndexingStore, L2SchemaGraph, L3DeepRecess
+from clsplusplus.stores import L0WorkingBuffer, L1IndexingStore, L2SchemaGraph, L3PostgresStore
 
 
 class SleepOrchestrator:
@@ -24,7 +24,7 @@ class SleepOrchestrator:
         self.l0 = L0WorkingBuffer(settings)
         self.l1 = L1IndexingStore(settings)
         self.l2 = L2SchemaGraph(settings)
-        self.l3 = L3DeepRecess(settings)
+        self.l3 = L3PostgresStore(settings)
 
     async def run(self, namespace: str = "default") -> dict:
         """Run full sleep cycle. Returns report."""

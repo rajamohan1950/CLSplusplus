@@ -1,4 +1,4 @@
-# CLS++ Development Stack
+# CLS++ Development Stack (free tier - no MinIO)
 # Run: docker compose up -d
 # API: http://localhost:8080
 
@@ -12,16 +12,11 @@ services:
     environment:
       - CLS_REDIS_URL=redis://redis:6379
       - CLS_DATABASE_URL=postgresql://cls:cls@postgres:5432/cls
-      - CLS_MINIO_ENDPOINT=minio:9000
-      - CLS_MINIO_ACCESS_KEY=minioadmin
-      - CLS_MINIO_SECRET_KEY=minioadmin
     depends_on:
       redis:
         condition: service_healthy
       postgres:
         condition: service_healthy
-      minio:
-        condition: service_started
 
   redis:
     image: redis:7-alpine
@@ -51,19 +46,6 @@ services:
       timeout: 3s
       retries: 5
 
-  minio:
-    image: minio/minio:latest
-    command: server /data
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - minio_data:/data
-
 volumes:
   redis_data:
   postgres_data:
-  minio_data:

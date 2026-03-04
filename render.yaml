@@ -1,9 +1,9 @@
-# CLS++ Full Stack - Render Blueprint
-# Deploy: https://dashboard.render.com/blueprints → Connect repo
-# Docs: https://render.com/docs/blueprint-spec
+# CLS++ Full Stack - 100% FREE on Render (no credit card)
+# Static site + API + Redis + Postgres. L3 uses Postgres (no MinIO/disk).
+# Deploy: https://render.com/deploy?repo=https://github.com/rajamohan1950/CLSplusplus
 
 services:
-  # Marketing website (static)
+  # Marketing website - FREE
   - type: web
     name: clsplusplus-website
     runtime: static
@@ -11,12 +11,12 @@ services:
     staticPublishPath: ./website
     plan: free
 
-  # CLS++ API backend
+  # CLS++ API - FREE (750 hrs/mo, spins down after 15 min idle)
   - type: web
     name: clsplusplus-api
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: starter
+    plan: free
     healthCheckPath: /v1/memory/health
     envVars:
       - key: CLS_REDIS_URL
@@ -28,40 +28,8 @@ services:
         fromDatabase:
           name: clsplusplus-db
           property: connectionString
-      - key: CLS_MINIO_ENDPOINT
-        fromService:
-          type: pserv
-          name: clsplusplus-minio
-          property: hostport
-      - key: CLS_MINIO_ACCESS_KEY
-        fromService:
-          type: pserv
-          name: clsplusplus-minio
-          envVarKey: MINIO_ROOT_USER
-      - key: CLS_MINIO_SECRET_KEY
-        fromService:
-          type: pserv
-          name: clsplusplus-minio
-          envVarKey: MINIO_ROOT_PASSWORD
 
-  # MinIO for L3 storage (private service)
-  - type: pserv
-    name: clsplusplus-minio
-    runtime: image
-    image:
-      url: docker.io/minio/minio:latest
-    dockerCommand: server /data
-    disk:
-      name: minio-data
-      mountPath: /data
-      sizeGB: 10
-    envVars:
-      - key: MINIO_ROOT_USER
-        generateValue: true
-      - key: MINIO_ROOT_PASSWORD
-        generateValue: true
-
-  # Redis for L0 working buffer
+  # Redis - FREE
   - type: keyvalue
     name: clsplusplus-redis
     plan: free
@@ -70,6 +38,7 @@ services:
         description: allow-all
 
 databases:
+  # Postgres - FREE (expires after 30 days, then recreate)
   - name: clsplusplus-db
     plan: free
     databaseName: cls
