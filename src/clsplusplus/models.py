@@ -107,6 +107,14 @@ class AdjudicateRequest(BaseModel):
     existing_item_id: Optional[str] = None
 
 
+class DemoChatRequest(BaseModel):
+    """Request for demo chat with real LLM."""
+
+    model: str  # claude, openai, gemini
+    message: str
+    namespace: str = "demo-default"
+
+
 class HealthResponse(BaseModel):
     """Health check response."""
 

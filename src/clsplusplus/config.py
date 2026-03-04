@@ -1,5 +1,7 @@
 """CLS++ configuration."""
 
+from typing import Optional
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -54,3 +56,8 @@ class Settings(BaseSettings):
     # Working buffer
     l0_capacity_tokens: int = 4096
     l0_ttl_seconds: int = 300
+
+    # Demo LLM keys (optional; demo uses these for real Claude/OpenAI/Gemini)
+    anthropic_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None
+    google_api_key: Optional[str] = None

@@ -26,6 +26,16 @@ The API returns `"status": "degraded"` when Redis and Postgres env vars are miss
 5. Click **Save Changes** — Render will redeploy automatically
 6. Wait 2–3 minutes, then check: https://clsplusplus-api.onrender.com/v1/memory/health
 
+### Demo LLM keys (optional, for Try It live demo)
+
+For the website demo to use real Claude, OpenAI, and Gemini:
+
+- `CLS_ANTHROPIC_API_KEY` — [console.anthropic.com](https://console.anthropic.com/)
+- `CLS_OPENAI_API_KEY` — [platform.openai.com](https://platform.openai.com/api-keys)
+- `CLS_GOOGLE_API_KEY` — [aistudio.google.com](https://aistudio.google.com/app/apikey)
+
+Without these, the demo will show "Add CLS_*_API_KEY to env" instead of real responses.
+
 ## Enable pgvector (one-time)
 
 In your Postgres shell (Render → Postgres → Connect):

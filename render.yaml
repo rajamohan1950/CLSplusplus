@@ -24,3 +24,9 @@ services:
         sync: false  # Paste from Dashboard → your Redis → Connection String
       - key: CLS_DATABASE_URL
         sync: false  # Paste from Dashboard → your Postgres → Connection String
+      - key: CLS_ANTHROPIC_API_KEY
+        sync: false  # For demo: Claude (get from console.anthropic.com)
+      - key: CLS_OPENAI_API_KEY
+        sync: false  # For demo: OpenAI (get from platform.openai.com)
+      - key: CLS_GOOGLE_API_KEY
+        sync: false  # For demo: Gemini (get from aistudio.google.com)

@@ -1,6 +1,6 @@
 /**
- * CLS++ Try It Demo - Claude | Gemini | OpenAI side-by-side, shared memory
- * Tell one, ask another. Memory lives in CLS++, not in the model.
+ * CLS++ Try It Demo - Real Claude | Gemini | OpenAI with shared memory
+ * Tell one, ask another. Memory lives in CLS++, all three use real LLMs.
  */
 (function () {
   const API_URL = 'https://clsplusplus-api.onrender.com';
@@ -21,38 +21,22 @@
     document.querySelectorAll('[data-send]').forEach((btn) => (btn.disabled = loading));
   }
 
-  async function writeMemory(text) {
-    const res = await fetch(API_URL + '/v1/memory/write', {
+  async function chatWithLLM(model, message) {
+    const res = await fetch(API_URL + '/v1/demo/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        text: text,
+        model: model,
+        message: message,
         namespace: NAMESPACE,
-        source: 'demo',
-        salience: 0.8,
       }),
     });
-    if (!res.ok) throw new Error('Failed to save');
-    return res.json();
-  }
-
-  async function readMemory(query) {
-    const res = await fetch(API_URL + '/v1/memory/read', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: query || 'everything we talked about',
-        namespace: NAMESPACE,
-        limit: 10,
-      }),
-    });
-    if (!res.ok) throw new Error('Failed to read');
-    return res.json();
-  }
-
-  function isQuestion(text) {
-    const t = text.trim().toLowerCase();
-    return t.includes('?') || /^(what|who|where|when|how|which|is my|do you remember)/.test(t);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || res.statusText || 'Request failed');
+    }
+    const data = await res.json();
+    return data.reply || '';
   }
 
   async function onSend(model) {
@@ -66,28 +50,22 @@
 
     setLoading(true);
     try {
-      if (isQuestion(text)) {
-        const data = await readMemory(text);
-        const items = data.items || [];
-        if (items.length > 0) {
-          const answer = items.map((i) => i.text).join('. ');
-          addMsg(container, answer, false, true);
-        } else {
-          addMsg(container, "I don't have that yet. Tell one of us first.", false);
-        }
-      } else {
-        await writeMemory(text);
-        addMsg(container, "Got it! Ask any of us — we all remember.", false);
-      }
+      const reply = await chatWithLLM(model, text);
+      addMsg(container, reply, false, true);
     } catch (e) {
-      addMsg(container, "API sleeping. Wait ~30 sec and try again.", false);
+      const msg = e.message || 'Request failed';
+      if (msg.includes('API') || msg.includes('key') || msg.includes('env')) {
+        addMsg(container, msg + ' (Add keys in Render env.)', false);
+      } else {
+        addMsg(container, 'Error: ' + msg, false);
+      }
     }
     setLoading(false);
   }
 
   MODELS.forEach((model) => {
     const container = document.getElementById(`chat-${model}`);
-    if (container) addMsg(container, "Tell me something or ask me anything. Memory is shared.", false);
+    if (container) addMsg(container, "Tell me something or ask me anything. Memory is shared across all three.", false);
   });
 
   MODELS.forEach((model) => {

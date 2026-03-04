@@ -9,6 +9,7 @@ from clsplusplus.config import Settings
 from clsplusplus.memory_service import MemoryService
 from clsplusplus.models import (
     AdjudicateRequest,
+    DemoChatRequest,
     HealthResponse,
     ReadRequest,
     ReadResponse,
@@ -99,6 +100,24 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             await memory_service.l1.write(new_item)
             return {"decision": "accepted", "new_id": new_item.id}
         return {"decision": "reject", "reason": "Insufficient evidence quorum"}
+
+    @app.post("/v1/demo/chat")
+    async def demo_chat(req: DemoChatRequest):
+        """
+        Real LLM demo: Claude, OpenAI, or Gemini with shared CLS++ memory.
+        Requires CLS_ANTHROPIC_API_KEY, CLS_OPENAI_API_KEY, CLS_GOOGLE_API_KEY in env.
+        """
+        from clsplusplus.demo_llm import chat_with_llm
+
+        if req.model not in ("claude", "openai", "gemini"):
+            raise HTTPException(status_code=400, detail="model must be claude, openai, or gemini")
+        if not req.message or len(req.message.strip()) == 0:
+            raise HTTPException(status_code=400, detail="message is required")
+
+        reply = await chat_with_llm(
+            memory_service, settings, req.model, req.message.strip(), req.namespace
+        )
+        return {"model": req.model, "reply": reply}
 
     @app.get("/v1/memory/health", response_model=HealthResponse)
     async def health():
