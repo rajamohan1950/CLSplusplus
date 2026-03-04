@@ -35,9 +35,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS", "HEAD"],
         allow_headers=["*"],
+        expose_headers=["*"],
     )
 
     @app.get("/")
@@ -101,6 +102,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             return {"decision": "accepted", "new_id": new_item.id}
         return {"decision": "reject", "reason": "Insufficient evidence quorum"}
 
+    @app.get("/v1/demo/status")
+    async def demo_status():
+        """Check which LLM keys are configured (for debugging)."""
+        return {
+            "claude": bool(getattr(settings, "anthropic_api_key", None)),
+            "openai": bool(getattr(settings, "openai_api_key", None)),
+            "gemini": bool(getattr(settings, "google_api_key", None)),
+        }
+
     @app.post("/v1/demo/chat")
     async def demo_chat(req: DemoChatRequest):
         """
@@ -114,10 +124,16 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         if not req.message or len(req.message.strip()) == 0:
             raise HTTPException(status_code=400, detail="message is required")
 
-        reply = await chat_with_llm(
-            memory_service, settings, req.model, req.message.strip(), req.namespace
-        )
-        return {"model": req.model, "reply": reply}
+        try:
+            reply = await chat_with_llm(
+                memory_service, settings, req.model, req.message.strip(), req.namespace
+            )
+            return {"model": req.model, "reply": reply}
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Demo error: {str(e)[:200]}",
+            )
 
     @app.get("/v1/memory/health", response_model=HealthResponse)
     async def health():

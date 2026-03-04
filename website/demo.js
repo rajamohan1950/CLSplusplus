@@ -3,8 +3,9 @@
  * Tell one, ask another. Memory lives in CLS++, all three use real LLMs.
  */
 (function () {
-  const API_URL = 'https://clsplusplus-api.onrender.com';
+  const API_URL = (typeof window !== 'undefined' && window.CLS_API_URL) || 'https://clsplusplus-api.onrender.com';
   const NAMESPACE = 'demo-' + Math.random().toString(36).slice(2, 10);
+  const FETCH_TIMEOUT_MS = 90000;  // Render cold start can take 60s
 
   const MODELS = ['claude', 'gemini', 'openai'];
 
@@ -22,6 +23,8 @@
   }
 
   async function chatWithLLM(model, message) {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
     const res = await fetch(API_URL + '/v1/demo/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -30,7 +33,9 @@
         message: message,
         namespace: NAMESPACE,
       }),
+      signal: ctrl.signal,
     });
+    clearTimeout(to);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || res.statusText || 'Request failed');
@@ -54,7 +59,9 @@
       addMsg(container, reply, false, true);
     } catch (e) {
       const msg = e.message || 'Request failed';
-      if (msg.includes('API') || msg.includes('key') || msg.includes('env')) {
+      if (e.name === 'AbortError') {
+        addMsg(container, 'Request timed out. Render free tier may be cold-starting — wait 60s and try again.', false);
+      } else if (msg.includes('API') || msg.includes('key') || msg.includes('env')) {
         addMsg(container, msg + ' (Add keys in Render env.)', false);
       } else {
         addMsg(container, 'Error: ' + msg, false);

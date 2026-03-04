@@ -17,23 +17,27 @@ async def chat_with_llm(
     Handle user message: 1) store if statement, 2) read relevant memories from CLS++,
     3) call the appropriate LLM with memory context, 4) return response.
     """
-    # 1. Store facts/statements in memory (not questions)
-    is_question = "?" in message or any(
-        message.strip().lower().startswith(w)
-        for w in ("what", "who", "where", "when", "how", "which", "is my", "do you")
-    )
-    if not is_question:
-        await memory_service.write(
-            WriteRequest(text=message, namespace=namespace, source="demo", salience=0.8)
-        )
+    memory_context = "No prior context yet."
 
-    # 2. Read relevant memories for context
-    read_resp = await memory_service.read(
-        ReadRequest(query=message, namespace=namespace, limit=8)
-    )
-    memory_context = "\n".join(
-        f"- {item.text}" for item in (read_resp.items or [])
-    ) or "No prior context yet."
+    try:
+        # 1. Store facts/statements in memory (not questions)
+        is_question = "?" in message or any(
+            message.strip().lower().startswith(w)
+            for w in ("what", "who", "where", "when", "how", "which", "is my", "do you")
+        )
+        if not is_question:
+            await memory_service.write(
+                WriteRequest(text=message, namespace=namespace, source="demo", salience=0.8)
+            )
+
+        # 2. Read relevant memories for context
+        read_resp = await memory_service.read(
+            ReadRequest(query=message, namespace=namespace, limit=8)
+        )
+        if read_resp.items:
+            memory_context = "\n".join(f"- {item.text}" for item in read_resp.items)
+    except Exception:
+        pass  # Memory failed; proceed with empty context so LLM can still respond
 
     system_prompt = f"""You are a helpful assistant. You have access to shared memory (CLS++) that persists across different AI models (Claude, OpenAI, Gemini). Use this context to answer questions accurately.
 
@@ -106,7 +110,12 @@ async def _call_gemini(settings: Settings, system: str, user: str) -> str:
         model = genai.GenerativeModel("gemini-1.5-flash")
         full_prompt = f"{system}\n\nUser: {user}"
         resp = model.generate_content(full_prompt)
-        return resp.text or "No response"
+        try:
+            return resp.text or "No response"
+        except (ValueError, AttributeError):
+            if resp.candidates and resp.candidates[0].content.parts:
+                return resp.candidates[0].content.parts[0].text or "No response"
+            return "Gemini: No response (content may have been blocked)."
 
     try:
         return await asyncio.to_thread(_sync)
