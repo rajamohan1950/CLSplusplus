@@ -1,28 +1,22 @@
 # Deploy CLS++ on Render — 100% Free, No Credit Card
 
-Render's free tier requires **no credit card**. Deploy the full stack at zero cost.
+Render allows **only 1 free Postgres** and **1 free Redis** per account. This blueprint uses your existing ones.
 
-## What's Free
+## Before Deploy
 
-| Service | Free Tier |
-|---------|-----------|
-| **Static site** | Unlimited |
-| **Web service** | 750 hrs/month (spins down after 15 min idle) |
-| **Redis** | Free |
-| **PostgreSQL** | Free (expires after 30 days — recreate if needed) |
+1. **Create free Postgres** (if you don't have one): Dashboard → New → PostgreSQL → Free
+2. **Create free Redis** (if you don't have one): Dashboard → New → Redis → Free
+3. **Enable pgvector** in Postgres: Connect → run `CREATE EXTENSION IF NOT EXISTS vector;`
+4. Copy the **Internal Connection String** from each (Dashboard → your service → Info)
 
-**Note:** L3 storage uses PostgreSQL instead of MinIO (no persistent disk = no cost).
-
----
-
-## One-Click Deploy
+## Deploy
 
 1. **Click:** [Deploy to Render](https://render.com/deploy?repo=https://github.com/rajamohan1950/CLSplusplus)
-2. **Sign up** with GitHub (no credit card)
-3. **Approve** the blueprint
-4. **Wait** ~10 min for the API build
-5. **Enable pgvector:** Postgres → Connect → run `CREATE EXTENSION IF NOT EXISTS vector;`
-6. **Done.** Website and API are live.
+2. **When prompted**, paste:
+   - `CLS_REDIS_URL` → your Redis internal connection string
+   - `CLS_DATABASE_URL` → your Postgres internal connection string
+3. **Wait** ~10 min for the API build
+4. **Done.** Website and API are live.
 
 ---
 

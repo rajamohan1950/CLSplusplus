@@ -1,16 +1,14 @@
-# CLS++ Full Stack - 100% FREE on Render (no credit card)
-# Static site + API + Redis + Postgres. L3 uses Postgres (no MinIO/disk).
+# CLS++ - Use your EXISTING free Postgres + Redis (Render allows only 1 free each)
 # Deploy: https://render.com/deploy?repo=https://github.com/rajamohan1950/CLSplusplus
+# You'll be prompted for CLS_REDIS_URL and CLS_DATABASE_URL - paste from your existing services
 
 services:
-  # Marketing website - FREE (static sites have no plan field)
   - type: web
     name: clsplusplus-website
     runtime: static
     buildCommand: "true"
     staticPublishPath: ./website
 
-  # CLS++ API - FREE (750 hrs/mo, spins down after 15 min idle)
   - type: web
     name: clsplusplus-api
     runtime: docker
@@ -19,25 +17,6 @@ services:
     healthCheckPath: /v1/memory/health
     envVars:
       - key: CLS_REDIS_URL
-        fromService:
-          type: keyvalue
-          name: clsplusplus-redis
-          property: connectionString
+        sync: false  # Paste from Dashboard → your Redis → Connection String
       - key: CLS_DATABASE_URL
-        fromDatabase:
-          name: clsplusplus-db
-          property: connectionString
-
-  # Redis - FREE
-  - type: keyvalue
-    name: clsplusplus-redis
-    plan: free
-    ipAllowList:
-      - source: 0.0.0.0/0
-        description: allow-all
-
-databases:
-  # Postgres - FREE (expires after 30 days, then recreate)
-  - name: clsplusplus-db
-    plan: free
-    databaseName: cls
+        sync: false  # Paste from Dashboard → your Postgres → Connection String
