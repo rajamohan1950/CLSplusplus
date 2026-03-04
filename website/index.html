@@ -15,6 +15,7 @@
     <div class="nav-inner">
       <a href="#" class="logo">CLS<span class="logo-plus">++</span></a>
       <div class="nav-links">
+        <a href="#tryit" class="btn btn-primary">Try It</a>
         <a href="#problem">Problem</a>
         <a href="#solution">Solution</a>
         <a href="#demo">See It</a>
@@ -36,7 +37,7 @@
       <p class="hero-sub">Claude today. GPT-4 tomorrow. Gemini next week. Your preferences, corrections, and established facts follow you—because memory lives outside the model.</p>
       <div class="hero-cta">
         <a href="https://render.com/deploy?repo=https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener" class="btn btn-large btn-primary">Deploy Free on Render</a>
-        <a href="#demo" class="btn btn-large btn-outline">Watch the Demo</a>
+        <a href="#tryit" class="btn btn-large btn-outline">Try It Live</a>
         <a href="#pricing" class="btn btn-large btn-outline">View Pricing</a>
       </div>
       <div class="hero-logos">
@@ -47,6 +48,41 @@
       </div>
     </div>
   </header>
+
+  <section id="tryit" class="section tryit">
+    <div class="container">
+      <h2>Try It Yourself</h2>
+      <p class="section-lead">Tell Claude. Ask OpenAI. Or vice versa. Same memory, all three. No sign-up.</p>
+      <div class="demo-panels">
+        <div class="demo-panel" data-model="claude">
+          <div class="demo-panel-header claude">Claude</div>
+          <div class="demo-panel-messages" id="chat-claude"></div>
+          <div class="demo-panel-input">
+            <input type="text" placeholder="Tell or ask..." maxlength="500" data-input="claude">
+            <button class="btn btn-primary" data-send="claude">Send</button>
+          </div>
+        </div>
+        <div class="demo-panel" data-model="gemini">
+          <div class="demo-panel-header gemini">Gemini</div>
+          <div class="demo-panel-messages" id="chat-gemini"></div>
+          <div class="demo-panel-input">
+            <input type="text" placeholder="Tell or ask..." maxlength="500" data-input="gemini">
+            <button class="btn btn-primary" data-send="gemini">Send</button>
+          </div>
+        </div>
+        <div class="demo-panel" data-model="openai">
+          <div class="demo-panel-header openai">OpenAI</div>
+          <div class="demo-panel-messages" id="chat-openai"></div>
+          <div class="demo-panel-input">
+            <input type="text" placeholder="Tell or ask..." maxlength="500" data-input="openai">
+            <button class="btn btn-primary" data-send="openai">Send</button>
+          </div>
+        </div>
+      </div>
+      <p class="demo-hint" id="demo-hint">Tell one AI a fact. Ask another. Memory is shared across all three.</p>
+      <p class="demo-pitch">Pitch in 10 words: <strong>Your memory lives here. Switch AI anytime. No reset.</strong></p>
+    </div>
+  </section>
 
   <section id="problem" class="section problem">
     <div class="container">
@@ -69,42 +105,13 @@
     </div>
   </section>
 
-  <section id="tryit" class="section tryit">
-    <div class="container">
-      <h2>Try It Yourself</h2>
-      <p class="section-lead">Talk to Claude. Switch to OpenAI. Your conversation stays. No sign-up.</p>
-      <div class="demo-chat">
-        <div class="demo-model-bar">
-          <span class="demo-model-label">You're talking to:</span>
-          <span class="demo-model-badge claude" id="current-model">Claude</span>
-          <button class="btn btn-primary demo-switch-btn" id="switch-btn">Switch to OpenAI</button>
-        </div>
-        <div class="demo-chat-messages" id="chat-messages">
-          <div class="demo-msg demo-msg-ai" id="welcome-msg">
-            <strong>Hi!</strong> Type anything. I'll remember it. Then click "Switch to OpenAI" — and watch your words follow you. Magic.
-          </div>
-        </div>
-        <div class="demo-chat-input">
-          <input type="text" id="chat-input" placeholder="Type something... (e.g. My name is Alex, I love pizza)" maxlength="500">
-          <button class="btn btn-primary" id="send-btn">Send</button>
-        </div>
-        <p class="demo-hint" id="demo-hint">Step 1: Type a message and press Send. Step 2: Click Switch. Step 3: See your memory preserved.</p>
-        <p class="demo-pitch">Pitch in 10 words: <strong>Your memory lives here. Switch AI anytime. No reset.</strong></p>
-      </div>
-    </div>
-  </section>
-
   <section id="demo" class="section demo">
     <div class="container">
       <h2>See the Problem. See the Fix.</h2>
-      <p class="section-lead">One minute: What happens when you switch models without CLS++.</p>
-      <div class="video-wrapper">
-        <div class="video-placeholder" id="video-container">
-          <iframe id="demo-video" src="" title="CLS++ Demo" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-          <div class="video-overlay visible" id="video-overlay">
-            <p class="video-instruction">Add your demo video URL to the iframe src in index.html</p>
-          </div>
-        </div>
+      <p class="section-lead">Without CLS++: switch models and your context is gone. With CLS++: your memory follows you.</p>
+      <div class="demo-cta">
+        <p><strong>Experience it live above.</strong> Tell Claude a fact. Ask OpenAI. Or tell Gemini, ask Claude. Same memory across all three.</p>
+        <a href="#tryit" class="btn btn-primary">Go to live demo ↑</a>
       </div>
     </div>
   </section>

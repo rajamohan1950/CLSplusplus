@@ -1,32 +1,24 @@
 /**
- * CLS++ Try It Demo - Super simple: talk, switch, see memory persist
+ * CLS++ Try It Demo - Claude | Gemini | OpenAI side-by-side, shared memory
+ * Tell one, ask another. Memory lives in CLS++, not in the model.
  */
 (function () {
   const API_URL = 'https://clsplusplus-api.onrender.com';
   const NAMESPACE = 'demo-' + Math.random().toString(36).slice(2, 10);
 
-  const chatMessages = document.getElementById('chat-messages');
-  const chatInput = document.getElementById('chat-input');
-  const sendBtn = document.getElementById('send-btn');
-  const switchBtn = document.getElementById('switch-btn');
-  const currentModel = document.getElementById('current-model');
-  const demoHint = document.getElementById('demo-hint');
-  const welcomeMsg = document.getElementById('welcome-msg');
+  const MODELS = ['claude', 'gemini', 'openai'];
 
-  let isClaude = true;
-
-  function addMsg(text, isUser, isPreserved) {
+  function addMsg(container, text, isUser, isPreserved) {
     const div = document.createElement('div');
     div.className = 'demo-msg demo-msg-' + (isUser ? 'user' : 'ai');
     if (isPreserved) div.classList.add('demo-msg-preserved');
     div.textContent = text;
-    chatMessages.appendChild(div);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
   }
 
   function setLoading(loading) {
-    sendBtn.disabled = loading;
-    switchBtn.disabled = loading;
+    document.querySelectorAll('[data-send]').forEach((btn) => (btn.disabled = loading));
   }
 
   async function writeMemory(text) {
@@ -44,12 +36,12 @@
     return res.json();
   }
 
-  async function readMemory() {
+  async function readMemory(query) {
     const res = await fetch(API_URL + '/v1/memory/read', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        query: 'everything we talked about',
+        query: query || 'everything we talked about',
         namespace: NAMESPACE,
         limit: 10,
       }),
@@ -58,53 +50,50 @@
     return res.json();
   }
 
-  async function onSend() {
-    const text = chatInput.value.trim();
+  function isQuestion(text) {
+    const t = text.trim().toLowerCase();
+    return t.includes('?') || /^(what|who|where|when|how|which|is my|do you remember)/.test(t);
+  }
+
+  async function onSend(model) {
+    const input = document.querySelector(`[data-input="${model}"]`);
+    const container = document.getElementById(`chat-${model}`);
+    const text = input.value.trim();
     if (!text) return;
 
-    chatInput.value = '';
-    addMsg(text, true);
+    input.value = '';
+    addMsg(container, text, true);
 
     setLoading(true);
     try {
-      await writeMemory(text);
-      const friendly = isClaude
-        ? "Got it! I'll remember that. Try switching to OpenAI now."
-        : "I remember that too! See? Same memory, different AI.";
-      addMsg(friendly, false);
-      demoHint.textContent = 'Now click "Switch to OpenAI" (or back to Claude) — your words follow you!';
-    } catch (e) {
-      addMsg("Oops! API might be sleeping. Wait 30 seconds and try again.", false);
-    }
-    setLoading(false);
-  }
-
-  async function onSwitch() {
-    setLoading(true);
-    try {
-      const data = await readMemory();
-      const items = data.items || [];
-      isClaude = !isClaude;
-
-      currentModel.textContent = isClaude ? 'Claude' : 'OpenAI';
-      currentModel.className = 'demo-model-badge ' + (isClaude ? 'claude' : 'openai');
-      switchBtn.textContent = isClaude ? 'Switch to OpenAI' : 'Switch to Claude';
-
-      if (items.length > 0) {
-        const memories = items.map((i) => i.text).join(' • ');
-        addMsg(`I remember: ${memories}. What else?`, false, true);
-        demoHint.textContent = "That's CLS++ — your memory lives outside the AI. Switch anytime.";
+      if (isQuestion(text)) {
+        const data = await readMemory(text);
+        const items = data.items || [];
+        if (items.length > 0) {
+          const answer = items.map((i) => i.text).join('. ');
+          addMsg(container, answer, false, true);
+        } else {
+          addMsg(container, "I don't have that yet. Tell one of us first.", false);
+        }
       } else {
-        addMsg("Hi! I'm " + (isClaude ? "Claude" : "OpenAI") + ". Type something and I'll remember it.", false);
-        demoHint.textContent = 'Step 1: Type a message. Step 2: Click Switch. Step 3: See your memory preserved.';
+        await writeMemory(text);
+        addMsg(container, "Got it! Ask any of us — we all remember.", false);
       }
     } catch (e) {
-      addMsg("API not ready. Try again in a minute.", false);
+      addMsg(container, "API sleeping. Wait ~30 sec and try again.", false);
     }
     setLoading(false);
   }
 
-  sendBtn.addEventListener('click', onSend);
-  chatInput.addEventListener('keypress', (e) => e.key === 'Enter' && onSend());
-  switchBtn.addEventListener('click', onSwitch);
+  MODELS.forEach((model) => {
+    const container = document.getElementById(`chat-${model}`);
+    if (container) addMsg(container, "Tell me something or ask me anything. Memory is shared.", false);
+  });
+
+  MODELS.forEach((model) => {
+    const btn = document.querySelector(`[data-send="${model}"]`);
+    const input = document.querySelector(`[data-input="${model}"]`);
+    if (btn) btn.addEventListener('click', () => onSend(model));
+    if (input) input.addEventListener('keypress', (e) => e.key === 'Enter' && onSend(model));
+  });
 })();
