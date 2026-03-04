@@ -54,19 +54,26 @@
 
     input.value = '';
     addMsg(container, text, true);
+    const loadingEl = document.createElement('div');
+    loadingEl.className = 'demo-msg demo-msg-ai demo-msg-loading';
+    loadingEl.textContent = '...';
+    container.appendChild(loadingEl);
+    container.scrollTop = container.scrollHeight;
 
     setLoading(true);
     try {
       const reply = await chatWithLLM(model, text);
+      loadingEl.remove();
       addMsg(container, reply, false, true);
     } catch (e) {
+      loadingEl.remove();
       const msg = e.message || 'Request failed';
       if (e.name === 'AbortError') {
-        addMsg(container, 'Request timed out. Render free tier may be cold-starting — wait 60s and try again.', false);
+        addMsg(container, 'Timed out. API may be cold-starting (Render free tier). Wait 1–2 min, then try again.', false);
       } else if (msg.includes('API') || msg.includes('key') || msg.includes('env')) {
         addMsg(container, msg + ' (Add keys in Render env.)', false);
       } else {
-        addMsg(container, 'Error: ' + msg, false);
+        addMsg(container, 'Error: ' + msg + ' (Check API keys in Render → clsplusplus-api → Environment)', false);
       }
     }
     setLoading(false);

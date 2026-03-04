@@ -503,6 +503,15 @@ body {
   border-left: 4px solid var(--success);
 }
 
+.demo-msg.demo-msg-loading {
+  opacity: 0.7;
+  animation: demo-loading-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes demo-loading-pulse {
+  50% { opacity: 0.4; }
+}
+
 /* Solution */
 .solution-diagram {
   background: var(--bg-elevated);
