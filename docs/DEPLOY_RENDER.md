@@ -1,5 +1,16 @@
 # Deploy CLS++ on Render
 
+## One-Click Deploy
+
+1. **Click:** [Deploy to Render](https://render.com/deploy?repo=https://github.com/rajamohan1950/CLSplusplus)
+2. **Sign in** to Render (or create a free account)
+3. **Approve** the blueprint — Render creates all 5 services
+4. **Wait** ~10 min for the API build (first deploy)
+5. **Enable pgvector:** Postgres → Connect → run `CREATE EXTENSION IF NOT EXISTS vector;`
+6. **Done.** Website and API will be live.
+
+---
+
 ## Full Stack (Website + Backend)
 
 The `render.yaml` blueprint deploys:

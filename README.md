@@ -2,10 +2,12 @@
 
 **Switch AI models. Never lose context.**
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/rajamohan1950/CLSplusplus)
+
 [![Provisional Patent Filed](https://img.shields.io/badge/Patent-Oct%202025-blue)]()
 [![AlphaForge AI Labs](https://img.shields.io/badge/AlphaForge-AI%20Labs-orange)]()
 
-**Website:** [clsplusplus-website.onrender.com](https://clsplusplus-website.onrender.com) | **API:** [clsplusplus-api.onrender.com](https://clsplusplus-api.onrender.com/docs) | **GitHub:** [rajamohan1950/CLSplusplus](https://github.com/rajamohan1950/CLSplusplus) | [Deploy guide](docs/DEPLOY_RENDER.md)
+**Deploy:** Click the button above → sign in to Render → approve. [Full guide](docs/DEPLOY_RENDER.md)
 
 ---
 
