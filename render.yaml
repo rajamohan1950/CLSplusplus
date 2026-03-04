@@ -3,13 +3,12 @@
 # Deploy: https://render.com/deploy?repo=https://github.com/rajamohan1950/CLSplusplus
 
 services:
-  # Marketing website - FREE
+  # Marketing website - FREE (static sites have no plan field)
   - type: web
     name: clsplusplus-website
     runtime: static
     buildCommand: "true"
     staticPublishPath: ./website
-    plan: free
 
   # CLS++ API - FREE (750 hrs/mo, spins down after 15 min idle)
   - type: web
