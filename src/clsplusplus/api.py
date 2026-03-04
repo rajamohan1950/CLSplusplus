@@ -39,6 +39,22 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.get("/")
+    async def root():
+        """API root - links to docs and health."""
+        return {
+            "name": "CLS++ API",
+            "version": "0.1.0",
+            "docs": "/docs",
+            "health": "/v1/memory/health",
+        }
+
+    @app.get("/health")
+    async def health_redirect():
+        """Redirect /health to /v1/memory/health for convenience."""
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/v1/memory/health")
+
     @app.post("/v1/memory/write")
     async def write_memory(req: WriteRequest):
         """Write memory. Flows to L0, promotes to L1 if score warrants."""
