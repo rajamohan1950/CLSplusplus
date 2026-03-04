@@ -104,10 +104,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     async def health():
         """Composite health + per-store metrics."""
         h = await memory_service.health()
-        return HealthResponse(
-            status=h["status"],
-            stores=h["stores"],
-        )
+        stores = dict(h["stores"])
+        # Add hint if using localhost (missing env vars on Render)
+        if h["status"] == "degraded" and "localhost" in str(stores):
+            stores["_hint"] = {
+                "status": "info",
+                "store": "Setup",
+                "error": "Add CLS_REDIS_URL and CLS_DATABASE_URL in Render Dashboard → clsplusplus-api → Environment. Use Internal connection strings from your Redis and Postgres.",
+            }
+        return HealthResponse(status=h["status"], stores=stores)
 
     return app
 
