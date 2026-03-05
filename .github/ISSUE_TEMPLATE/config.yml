@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/rajamohan1950/CLSplusplus/wiki
+    about: Browse the wiki for guides and architecture
+  - name: API Docs
+    url: https://clsplusplus-api.onrender.com/docs
+    about: Interactive Swagger API documentation

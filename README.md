@@ -1,13 +1,26 @@
-# CLS++ — Continuous Learning System++
+<p align="center">
+  <img src="https://img.shields.io/badge/CLS%2B%2B-Memory%20for%20LLMs-6366f1?style=for-the-badge&logo=github" alt="CLS++" />
+</p>
 
-**Switch AI models. Never lose context.**
+<h1 align="center">CLS++ — Continuous Learning System++</h1>
+<p align="center">
+  <strong>Switch AI models. Never lose context.</strong>
+</p>
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/rajamohan1950/CLSplusplus)
+<p align="center">
+  <a href="#-quick-start">Quick Start</a> •
+  <a href="#-architecture">Architecture</a> •
+  <a href="#-documentation">Documentation</a> •
+  <a href="#-deployment">Deployment</a> •
+  <a href="#-contributing">Contributing</a>
+</p>
 
-[![Provisional Patent Filed](https://img.shields.io/badge/Patent-Oct%202025-blue)]()
-[![AlphaForge AI Labs](https://img.shields.io/badge/AlphaForge-AI%20Labs-orange)]()
-
-**Deploy free (no credit card):** Click the button → sign in with GitHub → approve. [Guide](docs/DEPLOY_RENDER.md)
+<p align="center">
+  <a href="https://render.com/deploy?repo=https://github.com/rajamohan1950/CLSplusplus"><img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render" height="32" /></a>
+  <a href="https://clsplusplus-api.onrender.com/docs"><img src="https://img.shields.io/badge/API-Live-22c55e?style=flat-square" alt="API" /></a>
+  <a href="https://github.com/rajamohan1950/CLSplusplus/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat-square" alt="License" /></a>
+  <a href="https://github.com/rajamohan1950/CLSplusplus"><img src="https://img.shields.io/badge/Patent-Oct%202025-blue?style=flat-square" alt="Patent" /></a>
+</p>
 
 ---
 
@@ -15,33 +28,42 @@
 
 Every LLM in production today operates with **amnesia**. Sessions end, context windows clear, and the model forgets everything—preferences, corrections, facts established over months.
 
-**CLS++** is an external memory substrate that solves this at its root. Drawing from neuroscientific Complementary Learning Systems (CLS) theory, it implements:
+**CLS++** is an external memory substrate that solves this at its root. Drawing from neuroscientific [Complementary Learning Systems (CLS)](https://en.wikipedia.org/wiki/Complementary_learning_systems) theory, it implements:
 
-- **Four-store hierarchy** — L0 (Working Buffer) → L1 (Indexing) → L2 (Schema Graph) → L3 (Deep Recess)
-- **Biological consolidation signals** — Salience, Usage, Authority, Conflict, Surprise
-- **Sleep cycle** — Nightly maintenance: rank, decay, deduplicate, consolidate
-- **Reconsolidation gate** — Belief revision only with evidence quorum
-- **Social Graph** — PII-free collective intelligence from anonymized behavioral patterns
+| Feature | Description |
+|---------|-------------|
+| **Four-store hierarchy** | L0 (Working Buffer) → L1 (Indexing) → L2 (Schema Graph) → L3 (Deep Recess) |
+| **Biological consolidation** | Salience, Usage, Authority, Conflict, Surprise signals |
+| **Sleep cycle** | Nightly maintenance: rank, decay, deduplicate, consolidate |
+| **Reconsolidation gate** | Belief revision only with evidence quorum |
+| **Model-agnostic** | Any LLM plugs in via REST API—Claude, GPT-4, Gemini, Llama |
 
-Memory is **external** to the model. **Model-agnostic** by design. Any LLM plugs in via REST API.
+Memory is **external** to the model. **Switch models anytime.** No reset.
 
 ---
 
 ## Quick Start
 
-```bash
-# 1. Install dependencies
-pip install -e .
+### 1. Install
 
-# 2. Start infrastructure (Redis, PostgreSQL, MinIO)
+```bash
+pip install clsplusplus
+# or from source: pip install -e .
+```
+
+### 2. Run locally
+
+```bash
+# Start infrastructure (Redis, PostgreSQL, MinIO)
 docker compose up -d redis postgres minio
 
-# 3. Wait for services, then start the API
+# Start the API
 uvicorn clsplusplus.api:app --host 0.0.0.0 --port 8080
+```
 
-# 4. Or run full stack with Docker
-docker compose up -d
+### 3. Use the API
 
+```bash
 # Write a memory
 curl -X POST http://localhost:8080/v1/memory/write \
   -H "Content-Type: application/json" \
@@ -53,7 +75,7 @@ curl -X POST http://localhost:8080/v1/memory/read \
   -d '{"query": "user preferences", "namespace": "user:123"}'
 ```
 
-### Python SDK
+### 4. Python SDK
 
 ```python
 from clsplusplus.client import CLSClient
@@ -65,18 +87,11 @@ with CLSClient("http://localhost:8080", api_key="cls_live_xxx") as client:
         print(item.text, item.confidence)
 ```
 
-### SaaS Mode (Memory-as-a-Service)
+---
 
-Enable API key auth and rate limiting for production:
+## Try It Live
 
-```bash
-export CLS_API_KEYS=cls_live_xxxxxxxxxxxxxxxxxxxxxxxx
-export CLS_REQUIRE_API_KEY=true
-export CLS_RATE_LIMIT_REQUESTS=100
-export CLS_RATE_LIMIT_WINDOW_SECONDS=60
-```
-
-Product-aligned endpoints: `POST /v1/memories/encode`, `POST /v1/memories/retrieve`, `DELETE /v1/memories/forget`, `GET /v1/health/score`. See [docs/SAAS_MEMORY_AS_SERVICE.md](docs/SAAS_MEMORY_AS_SERVICE.md).
+**[Try the demo](https://clsplusplus.onrender.com)** — Tell Claude something, ask OpenAI. Same memory. No sign-up.
 
 ---
 
@@ -100,13 +115,40 @@ Client (any LLM) → POST /v1/memory/read (before inference)
 
 ---
 
+## SaaS Mode (Memory-as-a-Service)
+
+Enable API key auth and rate limiting for production:
+
+```bash
+export CLS_API_KEYS=cls_live_xxxxxxxxxxxxxxxxxxxxxxxx
+export CLS_REQUIRE_API_KEY=true
+export CLS_RATE_LIMIT_REQUESTS=100
+export CLS_RATE_LIMIT_WINDOW_SECONDS=60
+```
+
+Product endpoints: `POST /v1/memories/encode`, `POST /v1/memories/retrieve`, `DELETE /v1/memories/forget`, `GET /v1/health/score`. See [SaaS docs](docs/SAAS_MEMORY_AS_SERVICE.md).
+
+---
+
+## Deployment
+
+| Platform | Guide |
+|----------|-------|
+| **Render** (free tier) | [Deploy in 1 click](https://render.com/deploy?repo=https://github.com/rajamohan1950/CLSplusplus) • [Setup guide](docs/DEPLOY_RENDER.md) |
+| **AWS Free Tier** | [CloudFormation](infrastructure/aws/cloudformation-free-tier.yaml) • [Step-by-step](infrastructure/aws/FREE_TIER_GUIDE.md) |
+| **AWS** | [CloudFormation](infrastructure/aws/cloudformation.yaml) |
+| **Azure** | [ARM template](infrastructure/azure/arm-template.json) |
+
+---
+
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [HLD](docs/CLS_Plus_Plus_HLD.docx) | High-Level Design (full specification) |
-| [Productionization Roadmap](docs/PRODUCTIONIZATION_ROADMAP.md) | Deployment, security, compliance |
-| [Commercialization Strategy](docs/COMMERCIALIZATION_STRATEGY.md) | Go-to-market, pricing, licensing |
+| [API Reference](docs/API_DOCUMENTATION.md) | Endpoints, auth, examples |
+| [SaaS Strategy](docs/SAAS_MEMORY_AS_SERVICE.md) | Memory-as-a-Service, pricing |
+| [Productionization](docs/PRODUCTIONIZATION_ROADMAP.md) | Deployment, security, compliance |
+| [Commercialization](docs/COMMERCIALIZATION_STRATEGY.md) | Go-to-market, licensing |
 
 ---
 
@@ -115,18 +157,27 @@ Client (any LLM) → POST /v1/memory/read (before inference)
 **Phase 1 (Foundation)** — Complete
 
 - [x] Four stores (L0–L3) + Plasticity Engine
-- [x] Write/Read API
-- [x] Docker Compose
-- [x] Python SDK
+- [x] Write/Read API + Python SDK
+- [x] Docker Compose + Render deploy
 - [x] Sleep cycle orchestrator
 - [x] Reconsolidation gate
+- [x] API key auth + rate limiting
+- [x] SaaS product endpoints
+
+---
+
+## Contributing
+
+We welcome contributions. See [CONTRIBUTING.md](.github/CONTRIBUTING.md) and the [Wiki](https://github.com/rajamohan1950/CLSplusplus/wiki) for details.
 
 ---
 
 ## License
 
-Provisional patent filed October 2025. License TBD (Apache 2.0 / Commercial dual).
+Provisional patent filed October 2025. Apache 2.0 (see [LICENSE](LICENSE)).
 
 ---
 
-**AlphaForge AI Labs** | [Rajamohan Jabbala](https://github.com/rajamohan1950) | February 2026
+<p align="center">
+  <strong>AlphaForge AI Labs</strong> • <a href="https://github.com/rajamohan1950">Rajamohan Jabbala</a> • 2026
+</p>

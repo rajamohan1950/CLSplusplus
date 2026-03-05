@@ -45,9 +45,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/rajamohan1950/CLS-PlusPlus"
-Documentation = "https://github.com/rajamohan1950/CLS-PlusPlus#readme"
-Repository = "https://github.com/rajamohan1950/CLS-PlusPlus"
+Homepage = "https://github.com/rajamohan1950/CLSplusplus"
+Documentation = "https://github.com/rajamohan1950/CLSplusplus/wiki"
+Repository = "https://github.com/rajamohan1950/CLSplusplus"
 
 [tool.setuptools.packages.find]
 where = ["src"]
