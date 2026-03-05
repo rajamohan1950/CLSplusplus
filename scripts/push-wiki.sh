@@ -32,7 +32,7 @@ if git diff --staged --quiet; then
 fi
 
 git commit -m "Update wiki pages"
-git push origin main
+git push origin master
 
 cd ..
 rm -rf "$WIKI_DIR"
