@@ -58,12 +58,25 @@ curl -X POST http://localhost:8080/v1/memory/read \
 ```python
 from clsplusplus.client import CLSClient
 
-with CLSClient("http://localhost:8080") as client:
+with CLSClient("http://localhost:8080", api_key="cls_live_xxx") as client:
     client.write("User prefers dark mode", namespace="user:123")
     results = client.read("user preferences", namespace="user:123")
     for item in results.items:
         print(item.text, item.confidence)
 ```
+
+### SaaS Mode (Memory-as-a-Service)
+
+Enable API key auth and rate limiting for production:
+
+```bash
+export CLS_API_KEYS=cls_live_xxxxxxxxxxxxxxxxxxxxxxxx
+export CLS_REQUIRE_API_KEY=true
+export CLS_RATE_LIMIT_REQUESTS=100
+export CLS_RATE_LIMIT_WINDOW_SECONDS=60
+```
+
+Product-aligned endpoints: `POST /v1/memories/encode`, `POST /v1/memories/retrieve`, `DELETE /v1/memories/forget`, `GET /v1/health/score`. See [docs/SAAS_MEMORY_AS_SERVICE.md](docs/SAAS_MEMORY_AS_SERVICE.md).
 
 ---
 

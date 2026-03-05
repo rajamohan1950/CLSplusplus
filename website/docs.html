@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="CLS++ API Documentation — Usage, examples, and integration guide for the memory-as-a-service API.">
+  <title>CLS++ | API Documentation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .docs-hero { padding: 120px 0 60px; text-align: center; }
+    .docs-hero h1 { font-size: 2.5rem; margin-bottom: 12px; }
+    .docs-hero p { color: var(--text-muted); font-size: 1.1rem; max-width: 560px; margin: 0 auto; }
+    .docs-nav { position: sticky; top: 72px; background: var(--bg-elevated); border-radius: var(--radius); padding: 16px; margin-bottom: 32px; }
+    .docs-nav ul { list-style: none; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+    .docs-nav a { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; padding: 6px 12px; border-radius: 8px; }
+    .docs-nav a:hover { color: var(--accent); background: rgba(99, 102, 241, 0.1); }
+    .docs-section { margin-bottom: 48px; }
+    .docs-section h2 { font-size: 1.5rem; margin-bottom: 16px; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    .docs-section h3 { font-size: 1.15rem; margin: 24px 0 12px; color: var(--accent-light); }
+    .docs-section p, .docs-section li { color: var(--text-muted); margin-bottom: 12px; line-height: 1.7; }
+    .code-block { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; overflow-x: auto; margin: 16px 0; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; }
+    .code-block code { color: var(--text); }
+    .endpoint { display: flex; align-items: center; gap: 12px; margin: 12px 0; flex-wrap: wrap; }
+    .method { font-family: 'JetBrains Mono', monospace; font-weight: 600; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; }
+    .method-post { background: #22c55e33; color: #22c55e; }
+    .method-get { background: #3b82f633; color: #60a5fa; }
+    .method-delete { background: #ef444433; color: #f87171; }
+    .path { font-family: 'JetBrains Mono', monospace; color: var(--text); }
+    .param-table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    .param-table th, .param-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+    .param-table th { color: var(--text-muted); font-weight: 500; font-size: 0.9rem; }
+    .param-table td { color: var(--text); }
+    .param-table code { font-size: 0.85rem; color: var(--accent-light); }
+    .badge-optional { font-size: 0.75rem; color: var(--text-muted); }
+    .docs-grid { display: grid; grid-template-columns: 1fr; gap: 32px; }
+    @media (min-width: 900px) { .docs-grid { grid-template-columns: 240px 1fr; } }
+    .docs-sidebar { position: sticky; top: 88px; height: fit-content; }
+    .docs-sidebar nav { display: flex; flex-direction: column; gap: 4px; }
+    .docs-sidebar a { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; padding: 8px 12px; border-radius: 8px; }
+    .docs-sidebar a:hover { color: var(--accent); background: rgba(99, 102, 241, 0.1); }
+    .docs-content { min-width: 0; }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="index.html" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="index.html#tryit">Try It</a>
+        <a href="index.html#solution">Solution</a>
+        <a href="index.html#pricing">Pricing</a>
+        <a href="docs.html" class="btn btn-primary">Docs</a>
+        <a href="https://clsplusplus-api.onrender.com/docs" target="_blank" rel="noopener">OpenAPI</a>
+        <a href="https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener">GitHub</a>
+      </div>
+      <button class="nav-toggle" aria-label="Menu">☰</button>
+    </div>
+  </nav>
+
+  <section class="docs-hero">
+    <div class="container">
+      <h1>API Documentation</h1>
+      <p>CLS++ REST API — store, retrieve, and manage persistent memory for any LLM. Brain-inspired, model-agnostic.</p>
+    </div>
+  </section>
+
+  <div class="container">
+    <div class="docs-grid">
+      <aside class="docs-sidebar">
+        <nav>
+          <a href="#quickstart">Quick Start</a>
+          <a href="#authentication">Authentication</a>
+          <a href="#endpoints">API Endpoints</a>
+          <a href="#write">Write / Encode</a>
+          <a href="#read">Read / Retrieve</a>
+          <a href="#forget">Forget</a>
+          <a href="#health">Health</a>
+          <a href="#integrations">Integrations</a>
+          <a href="#errors">Error Handling</a>
+        </nav>
+      </aside>
+
+      <main class="docs-content">
+        <section id="quickstart" class="docs-section">
+          <h2>Quick Start</h2>
+          <p>Base URL: <code>https://clsplusplus-api.onrender.com</code> (or <code>http://localhost:8080</code> for local)</p>
+          <h3>1. Install the Python SDK</h3>
+          <div class="code-block"><code>pip install clsplusplus</code></div>
+          <h3>2. Write and read in 3 lines</h3>
+          <div class="code-block"><pre><code>from clsplusplus.client import CLSClient
+
+with CLSClient("https://clsplusplus-api.onrender.com", api_key="cls_live_xxx") as client:
+    client.write("User prefers dark mode", namespace="user:123")
+    results = client.read("user preferences", namespace="user:123")
+    for item in results.items:
+        print(item.text, item.confidence)</code></pre></div>
+          <h3>3. Or use curl</h3>
+          <div class="code-block"><pre><code># Write
+curl -X POST https://clsplusplus-api.onrender.com/v1/memory/write \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer cls_live_xxx" \
+  -d '{"text": "User prefers dark mode", "namespace": "user:123"}'
+
+# Read
+curl -X POST https://clsplusplus-api.onrender.com/v1/memory/read \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer cls_live_xxx" \
+  -d '{"query": "user preferences", "namespace": "user:123"}'</code></pre></div>
+        </section>
+
+        <section id="authentication" class="docs-section">
+          <h2>Authentication</h2>
+          <p>When <code>CLS_REQUIRE_API_KEY=true</code>, include your API key in every request:</p>
+          <div class="code-block"><code>Authorization: Bearer cls_live_xxxxxxxxxxxxxxxxxxxxxxxx</code></div>
+          <p><strong>Key format:</strong> <code>cls_live_*</code> or <code>cls_test_*</code> (min 32 chars). Generate with:</p>
+          <div class="code-block"><code>echo "cls_live_$(openssl rand -hex 24)"</code></div>
+          <p><strong>Public paths</strong> (no auth): <code>/</code>, <code>/health</code>, <code>/v1/memory/health</code>, <code>/docs</code>, <code>/redoc</code></p>
+        </section>
+
+        <section id="endpoints" class="docs-section">
+          <h2>API Endpoints</h2>
+          <p>All endpoints return JSON. Use <code>Content-Type: application/json</code> for request bodies.</p>
+          <table class="param-table">
+            <thead>
+              <tr><th>Method</th><th>Path</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><span class="method method-post">POST</span></td><td><code>/v1/memory/write</code></td><td>Store a memory</td></tr>
+              <tr><td><span class="method method-post">POST</span></td><td><code>/v1/memories/encode</code></td><td>Alias: encode memory</td></tr>
+              <tr><td><span class="method method-post">POST</span></td><td><code>/v1/memory/read</code></td><td>Retrieve by semantic query</td></tr>
+              <tr><td><span class="method method-post">POST</span></td><td><code>/v1/memories/retrieve</code></td><td>Alias: retrieve memories</td></tr>
+              <tr><td><span class="method method-get">GET</span></td><td><code>/v1/memory/item/{item_id}</code></td><td>Get item by ID</td></tr>
+              <tr><td><span class="method method-delete">DELETE</span></td><td><code>/v1/memory/forget</code></td><td>Delete memory (RTBF)</td></tr>
+              <tr><td><span class="method method-delete">DELETE</span></td><td><code>/v1/memories/forget</code></td><td>Alias: forget</td></tr>
+              <tr><td><span class="method method-post">POST</span></td><td><code>/v1/memory/sleep</code></td><td>Trigger consolidation</td></tr>
+              <tr><td><span class="method method-post">POST</span></td><td><code>/v1/memories/consolidate</code></td><td>Alias: consolidate</td></tr>
+              <tr><td><span class="method method-get">GET</span></td><td><code>/v1/memories/knowledge</code></td><td>Query L2/L3 knowledge only</td></tr>
+              <tr><td><span class="method method-get">GET</span></td><td><code>/v1/memory/health</code></td><td>Health check</td></tr>
+              <tr><td><span class="method method-get">GET</span></td><td><code>/v1/health/score</code></td><td>Alias: health</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="write" class="docs-section">
+          <h2>Write / Encode</h2>
+          <p>Store a new memory. Flows to L0 (working buffer) and L1 (episodic store).</p>
+          <div class="endpoint"><span class="method method-post">POST</span><span class="path">/v1/memory/write</span></div>
+          <h3>Request body</h3>
+          <table class="param-table">
+            <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            <tr><td><code>text</code></td><td>string</td><td>Yes</td><td>Memory content (max 64KB)</td></tr>
+            <tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Tenant/scope (default: "default", alphanumeric + -_)</td></tr>
+            <tr><td><code>source</code></td><td>string</td><td>No</td><td>Source identifier (default: "user")</td></tr>
+            <tr><td><code>salience</code></td><td>float</td><td>No</td><td>0–1 (default: 0.5)</td></tr>
+            <tr><td><code>authority</code></td><td>float</td><td>No</td><td>0–1 (default: 0.5)</td></tr>
+            <tr><td><code>metadata</code></td><td>object</td><td>No</td><td>Custom key-value pairs</td></tr>
+          </table>
+          <h3>Response</h3>
+          <div class="code-block"><pre><code>{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "store_level": "L1",
+  "text": "User prefers dark mode"
+}</code></pre></div>
+          <h3>Example</h3>
+          <div class="code-block"><pre><code>curl -X POST https://clsplusplus-api.onrender.com/v1/memory/write \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer cls_live_xxx" \
+  -d '{
+    "text": "User prefers dark mode",
+    "namespace": "user:123",
+    "metadata": {"source": "settings"}
+  }'</code></pre></div>
+        </section>
+
+        <section id="read" class="docs-section">
+          <h2>Read / Retrieve</h2>
+          <p>Retrieve memories by semantic similarity. Searches across L0–L3 stores.</p>
+          <div class="endpoint"><span class="method method-post">POST</span><span class="path">/v1/memory/read</span></div>
+          <h3>Request body</h3>
+          <table class="param-table">
+            <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            <tr><td><code>query</code></td><td>string</td><td>Yes</td><td>Semantic query (max 4KB)</td></tr>
+            <tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Scope (default: "default")</td></tr>
+            <tr><td><code>limit</code></td><td>int</td><td>No</td><td>Max results (1–100, default: 10)</td></tr>
+            <tr><td><code>min_confidence</code></td><td>float</td><td>No</td><td>Filter by confidence (0–1)</td></tr>
+          </table>
+          <h3>Response</h3>
+          <div class="code-block"><pre><code>{
+  "items": [
+    {
+      "id": "...",
+      "text": "User prefers dark mode",
+      "confidence": 0.92,
+      "store_level": "L1",
+      "timestamp": "2026-03-04T12:00:00Z"
+    }
+  ],
+  "query": "user preferences",
+  "namespace": "user:123"
+}</code></pre></div>
+          <h3>Knowledge query (L2/L3 only)</h3>
+          <p>For consolidated knowledge: <code>GET /v1/memories/knowledge?query=...&namespace=...</code></p>
+        </section>
+
+        <section id="forget" class="docs-section">
+          <h2>Forget</h2>
+          <p>Delete a memory by ID (Right to be Forgotten).</p>
+          <div class="endpoint"><span class="method method-delete">DELETE</span><span class="path">/v1/memory/forget</span></div>
+          <h3>Request body</h3>
+          <table class="param-table">
+            <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            <tr><td><code>item_id</code></td><td>string</td><td>Yes</td><td>Memory ID (alphanumeric, dash, underscore)</td></tr>
+            <tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Scope (default: "default")</td></tr>
+          </table>
+          <h3>Response</h3>
+          <div class="code-block"><pre><code>{"deleted": true, "item_id": "550e8400-e29b-41d4-a716-446655440000"}</code></pre></div>
+        </section>
+
+        <section id="health" class="docs-section">
+          <h2>Health</h2>
+          <p>Check API and store status. No auth required.</p>
+          <div class="endpoint"><span class="method method-get">GET</span><span class="path">/v1/memory/health</span></div>
+          <div class="code-block"><pre><code>curl https://clsplusplus-api.onrender.com/v1/memory/health</code></pre></div>
+        </section>
+
+        <section id="integrations" class="docs-section">
+          <h2>Integration Examples</h2>
+          <h3>Python (sync)</h3>
+          <div class="code-block"><pre><code>from clsplusplus.client import CLSClient
+
+client = CLSClient("https://clsplusplus-api.onrender.com", api_key="cls_live_xxx")
+client.write("User prefers dark mode", namespace="user:123")
+results = client.read("preferences", namespace="user:123")
+client.forget("item-id", namespace="user:123")
+client.close()</code></pre></div>
+          <h3>Python (context manager)</h3>
+          <div class="code-block"><pre><code>with CLSClient("https://clsplusplus-api.onrender.com", api_key="cls_live_xxx") as c:
+    c.write("Fact: project X uses Python")
+    items = c.read("project tech stack")</code></pre></div>
+          <h3>JavaScript / fetch</h3>
+          <div class="code-block"><pre><code>const API = "https://clsplusplus-api.onrender.com";
+const KEY = "cls_live_xxx";
+
+// Write
+await fetch(`${API}/v1/memory/write`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${KEY}`,
+  },
+  body: JSON.stringify({ text: "User prefers dark mode", namespace: "user:123" }),
+});
+
+// Read
+const res = await fetch(`${API}/v1/memory/read`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${KEY}`,
+  },
+  body: JSON.stringify({ query: "preferences", namespace: "user:123" }),
+});
+const data = await res.json();
+console.log(data.items);</code></pre></div>
+          <h3>Augmenting LLM prompts</h3>
+          <div class="code-block"><pre><code># Before calling your LLM:
+memories = client.read("user preferences and context", namespace="user:123")
+context = "\n".join(m.text for m in memories.items)
+prompt = f"Context from memory:\n{context}\n\nUser: {user_message}"
+response = llm.complete(prompt)</code></pre></div>
+        </section>
+
+        <section id="errors" class="docs-section">
+          <h2>Error Handling</h2>
+          <table class="param-table">
+            <tr><th>Code</th><th>Meaning</th></tr>
+            <tr><td>400</td><td>Bad request — invalid input (namespace, item_id, etc.)</td></tr>
+            <tr><td>401</td><td>Unauthorized — missing or invalid API key</td></tr>
+            <tr><td>404</td><td>Not found — item or resource doesn't exist</td></tr>
+            <tr><td>422</td><td>Validation error — request body fails schema validation</td></tr>
+            <tr><td>429</td><td>Rate limit exceeded — retry after <code>Retry-After</code> seconds</td></tr>
+            <tr><td>500</td><td>Server error — check health endpoint</td></tr>
+          </table>
+          <p>Error response format:</p>
+          <div class="code-block"><pre><code>{"detail": "Invalid or missing API key. Use Authorization: Bearer &lt;key&gt;"}</code></pre></div>
+        </section>
+
+        <section class="docs-section">
+          <h2>OpenAPI / Swagger</h2>
+          <p>Interactive API docs: <a href="https://clsplusplus-api.onrender.com/docs" target="_blank" rel="noopener">Swagger UI</a> | <a href="https://clsplusplus-api.onrender.com/redoc" target="_blank" rel="noopener">ReDoc</a></p>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <a href="index.html" class="logo">CLS<span class="logo-plus">++</span></a>
+          <p>AlphaForge AI Labs</p>
+        </div>
+        <div class="footer-links">
+          <a href="docs.html">Docs</a>
+          <a href="https://clsplusplus-api.onrender.com/docs" target="_blank" rel="noopener">API</a>
+          <a href="https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener">GitHub</a>
+          <a href="mailto:contact@alphaforge.ai">Contact</a>
+        </div>
+      </div>
+      <p class="footer-legal">Provisional patent filed October 2025. © 2026 AlphaForge AI Labs.</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

@@ -2,19 +2,23 @@
 
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from clsplusplus.config import Settings
 from clsplusplus.memory_service import MemoryService
+from clsplusplus.middleware import AuthMiddleware, RateLimitMiddleware
 from clsplusplus.models import (
     AdjudicateRequest,
     DemoChatRequest,
+    ForgetRequest,
     HealthResponse,
     ReadRequest,
     ReadResponse,
     WriteRequest,
 )
+from clsplusplus.models import _validate_item_id as validate_item_id
+from clsplusplus.models import _validate_namespace as validate_namespace
 from clsplusplus.sleep_cycle import SleepOrchestrator
 
 
@@ -36,10 +40,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         CORSMiddleware,
         allow_origins=["*"],
         allow_credentials=False,
-        allow_methods=["GET", "POST", "OPTIONS", "HEAD"],
+        allow_methods=["GET", "POST", "DELETE", "OPTIONS", "HEAD"],
         allow_headers=["*"],
         expose_headers=["*"],
     )
+    app.add_middleware(RateLimitMiddleware, settings=settings)
+    app.add_middleware(AuthMiddleware, settings=settings)
+
+    def _ns_query(default: str = "default") -> str:
+        return Query(default=default, min_length=1, max_length=64)
 
     @app.get("/")
     async def root():
@@ -63,24 +72,73 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         item = await memory_service.write(req)
         return {"id": item.id, "store_level": item.store_level.value, "text": item.text}
 
+    @app.post("/v1/memories/encode")
+    async def encode_memory(req: WriteRequest):
+        """Product alias: POST /memories/encode -> write."""
+        item = await memory_service.write(req)
+        return {"id": item.id, "store_level": item.store_level.value, "text": item.text}
+
     @app.post("/v1/memory/read", response_model=ReadResponse)
     async def read_memory(req: ReadRequest):
         """Read memories by semantic query across all stores."""
         return await memory_service.read(req)
 
+    @app.post("/v1/memories/retrieve", response_model=ReadResponse)
+    async def retrieve_memories(req: ReadRequest):
+        """Product alias: POST /memories/retrieve -> read."""
+        return await memory_service.read(req)
+
     @app.get("/v1/memory/item/{item_id}")
-    async def get_item(item_id: str, namespace: str = "default"):
+    async def get_item(
+        item_id: str = Path(..., min_length=1, max_length=64),
+        namespace: str = _ns_query(),
+    ):
         """Get full item with lineage and versions."""
+        try:
+            validate_item_id(item_id)
+            validate_namespace(namespace)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         item = await memory_service.get_item(item_id, namespace)
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
         return item.to_dict()
 
     @app.post("/v1/memory/sleep")
-    async def trigger_sleep(namespace: str = "default"):
+    async def trigger_sleep(namespace: str = _ns_query()):
         """Trigger nightly sleep cycle (admin)."""
+        try:
+            validate_namespace(namespace)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         report = await sleep_orchestrator.run(namespace)
         return report
+
+    @app.post("/v1/memories/consolidate")
+    async def consolidate_memories(namespace: str = _ns_query()):
+        """Product alias: POST /memories/consolidate -> sleep."""
+        try:
+            validate_namespace(namespace)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        report = await sleep_orchestrator.run(namespace)
+        return report
+
+    @app.delete("/v1/memory/forget")
+    async def forget_memory(req: ForgetRequest):
+        """Delete a memory by ID (RTBF)."""
+        deleted = await memory_service.delete(req.item_id, req.namespace)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Item not found")
+        return {"deleted": True, "item_id": req.item_id}
+
+    @app.delete("/v1/memories/forget")
+    async def forget_memory_alias(req: ForgetRequest):
+        """Product alias: DELETE /memories/forget."""
+        deleted = await memory_service.delete(req.item_id, req.namespace)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Item not found")
+        return {"deleted": True, "item_id": req.item_id}
 
     @app.post("/v1/memory/adjudicate_conflict")
     async def adjudicate_conflict(req: AdjudicateRequest):
@@ -121,8 +179,6 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
         if req.model not in ("claude", "openai", "gemini"):
             raise HTTPException(status_code=400, detail="model must be claude, openai, or gemini")
-        if not req.message or len(req.message.strip()) == 0:
-            raise HTTPException(status_code=400, detail="message is required")
 
         try:
             reply = await chat_with_llm(
@@ -140,14 +196,39 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         """Composite health + per-store metrics."""
         h = await memory_service.health()
         stores = dict(h["stores"])
-        # Add hint if using localhost (missing env vars on Render)
         if h["status"] == "degraded" and "localhost" in str(stores):
             stores["_hint"] = {
                 "status": "info",
                 "store": "Setup",
-                "error": "Add CLS_REDIS_URL and CLS_DATABASE_URL in Render Dashboard → clsplusplus-api → Environment. Use Internal connection strings from your Redis and Postgres.",
+                "error": "Add CLS_REDIS_URL and CLS_DATABASE_URL in Render Dashboard.",
             }
         return HealthResponse(status=h["status"], stores=stores)
+
+    @app.get("/v1/health/score", response_model=HealthResponse)
+    async def health_score():
+        """Product alias: GET /health/score -> memory health."""
+        return await health()
+
+    @app.get("/v1/memories/knowledge", response_model=ReadResponse)
+    async def query_knowledge(
+        query: str = Query(..., min_length=1, max_length=4096),
+        namespace: str = _ns_query(),
+        limit: int = Query(default=10, ge=1, le=100),
+    ):
+        """Product alias: GET /knowledge - query L2/L3 (neocortical) only."""
+        try:
+            validate_namespace(namespace)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        from clsplusplus.models import ReadRequest, StoreLevel
+
+        req = ReadRequest(
+            query=query,
+            namespace=namespace,
+            limit=limit,
+            store_levels=[StoreLevel.L2, StoreLevel.L3],
+        )
+        return await memory_service.read(req)
 
     return app
 

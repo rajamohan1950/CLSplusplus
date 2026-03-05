@@ -185,7 +185,9 @@ class L2SchemaGraph(BaseStore):
 
     async def delete(self, item_id: str, namespace: str) -> bool:
         pool = await self.pool
-        await pool.execute("DELETE FROM l2_edges WHERE source_id = $1 OR target_id = $1", item_id, item_id)
+        await pool.execute(
+            "DELETE FROM l2_edges WHERE source_id = $1 OR target_id = $2", item_id, item_id
+        )
         result = await pool.execute("DELETE FROM l2_nodes WHERE id = $1 AND namespace = $2", item_id, namespace)
         return "DELETE 1" in result
 

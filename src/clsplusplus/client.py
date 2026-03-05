@@ -73,6 +73,14 @@ class CLSClient:
         resp.raise_for_status()
         return resp.json()
 
+    def forget(self, item_id: str, namespace: str = "default") -> dict:
+        """Delete a memory by ID (RTBF)."""
+        resp = self._client.request(
+            "DELETE", "/v1/memory/forget", json={"item_id": item_id, "namespace": namespace}
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def health(self) -> dict:
         """Health check."""
         resp = self._client.get("/v1/memory/health")

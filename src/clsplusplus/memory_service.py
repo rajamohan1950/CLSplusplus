@@ -111,6 +111,14 @@ class MemoryService:
                 return item
         return None
 
+    async def delete(self, item_id: str, namespace: str) -> bool:
+        """Delete item from all stores. Returns True if deleted from at least one."""
+        deleted = False
+        for store in [self.l0, self.l1, self.l2, self.l3]:
+            ok = await store.delete(item_id, namespace)
+            deleted = deleted or ok
+        return deleted
+
     async def health(self) -> dict:
         """Aggregate health of all stores."""
         l0_h = await self.l0.health()

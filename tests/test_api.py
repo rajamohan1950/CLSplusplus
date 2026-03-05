@@ -18,8 +18,30 @@ async def client():
 async def test_health(client: AsyncClient):
     """Health endpoint returns status."""
     resp = await client.get("/v1/memory/health")
-    # May be healthy or degraded if services not running
     assert resp.status_code in (200, 503)
     data = resp.json()
     assert "status" in data
     assert "stores" in data
+
+
+@pytest.mark.asyncio
+async def test_product_aliases_exist(client: AsyncClient):
+    """Product-aligned routes exist."""
+    resp = await client.get("/v1/health/score")
+    assert resp.status_code in (200, 503)
+
+
+@pytest.mark.asyncio
+async def test_validation_rejects_invalid_input(client: AsyncClient):
+    """Invalid namespace/item_id returns 422."""
+    resp = await client.post(
+        "/v1/memory/write",
+        json={"text": "x", "namespace": "bad name!"},
+    )
+    assert resp.status_code == 422
+
+    resp = await client.request(
+        "DELETE", "/v1/memory/forget",
+        json={"item_id": "bad/id", "namespace": "default"},
+    )
+    assert resp.status_code == 422

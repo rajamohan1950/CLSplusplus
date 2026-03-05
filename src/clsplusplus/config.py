@@ -14,6 +14,16 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
 
+    # SaaS: API key auth (comma-separated for multiple keys)
+    api_keys: str = ""
+
+    # SaaS: Require auth for memory endpoints (false = open for local/demo)
+    require_api_key: bool = False
+
+    # SaaS: Rate limit - requests per window per key
+    rate_limit_requests: int = 100
+    rate_limit_window_seconds: int = 60
+
     # Redis (L0)
     redis_url: str = "redis://localhost:6379"
 
