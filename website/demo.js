@@ -70,10 +70,12 @@
       const msg = e.message || 'Request failed';
       if (e.name === 'AbortError') {
         addMsg(container, 'Timed out. API may be cold-starting (Render free tier). Wait 1–2 min, then try again.', false);
-      } else if (msg.includes('API') || msg.includes('key') || msg.includes('env')) {
-        addMsg(container, msg + ' (Add keys in Render env.)', false);
+      } else if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
+        addMsg(container, 'API unreachable (cold start or CORS). Wait 1–2 min and retry, or try locally with ?local=1', false);
+      } else if (msg.includes('API') || msg.includes('key') || msg.includes('env') || msg.includes('401')) {
+        addMsg(container, msg + ' (Add CLS_ANTHROPIC_API_KEY, CLS_OPENAI_API_KEY in Render → Environment)', false);
       } else {
-        addMsg(container, 'Error: ' + msg + ' (Check API keys in Render → clsplusplus-api → Environment)', false);
+        addMsg(container, 'Error: ' + msg, false);
       }
     }
     setLoading(false);

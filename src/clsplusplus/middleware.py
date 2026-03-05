@@ -17,6 +17,8 @@ _PUBLIC_PATHS = frozenset({
     "/",
     "/health",
     "/v1/memory/health",
+    "/v1/demo/status",
+    "/v1/demo/chat",
     "/docs",
     "/redoc",
     "/openapi.json",
