@@ -39,6 +39,9 @@ htmlcov/
 # Docker
 .docker/
 
+# Wiki script temp
+.wiki-temp/
+
 # OS
 .DS_Store
 Thumbs.db
