@@ -1,0 +1,200 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CLS++ FREE TIER - API + Redis + PostgreSQL. Upload, enter password, done. 100% free for 12 months.
+
+Parameters:
+  DbPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Description: Create a password for the database (8+ chars, e.g. MyPass123!)
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+
+  PubSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+
+  PrivSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.10.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+
+  PrivSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.11.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnet
+      RouteTableId: !Ref RouteTable
+
+  ApiSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: CLS++ API
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: CLS++ DB
+      SubnetIds: [!Ref PrivSubnet1, !Ref PrivSubnet2]
+
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS PostgreSQL
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref ApiSecurityGroup
+
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: postgres
+      EngineVersion: "16.1"
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: 20
+      MasterUsername: cls
+      MasterUserPassword: !Ref DbPassword
+      DBName: cls
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      VPCSecurityGroups: [!Ref DbSecurityGroup]
+      PubliclyAccessible: false
+
+  ApiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+
+  ApiInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref ApiRole]
+
+  ApiInstance:
+    Type: AWS::EC2::Instance
+    DependsOn: DBInstance
+    Properties:
+      ImageId: !Sub "{{resolve:ssm:/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp2/ami-id}}"
+      InstanceType: t3.micro
+      IamInstanceProfile: !Ref ApiInstanceProfile
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          GroupSet: [!Ref ApiSecurityGroup]
+          SubnetId: !Ref PubSubnet
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp3
+      UserData:
+        Fn::Base64:
+          !Sub
+            - |
+              #!/bin/bash -ex
+              set -e
+              # Add 2GB swap (t3.micro has 1GB RAM - we need more for the app)
+              fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+              echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
+              apt-get update && apt-get install -y docker.io git curl
+              systemctl enable docker && systemctl start docker
+
+              git clone https://github.com/rajamohan1950/CLSplusplus /app
+              cd /app
+
+              # Run Redis first (on same machine - free, no ElastiCache)
+              docker run -d --name redis --restart unless-stopped -p 6379:6379 redis:7-alpine
+
+              # Build and run API (connects to redis + RDS)
+              docker build -t clsplusplus .
+              docker run -d --name cls-api --restart unless-stopped --link redis:redis -p 8080:8080 \
+                -e CLS_REDIS_URL=redis://redis:6379 \
+                -e CLS_DATABASE_URL=postgresql://cls:${DbPass}@${DbHost}:${DbPort}/cls \
+                clsplusplus
+
+              # Wait for API to start, then run health probe
+              echo "Waiting for API to start (up to 15 min - first run downloads models)..."
+              for i in $(seq 1 180); do
+                if curl -sf http://localhost:8080/v1/memory/health > /tmp/health.json 2>/dev/null; then
+                  echo "SUCCESS: API is healthy!"
+                  cat /tmp/health.json
+                  exit 0
+                fi
+                sleep 5
+              done
+              echo "Health check timed out - API may still be starting. Check logs: docker logs cls-api"
+            - DbPass: !Ref DbPassword
+              DbHost: !GetAtt DBInstance.Endpoint.Address
+              DbPort: !GetAtt DBInstance.Endpoint.Port
+
+Outputs:
+  ApiUrl:
+    Description: Your CLS++ API - open this in your browser
+    Value: !Sub "http://${ApiInstance.PublicIp}:8080"
+  HealthUrl:
+    Description: Health check - should return status
+    Value: !Sub "http://${ApiInstance.PublicIp}:8080/v1/memory/health"
+  DocsUrl:
+    Description: API documentation
+    Value: !Sub "http://${ApiInstance.PublicIp}:8080/docs"

@@ -1,0 +1,5 @@
+[
+  { "ParameterKey": "DbPassword", "ParameterValue": "CHANGE_ME_StrongP@ss1" },
+  { "ParameterKey": "AnthropicApiKey", "ParameterValue": "" },
+  { "ParameterKey": "OpenAIApiKey", "ParameterValue": "" }
+]

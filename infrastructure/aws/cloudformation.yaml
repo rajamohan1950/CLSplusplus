@@ -1,0 +1,240 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CLS++ - Redis, PostgreSQL, API (EC2 + Docker). One template, end-to-end.
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Default: https://github.com/rajamohan1950/CLSplusplus
+    Description: GitHub repo URL for CLS++ (public)
+  DbPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Description: PostgreSQL master password
+  AnthropicApiKey:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: "(Optional) CLS_ANTHROPIC_API_KEY for demo"
+  OpenAIApiKey:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: "(Optional) CLS_OPENAI_API_KEY for demo"
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+
+  PubSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+
+  PubSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+
+  PrivSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.10.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+
+  PrivSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.11.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PubRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PubRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PubSubnet1RouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnet1
+      RouteTableId: !Ref PubRouteTable
+
+  PubSubnet2RouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnet2
+      RouteTableId: !Ref PubRouteTable
+
+  ApiSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: CLS++ API EC2
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: CLS++ DB subnet group
+      SubnetIds: [!Ref PrivSubnet1, !Ref PrivSubnet2]
+
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS PostgreSQL
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref ApiSecurityGroup
+
+  RedisSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: CLS++ Redis subnet group
+      SubnetIds: [!Ref PrivSubnet1, !Ref PrivSubnet2]
+
+  RedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ElastiCache Redis
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !Ref ApiSecurityGroup
+
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: postgres
+      EngineVersion: "16.1"
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: 20
+      MasterUsername: cls
+      MasterUserPassword: !Ref DbPassword
+      DBName: cls
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      VPCSecurityGroups: [!Ref DbSecurityGroup]
+      PubliclyAccessible: false
+
+  RedisCluster:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      CacheNodeType: cache.t3.micro
+      Engine: redis
+      NumCacheNodes: 1
+      CacheSubnetGroupName: !Ref RedisSubnetGroup
+      VpcSecurityGroupIds: [!Ref RedisSecurityGroup]
+
+  ApiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+
+  ApiInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref ApiRole]
+
+  ApiInstance:
+    Type: AWS::EC2::Instance
+    DependsOn: [DBInstance, RedisCluster]
+    Properties:
+      ImageId: !Sub "{{resolve:ssm:/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp2/ami-id}}"
+      InstanceType: t3.medium
+      IamInstanceProfile: !Ref ApiInstanceProfile
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          GroupSet: [!Ref ApiSecurityGroup]
+          SubnetId: !Ref PubSubnet1
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 30
+            VolumeType: gp3
+      UserData:
+        Fn::Base64:
+          !Sub
+            - |
+              #!/bin/bash -ex
+              apt-get update && apt-get install -y docker.io git
+              systemctl enable docker && systemctl start docker
+              git clone ${GitHubRepo} /app
+              cd /app
+              docker build -t clsplusplus .
+              docker run -d --name cls-api --restart unless-stopped -p 8080:8080 \
+                -e CLS_REDIS_URL=redis://${RedisHost}:${RedisPort} \
+                -e CLS_DATABASE_URL=postgresql://cls:${DbPass}@${DbHost}:${DbPort}/cls \
+                -e CLS_ANTHROPIC_API_KEY="${AnthropicKey}" \
+                -e CLS_OPENAI_API_KEY="${OpenAIKey}" \
+                clsplusplus
+            - GitHubRepo: !Ref GitHubRepo
+              DbPass: !Ref DbPassword
+              DbHost: !GetAtt DBInstance.Endpoint.Address
+              DbPort: !GetAtt DBInstance.Endpoint.Port
+              RedisHost: !GetAtt RedisCluster.RedisEndpoint.Address
+              RedisPort: !GetAtt RedisCluster.RedisEndpoint.Port
+              AnthropicKey: !Ref AnthropicApiKey
+              OpenAIKey: !Ref OpenAIApiKey
+
+Outputs:
+  ApiUrl:
+    Description: CLS++ API URL
+    Value: !Sub "http://${ApiInstance.PublicIp}:8080"
+    Export:
+      Name: !Sub "${AWS::StackName}-ApiUrl"
+  ApiPublicIp:
+    Description: API server public IP
+    Value: !Ref ApiInstance
+  HealthUrl:
+    Description: Health check URL
+    Value: !Sub "http://${ApiInstance.PublicIp}:8080/v1/memory/health"
