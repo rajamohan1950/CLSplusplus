@@ -10,8 +10,14 @@
 
   const MODELS = ['claude', 'openai'];
 
-  // Warm up API on page load (Render cold start ~60–90s)
-  fetch(API_URL + '/v1/demo/status', { method: 'GET' }).catch(function () {});
+  // Warm up API on page load and keep pinging (Render cold start ~60–90s)
+  for (var w = 0; w < 5; w++) {
+    (function (delay) {
+      setTimeout(function () {
+        fetch(API_URL + '/v1/demo/status', { method: 'GET' }).catch(function () {});
+      }, delay);
+    })(w * 30000);
+  }
 
   function addMsg(container, text, isUser, isPreserved) {
     const div = document.createElement('div');
@@ -48,15 +54,24 @@
     return data.reply || '';
   }
 
-  async function onSend(model) {
+  function sleep(ms) {
+    return new Promise(function (r) { setTimeout(r, ms); });
+  }
+
+  var lastSentByModel = {};
+
+  async function onSend(model, messageOverride) {
     const input = document.querySelector(`[data-input="${model}"]`);
     const container = document.getElementById(`chat-${model}`);
     if (!container || !input) return;
-    const text = input.value.trim();
+    const text = (messageOverride !== undefined ? messageOverride : input.value.trim());
     if (!text) return;
 
-    input.value = '';
-    addMsg(container, text, true);
+    if (messageOverride === undefined) {
+      input.value = '';
+      addMsg(container, text, true);
+    }
+    lastSentByModel[model] = text;
     const loadingEl = document.createElement('div');
     loadingEl.className = 'demo-msg demo-msg-ai demo-msg-loading';
     loadingEl.textContent = '...';
@@ -64,23 +79,48 @@
     container.scrollTop = container.scrollHeight;
 
     setLoading(true);
-    try {
-      const reply = await chatWithLLM(model, text);
-      loadingEl.remove();
-      addMsg(container, reply, false, true);
-    } catch (e) {
-      loadingEl.remove();
-      const msg = e.message || 'Request failed';
-      if (e.name === 'AbortError') {
-        addMsg(container, 'Timed out. API may be cold-starting (Render free tier). Wait 1–2 min, then try again.', false);
-      } else if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
-        addMsg(container, 'API unreachable. Wait 1–2 min, then click Send again. Or run locally: ?local=1 + scripts/run_local_demo.sh', false);
-      } else if (msg.includes('API') || msg.includes('key') || msg.includes('env') || msg.includes('401')) {
-        addMsg(container, msg + ' (Add CLS_ANTHROPIC_API_KEY, CLS_OPENAI_API_KEY in Render → Environment)', false);
-      } else {
-        addMsg(container, 'Error: ' + msg, false);
+    var maxAttempts = 5;
+    var retryDelayMs = 25000;
+
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        if (attempt > 1) {
+          loadingEl.textContent = 'Waking up API... attempt ' + attempt + '/' + maxAttempts + ' (retry in ' + (retryDelayMs / 1000) + 's)';
+          await sleep(retryDelayMs);
+        }
+        var reply = await chatWithLLM(model, text);
+        loadingEl.remove();
+        addMsg(container, reply, false, true);
+        setLoading(false);
+        return;
+      } catch (e) {
+        if (e.name === 'AbortError') {
+          loadingEl.remove();
+          addMsg(container, 'Timed out. Click Send to retry.', false);
+          setLoading(false);
+          return;
+        }
+        if (e.message !== 'Failed to fetch' && !e.message.includes('NetworkError')) {
+          loadingEl.remove();
+          var msg = e.message || 'Request failed';
+          if (msg.includes('API') || msg.includes('key') || msg.includes('env') || msg.includes('401')) {
+            addMsg(container, msg + ' (Add CLS_ANTHROPIC_API_KEY, CLS_OPENAI_API_KEY in Render → Environment)', false);
+          } else {
+            addMsg(container, 'Error: ' + msg, false);
+          }
+          setLoading(false);
+          return;
+        }
       }
     }
+
+    loadingEl.remove();
+    var errEl = document.createElement('div');
+    errEl.className = 'demo-msg demo-msg-ai';
+    errEl.innerHTML = 'API still unreachable after ' + maxAttempts + ' attempts. <button type="button" class="btn btn-primary" style="margin-top:8px">Retry</button>';
+    errEl.querySelector('button').onclick = function () { onSend(model, lastSentByModel[model]); };
+    container.appendChild(errEl);
+    container.scrollTop = container.scrollHeight;
     setLoading(false);
   }
 
