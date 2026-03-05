@@ -20,8 +20,8 @@ Make your CLS++ repo look **beautiful and cutting-edge**. Follow these steps to 
 
 **Settings:** Repo → **General** → Social preview → Upload
 
-- Use `.github/social-preview.png` (1280×640 px recommended)
-- Or create at [Canva](https://canva.com) / [Figma](https://figma.com): "CLS++ — Memory for LLMs" on dark background (#0a0a0f) with indigo accent (#6366f1)
+- Download `.github/social-preview.png` from the repo (already included)
+- Recommended size: 1280×640 px for link previews on Twitter, LinkedIn, etc.
 
 ---
 
@@ -48,21 +48,20 @@ Make your CLS++ repo look **beautiful and cutting-edge**. Follow these steps to 
 
 Wiki content is in the `wiki/` folder. To publish:
 
+**First time:** Create the wiki by adding any content at https://github.com/rajamohan1950/CLSplusplus/wiki (e.g. "Welcome" → Save). This initializes the wiki repo.
+
+**Then run:**
 ```bash
-# Clone the wiki repo (create first page via GitHub UI if empty)
-git clone https://github.com/rajamohan1950/CLSplusplus.wiki.git
-cd CLSplusplus.wiki
-
-# Copy content from main repo
-cp ../wiki/*.md .
-
-# Commit and push
-git add .
-git commit -m "Add wiki pages"
-git push origin main
+./scripts/push-wiki.sh
 ```
 
-Or use the script: `./scripts/push-wiki.sh`
+Or manually:
+```bash
+git clone https://github.com/rajamohan1950/CLSplusplus.wiki.git
+cd CLSplusplus.wiki
+cp ../wiki/*.md .
+git add . && git commit -m "Add wiki pages" && git push origin main
+```
 
 ---
 
