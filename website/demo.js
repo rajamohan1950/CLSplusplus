@@ -10,6 +10,9 @@
 
   const MODELS = ['claude', 'openai'];
 
+  // Warm up API on page load (Render cold start ~60–90s)
+  fetch(API_URL + '/v1/demo/status', { method: 'GET' }).catch(function () {});
+
   function addMsg(container, text, isUser, isPreserved) {
     const div = document.createElement('div');
     div.className = 'demo-msg demo-msg-' + (isUser ? 'user' : 'ai');
@@ -71,7 +74,7 @@
       if (e.name === 'AbortError') {
         addMsg(container, 'Timed out. API may be cold-starting (Render free tier). Wait 1–2 min, then try again.', false);
       } else if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
-        addMsg(container, 'API unreachable (cold start or CORS). Wait 1–2 min and retry, or try locally with ?local=1', false);
+        addMsg(container, 'API unreachable. Wait 1–2 min, then click Send again. Or run locally: ?local=1 + scripts/run_local_demo.sh', false);
       } else if (msg.includes('API') || msg.includes('key') || msg.includes('env') || msg.includes('401')) {
         addMsg(container, msg + ' (Add CLS_ANTHROPIC_API_KEY, CLS_OPENAI_API_KEY in Render → Environment)', false);
       } else {
