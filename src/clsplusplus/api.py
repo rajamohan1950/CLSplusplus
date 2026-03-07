@@ -2,12 +2,13 @@
 
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Path, Query
+from fastapi import FastAPI, HTTPException, Path, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from clsplusplus.config import Settings
 from clsplusplus.memory_service import MemoryService
-from clsplusplus.middleware import AuthMiddleware, RateLimitMiddleware
+from clsplusplus.middleware import AuthMiddleware, RateLimitMiddleware, RequestIdMiddleware
 from clsplusplus.models import (
     AdjudicateRequest,
     DemoChatRequest,
@@ -44,8 +45,32 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         allow_headers=["*"],
         expose_headers=["*"],
     )
+    app.add_middleware(RequestIdMiddleware)
     app.add_middleware(RateLimitMiddleware, settings=settings)
     app.add_middleware(AuthMiddleware, settings=settings)
+
+    # Structured error handler (blueprint: error messages that teach)
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
+        detail = exc.detail
+        if isinstance(detail, str):
+            content = {
+                "error": "request_error",
+                "message": detail,
+                "status_code": exc.status_code,
+            }
+            if exc.status_code == 401:
+                content["fix"] = "Add Authorization: Bearer <api_key> header"
+                content["docs"] = "https://github.com/rajamohan1950/CLSplusplus/wiki/API-Reference"
+            elif exc.status_code == 429:
+                content["fix"] = f"Retry after {request.headers.get('Retry-After', 60)} seconds or upgrade plan"
+                content["docs"] = "https://github.com/rajamohan1950/CLSplusplus/wiki/SaaS-and-Pricing"
+            elif exc.status_code == 422:
+                content["fix"] = "Check request body against API schema"
+                content["docs"] = "/docs"
+        else:
+            content = {"error": "request_error", "message": str(detail), "status_code": exc.status_code}
+        return JSONResponse(status_code=exc.status_code, content=content)
 
     def _ns_query(default: str = "default") -> str:
         return Query(default=default, min_length=1, max_length=64)
@@ -66,27 +91,46 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         from fastapi.responses import RedirectResponse
         return RedirectResponse(url="/v1/memory/health")
 
+    async def _record_usage(operation: str, request: Request):
+        api_key = getattr(request.state, "api_key", None)
+        if api_key and settings.track_usage:
+            from clsplusplus.usage import record_usage
+            await record_usage(api_key, operation, settings)
+
     @app.post("/v1/memory/write")
-    async def write_memory(req: WriteRequest):
+    async def write_memory(req: WriteRequest, request: Request):
         """Write memory. Flows to L0, promotes to L1 if score warrants."""
         item = await memory_service.write(req)
+        await _record_usage("write", request)
         return {"id": item.id, "store_level": item.store_level.value, "text": item.text}
 
     @app.post("/v1/memories/encode")
-    async def encode_memory(req: WriteRequest):
+    async def encode_memory(req: WriteRequest, request: Request):
         """Product alias: POST /memories/encode -> write."""
         item = await memory_service.write(req)
+        await _record_usage("encode", request)
         return {"id": item.id, "store_level": item.store_level.value, "text": item.text}
 
     @app.post("/v1/memory/read", response_model=ReadResponse)
-    async def read_memory(req: ReadRequest):
+    async def read_memory(req: ReadRequest, request: Request):
         """Read memories by semantic query across all stores."""
-        return await memory_service.read(req)
+        result = await memory_service.read(req)
+        await _record_usage("read", request)
+        return result
 
     @app.post("/v1/memories/retrieve", response_model=ReadResponse)
-    async def retrieve_memories(req: ReadRequest):
+    async def retrieve_memories(req: ReadRequest, request: Request):
         """Product alias: POST /memories/retrieve -> read."""
-        return await memory_service.read(req)
+        result = await memory_service.read(req)
+        await _record_usage("retrieve", request)
+        return result
+
+    @app.post("/v1/memories/search", response_model=ReadResponse)
+    async def search_memories(req: ReadRequest, request: Request):
+        """Resource-oriented: POST /memories/search -> read."""
+        result = await memory_service.read(req)
+        await _record_usage("retrieve", request)
+        return result
 
     @app.get("/v1/memory/item/{item_id}")
     async def get_item(
@@ -211,6 +255,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.get("/v1/memories/knowledge", response_model=ReadResponse)
     async def query_knowledge(
+        request: Request,
         query: str = Query(..., min_length=1, max_length=4096),
         namespace: str = _ns_query(),
         limit: int = Query(default=10, ge=1, le=100),
@@ -228,7 +273,40 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             limit=limit,
             store_levels=[StoreLevel.L2, StoreLevel.L3],
         )
-        return await memory_service.read(req)
+        result = await memory_service.read(req)
+        await _record_usage("knowledge", request)
+        return result
+
+    @app.delete("/v1/memories/{item_id}")
+    async def forget_memory_by_id(
+        item_id: str = Path(..., min_length=1, max_length=64),
+        namespace: str = _ns_query(),
+    ):
+        """Resource-oriented: DELETE /memories/{id} (forget)."""
+        try:
+            validate_item_id(item_id)
+            validate_namespace(namespace)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        deleted = await memory_service.delete(item_id, namespace)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Item not found")
+        return {"deleted": True, "item_id": item_id}
+
+    @app.get("/v1/usage")
+    async def usage_endpoint(request: Request):
+        """Usage metrics for current period (marketplace billing). Requires API key when auth enabled."""
+        from clsplusplus.auth import get_api_key_from_request
+        api_key = getattr(request.state, "api_key", None) or get_api_key_from_request(request.headers.get("Authorization"))
+        if settings.require_api_key and not api_key:
+            raise HTTPException(status_code=401, detail="API key required")
+        from clsplusplus.usage import get_usage as _get_usage
+        return await _get_usage(api_key or "anonymous", settings)
+
+    @app.get("/v1/billing/usage")
+    async def billing_usage(request: Request):
+        """Billing API: usage for current period (alias for /v1/usage)."""
+        return await usage_endpoint(request)
 
     return app
 

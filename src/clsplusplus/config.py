@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     rate_limit_requests: int = 100
     rate_limit_window_seconds: int = 60
 
+    # SaaS: Usage tracking for billing (marketplace)
+    track_usage: bool = False
+
+    # Idempotency: cache window (seconds)
+    idempotency_ttl_seconds: int = 86400  # 24 hours
+
     # Redis (L0)
     redis_url: str = "redis://localhost:6379"
 

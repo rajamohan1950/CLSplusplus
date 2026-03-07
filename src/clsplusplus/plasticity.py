@@ -61,7 +61,7 @@ class PlasticityEngine:
 
     def apply_decay(self, item: MemoryItem, decay_factor: Optional[float] = None) -> MemoryItem:
         """Exponential decay on salience."""
-        k = decay_factor or self.settings.decay_constant_k
+        k = decay_factor if decay_factor is not None else self.settings.decay_constant_k
         item.salience = max(0.0, item.salience * (1 - k))
         item.confidence = max(0.0, item.confidence * (1 - k * 0.5))
         return item
