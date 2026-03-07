@@ -7,6 +7,35 @@ import httpx
 from clsplusplus.models import MemoryItem, ReadRequest, ReadResponse, WriteRequest
 
 
+class MemoriesClient:
+    """Memory operations - 3-line integration: client.memories.encode(...)."""
+
+    def __init__(self, client: "CLSClient"):
+        self._client = client
+
+    def encode(
+        self,
+        content: str,
+        agent_id: Optional[str] = None,
+        namespace: str = "default",
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> dict:
+        """Encode (store) a memory. agent_id maps to namespace for 3-line DX."""
+        ns = agent_id if agent_id else namespace
+        return self._client.write(text=content, namespace=ns, metadata=metadata or {})
+
+    def retrieve(
+        self,
+        query: str,
+        agent_id: Optional[str] = None,
+        namespace: str = "default",
+        limit: int = 10,
+    ) -> ReadResponse:
+        """Retrieve memories by semantic query."""
+        ns = agent_id if agent_id else namespace
+        return self._client.read(query=query, namespace=ns, limit=limit)
+
+
 class CLSClient:
     """Python client for CLS++ API."""
 
@@ -18,6 +47,7 @@ class CLSClient:
             headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
             timeout=30.0,
         )
+        self.memories = MemoriesClient(self)
 
     def write(
         self,
@@ -96,3 +126,7 @@ class CLSClient:
 
     def __exit__(self, *args: Any) -> None:
         self.close()
+
+
+# 3-line integration alias (Stripe-style)
+CLS = CLSClient

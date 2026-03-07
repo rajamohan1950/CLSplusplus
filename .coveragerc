@@ -1,0 +1,25 @@
+[run]
+source = src/clsplusplus
+omit =
+    src/clsplusplus/main.py
+    src/clsplusplus/demo_llm_calls.py
+    src/clsplusplus/demo_local.py
+    src/clsplusplus/stores/l0_working_buffer.py
+    src/clsplusplus/stores/l1_indexing_store.py
+    src/clsplusplus/stores/l2_schema_graph.py
+    src/clsplusplus/stores/l3_deep_recess.py
+    src/clsplusplus/stores/l3_postgres.py
+
+[report]
+show_missing = true
+precision = 2
+fail_under = 85
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if __name__ == .__main__
+    pass
+    raise NotImplementedError
+
+[html]
+directory = htmlcov

@@ -1,7 +1,8 @@
-"""CLS++ middleware - auth and rate limiting."""
+"""CLS++ middleware - auth, rate limiting, request ID."""
 
 from __future__ import annotations
 
+import uuid
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -92,4 +93,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         remaining = limit - count
         response.headers["X-RateLimit-Limit"] = str(limit)
         response.headers["X-RateLimit-Remaining"] = str(max(0, remaining))
+        return response
+
+
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    """Add X-Request-Id to every request for distributed tracing."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-Id"] = request_id
         return response
