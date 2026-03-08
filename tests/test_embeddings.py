@@ -1,6 +1,7 @@
 """Comprehensive embedding service tests - dimensions, similarity, edge cases, performance."""
 
 import time
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -222,3 +223,51 @@ class TestEmbeddingPerformance:
             EmbeddingService.cosine_similarity(a, b)
         elapsed_ns = (time.perf_counter_ns() - start) / 1000
         assert elapsed_ns < 2_000_000, f"Cosine sim too slow: {elapsed_ns / 1e3:.1f}µs"
+
+
+# ---------------------------------------------------------------------------
+# Mocked model tests (cover embed_batch and embed_item when model is unavailable)
+# ---------------------------------------------------------------------------
+
+class TestEmbedWithMockedModel:
+    """Tests that use a mocked SentenceTransformer to cover lines 32 and 38."""
+
+    def _make_svc_with_mock_model(self):
+        """Create an EmbeddingService with a mocked model."""
+        svc = EmbeddingService()
+        mock_model = MagicMock()
+        # Make encode return a numpy array with tolist() support
+        mock_result = MagicMock()
+        mock_result.tolist.return_value = [[0.1] * 384, [0.2] * 384]
+        mock_model.encode.return_value = mock_result
+        svc._model = mock_model
+        return svc, mock_model
+
+    def test_embed_batch_calls_model(self):
+        """Cover line 32: embed_batch calls model.encode on batch of texts."""
+        svc, mock_model = self._make_svc_with_mock_model()
+        result = svc.embed_batch(["hello", "world"])
+        assert result == [[0.1] * 384, [0.2] * 384]
+        mock_model.encode.assert_called_once_with(["hello", "world"], convert_to_numpy=True)
+
+    def test_embed_item_with_existing_embedding(self):
+        """Cover line 38: embed_item returns item without re-embedding."""
+        svc, mock_model = self._make_svc_with_mock_model()
+        existing_emb = [0.5] * 384
+        item = MemoryItem(text="already embedded", embedding=existing_emb)
+        result = svc.embed_item(item)
+        assert result.embedding == existing_emb
+        # Model should NOT have been called since item already had embedding
+        mock_model.encode.assert_not_called()
+
+    def test_embed_item_without_embedding(self):
+        """embed_item embeds when no embedding present."""
+        svc, mock_model = self._make_svc_with_mock_model()
+        # Override encode for single text
+        single_result = MagicMock()
+        single_result.tolist.return_value = [0.3] * 384
+        mock_model.encode.return_value = single_result
+        item = MemoryItem(text="needs embedding")
+        result = svc.embed_item(item)
+        assert result.embedding == [0.3] * 384
+        mock_model.encode.assert_called_once()

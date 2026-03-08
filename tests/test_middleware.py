@@ -169,3 +169,37 @@ class TestCORS:
             },
         )
         assert resp.headers.get("access-control-allow-origin") == "*"
+
+
+# ---------------------------------------------------------------------------
+# RateLimitMiddleware - rate limit exceeded response (line 80)
+# ---------------------------------------------------------------------------
+
+class TestRateLimitExceeded:
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_returns_429(self):
+        """Cover line 80: rate limit exceeded returns 429 JSONResponse."""
+        from unittest.mock import patch, AsyncMock
+
+        settings = Settings(require_api_key=False)
+        app = create_app(settings)
+
+        # Mock check_rate_limit to always deny
+        with patch(
+            "clsplusplus.middleware.check_rate_limit",
+            new_callable=AsyncMock,
+            return_value=(False, 101, 100),  # not allowed, count > limit
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=app),
+                base_url="http://test",
+            ) as c:
+                resp = await c.post("/v1/memory/write", json={"text": "test"})
+                assert resp.status_code == 429
+                body = resp.json()
+                assert body["detail"] == "Rate limit exceeded"
+                assert "retry_after" in body
+                assert "X-RateLimit-Limit" in resp.headers
+                assert resp.headers["X-RateLimit-Remaining"] == "0"
+                assert "Retry-After" in resp.headers
