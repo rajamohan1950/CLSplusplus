@@ -70,14 +70,18 @@ echo "cls_live_$(openssl rand -hex 24)"
 | POST | `/v1/memories/encode` | Alias: encode memory |
 | POST | `/v1/memory/read` | Retrieve by semantic query |
 | POST | `/v1/memories/retrieve` | Alias: retrieve memories |
+| POST | `/v1/memories/search` | Resource-oriented: search memories |
 | GET | `/v1/memory/item/{item_id}` | Get item by ID |
 | DELETE | `/v1/memory/forget` | Delete memory (RTBF) |
 | DELETE | `/v1/memories/forget` | Alias: forget |
+| DELETE | `/v1/memories/{item_id}` | Resource-oriented: forget by ID |
 | POST | `/v1/memory/sleep` | Trigger consolidation |
 | POST | `/v1/memories/consolidate` | Alias: consolidate |
 | GET | `/v1/memories/knowledge` | Query L2/L3 knowledge only |
 | GET | `/v1/memory/health` | Health check |
 | GET | `/v1/health/score` | Alias: health |
+| GET | `/v1/usage` | Usage metrics (writes, reads) |
+| GET | `/v1/billing/usage` | Billing API: usage |
 
 ---
 
