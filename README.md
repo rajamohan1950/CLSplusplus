@@ -75,10 +75,20 @@ curl -X POST http://localhost:8080/v1/memory/read \
   -d '{"query": "user preferences", "namespace": "user:123"}'
 ```
 
-### 4. Python SDK
+### 4. Python SDK (3-line integration)
 
 ```python
-from clsplusplus.client import CLSClient
+from clsplusplus import CLS
+
+client = CLS(api_key="cls_live_xxx")
+client.memories.encode(content="User prefers dark mode", agent_id="a1")
+results = client.memories.retrieve(query="user preferences", agent_id="a1")
+```
+
+Or use the full client:
+
+```python
+from clsplusplus import CLSClient
 
 with CLSClient("http://localhost:8080", api_key="cls_live_xxx") as client:
     client.write("User prefers dark mode", namespace="user:123")
@@ -146,7 +156,9 @@ Product endpoints: `POST /v1/memories/encode`, `POST /v1/memories/retrieve`, `DE
 | Document | Description |
 |----------|-------------|
 | [API Reference](docs/API_DOCUMENTATION.md) | Endpoints, auth, examples |
+| [API Blueprint](docs/API_BLUEPRINT.md) | SaaS API playbook (DX, security, billing) |
 | [SaaS Strategy](docs/SAAS_MEMORY_AS_SERVICE.md) | Memory-as-a-Service, pricing |
+| [Marketplace Integration](docs/MARKETPLACE_INTEGRATION.md) | AWS, Azure, GCP, OCI |
 | [Productionization](docs/PRODUCTIONIZATION_ROADMAP.md) | Deployment, security, compliance |
 | [Commercialization](docs/COMMERCIALIZATION_STRATEGY.md) | Go-to-market, licensing |
 
