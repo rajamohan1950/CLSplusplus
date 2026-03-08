@@ -4,7 +4,8 @@ N1: Rank, N2: Strengthen+Decay, N3: Deduplicate, REM: Consolidate+Dream.
 """
 
 import asyncio
-from datetime import datetime
+import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 from clsplusplus.config import Settings
@@ -12,6 +13,8 @@ from clsplusplus.embeddings import EmbeddingService
 from clsplusplus.models import MemoryItem, StoreLevel
 from clsplusplus.plasticity import PlasticityEngine
 from clsplusplus.stores import L0WorkingBuffer, L1IndexingStore, L2SchemaGraph, L3PostgresStore
+
+logger = logging.getLogger(__name__)
 
 
 class SleepOrchestrator:
@@ -30,7 +33,7 @@ class SleepOrchestrator:
         """Run full sleep cycle. Returns report."""
         report = {
             "namespace": namespace,
-            "started_at": datetime.utcnow().isoformat(),
+            "started_at": datetime.now(timezone.utc).isoformat(),
             "phases": {},
             "reinforced": 0,
             "pruned": 0,
@@ -50,6 +53,9 @@ class SleepOrchestrator:
             bottom_pct = int(len(items) * 0.4)
             items_sorted = sorted(items, key=lambda x: -x.promotion_score)
 
+            # Track deleted IDs to prevent ghost promotions in later phases
+            deleted_ids: set[str] = set()
+
             for i, item in enumerate(items_sorted[:top_pct]):
                 item.confidence = min(1.0, item.confidence + 0.05)
                 item.salience = min(1.0, item.salience + 0.02)
@@ -64,6 +70,7 @@ class SleepOrchestrator:
                 self.plasticity.apply_decay(item)
                 if self.plasticity.should_prune(item):
                     await self.l1.delete(item.id, namespace)
+                    deleted_ids.add(item.id)
                     report["pruned"] += 1
                 else:
                     await self.l1.update_scores(
@@ -72,10 +79,12 @@ class SleepOrchestrator:
                         confidence=item.confidence,
                     )
 
-            # N3: Deduplicate - merge similar items
+            # N3: Deduplicate - merge similar items (skip already-deleted)
             dedup_count = 0
             seen = []
             for item in items_sorted:
+                if item.id in deleted_ids:
+                    continue
                 if not item.embedding:
                     continue
                 merged = False
@@ -84,10 +93,12 @@ class SleepOrchestrator:
                         # Merge: keep higher confidence
                         if item.confidence > other.confidence:
                             await self.l1.delete(other.id, namespace)
+                            deleted_ids.add(other.id)
                             seen.remove(other)
                             seen.append(item)
                         else:
                             await self.l1.delete(item.id, namespace)
+                            deleted_ids.add(item.id)
                         dedup_count += 1
                         merged = True
                         break
@@ -95,8 +106,10 @@ class SleepOrchestrator:
                     seen.append(item)
             report["deduped"] = dedup_count
 
-            # REM: Consolidate - promote L1->L2, L2->L3
+            # REM: Consolidate - promote L1->L2, L2->L3 (skip deleted items)
             for item in items_sorted:
+                if item.id in deleted_ids:
+                    continue
                 if self.plasticity.should_promote_to_l2(item):
                     item.store_level = StoreLevel.L2
                     item = self.embedding_service.embed_item(item)
@@ -118,7 +131,8 @@ class SleepOrchestrator:
             }
 
         except Exception as e:
+            logger.error("Sleep cycle error for namespace '%s': %s", namespace, e)
             report["error"] = str(e)
 
-        report["completed_at"] = datetime.utcnow().isoformat()
+        report["completed_at"] = datetime.now(timezone.utc).isoformat()
         return report

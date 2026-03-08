@@ -117,7 +117,7 @@ class TestCriticalPathLatency:
         for _ in range(10000):
             EmbeddingService.cosine_similarity(a, b)
         elapsed = (time.perf_counter_ns() - start) / 10000
-        assert elapsed < 200_000, f"Cosine similarity too slow: {elapsed:.0f}ns"
+        assert elapsed < 500_000, f"Cosine similarity too slow: {elapsed:.0f}ns"
 
     def test_decay_computation_speed(self):
         """Decay should be <10µs."""

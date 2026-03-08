@@ -72,7 +72,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         key_id = getattr(request.state, "api_key", None)
         if not key_id:
-            return await call_next(request)
+            # Rate limit by client IP when no API key is present
+            key_id = f"ip:{request.client.host}" if request.client else "ip:unknown"
 
         allowed, count, limit = await check_rate_limit(key_id, self.settings)
         if not allowed:

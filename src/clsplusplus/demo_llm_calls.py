@@ -1,7 +1,10 @@
 """LLM API calls - no Redis/Postgres. Used by demo_local and demo_llm."""
 import asyncio
+import logging
 
 from clsplusplus.config import Settings
+
+logger = logging.getLogger(__name__)
 
 
 async def call_claude(settings: Settings, system: str, user: str) -> str:
@@ -22,7 +25,8 @@ async def call_claude(settings: Settings, system: str, user: str) -> str:
     try:
         return await asyncio.to_thread(_sync)
     except Exception as e:
-        return f"Claude error: {str(e)[:120]}"
+        logger.error("Claude call failed: %s", e)
+        return "Claude: An error occurred processing your request. Check server logs."
 
 
 async def call_openai(settings: Settings, system: str, user: str) -> str:
@@ -45,7 +49,8 @@ async def call_openai(settings: Settings, system: str, user: str) -> str:
     try:
         return await asyncio.to_thread(_sync)
     except Exception as e:
-        return f"OpenAI error: {str(e)[:120]}"
+        logger.error("OpenAI call failed: %s", e)
+        return "OpenAI: An error occurred processing your request. Check server logs."
 
 
 async def call_gemini(settings: Settings, system: str, user: str) -> str:
@@ -68,4 +73,5 @@ async def call_gemini(settings: Settings, system: str, user: str) -> str:
     try:
         return await asyncio.to_thread(_sync)
     except Exception as e:
-        return f"Gemini error: {str(e)[:120]}"
+        logger.error("Gemini call failed: %s", e)
+        return "Gemini: An error occurred processing your request. Check server logs."

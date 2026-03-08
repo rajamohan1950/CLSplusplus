@@ -3,7 +3,9 @@
 Stable long-term archive stored in Postgres. Use when MinIO is not available.
 """
 
+import asyncio
 import json
+import logging
 from typing import Optional
 
 import asyncpg
@@ -12,6 +14,8 @@ from pgvector.asyncpg import register_vector
 from clsplusplus.config import Settings
 from clsplusplus.models import MemoryItem, StoreLevel
 from clsplusplus.stores.base import BaseStore
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_db_url(url: str) -> str:
@@ -28,20 +32,23 @@ class L3PostgresStore(BaseStore):
     def __init__(self, settings: Optional[Settings] = None):
         self.settings = settings or Settings()
         self._pool: Optional[asyncpg.Pool] = None
+        self._pool_lock = asyncio.Lock()
 
-    @property
-    async def pool(self) -> asyncpg.Pool:
+    async def get_pool(self) -> asyncpg.Pool:
+        """Thread-safe lazy pool initialization with double-checked locking."""
         if self._pool is None:
-            self._pool = await asyncpg.create_pool(
-                _parse_db_url(self.settings.database_url),
-                min_size=1,
-                max_size=5,
-                command_timeout=60,
-            )
-            async with self._pool.acquire() as conn:
-                await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-                await register_vector(conn)
-                await self._init_schema(conn)
+            async with self._pool_lock:
+                if self._pool is None:
+                    self._pool = await asyncpg.create_pool(
+                        _parse_db_url(self.settings.database_url),
+                        min_size=1,
+                        max_size=5,
+                        command_timeout=60,
+                    )
+                    async with self._pool.acquire() as conn:
+                        await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                        await register_vector(conn)
+                        await self._init_schema(conn)
         return self._pool
 
     async def _init_schema(self, conn: asyncpg.Connection) -> None:
@@ -76,7 +83,7 @@ class L3PostgresStore(BaseStore):
 
     async def write(self, item: MemoryItem) -> MemoryItem:
         item.store_level = StoreLevel.L3
-        pool = await self.pool
+        pool = await self.get_pool()
         emb_str = None
         if item.embedding:
             emb_str = "[" + ",".join(str(x) for x in item.embedding) + "]"
@@ -104,7 +111,7 @@ class L3PostgresStore(BaseStore):
         limit: int = 10,
         min_confidence: float = 0.0,
     ) -> list[MemoryItem]:
-        pool = await self.pool
+        pool = await self.get_pool()
         emb_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
         rows = await pool.fetch("""
@@ -142,7 +149,7 @@ class L3PostgresStore(BaseStore):
         )
 
     async def get_by_id(self, item_id: str, namespace: str) -> Optional[MemoryItem]:
-        pool = await self.pool
+        pool = await self.get_pool()
         row = await pool.fetchrow(
             "SELECT * FROM l3_engrams WHERE id = $1 AND namespace = $2",
             item_id, namespace,
@@ -152,18 +159,25 @@ class L3PostgresStore(BaseStore):
         return None
 
     async def delete(self, item_id: str, namespace: str) -> bool:
-        pool = await self.pool
+        pool = await self.get_pool()
         result = await pool.execute(
             "DELETE FROM l3_engrams WHERE id = $1 AND namespace = $2",
             item_id, namespace,
         )
         return "DELETE 1" in result
 
+    async def close(self) -> None:
+        """Cleanly shut down the connection pool."""
+        if self._pool:
+            await self._pool.close()
+            self._pool = None
+
     async def health(self) -> dict:
         try:
-            pool = await self.pool
+            pool = await self.get_pool()
             async with pool.acquire() as conn:
                 await conn.fetchval("SELECT 1")
             return {"status": "healthy", "store": "L3"}
         except Exception as e:
-            return {"status": "unhealthy", "store": "L3", "error": str(e)}
+            logger.error("L3 health check failed: %s", e)
+            return {"status": "unhealthy", "store": "L3", "error": "Connection failed"}
