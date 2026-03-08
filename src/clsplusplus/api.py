@@ -45,9 +45,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         allow_headers=["*"],
         expose_headers=["*"],
     )
-    app.add_middleware(RequestIdMiddleware)
-    app.add_middleware(RateLimitMiddleware, settings=settings)
+    # Middleware execution order: outermost (added last) runs first.
+    # RequestId first -> RateLimit -> Auth -> route handler
     app.add_middleware(AuthMiddleware, settings=settings)
+    app.add_middleware(RateLimitMiddleware, settings=settings)
+    app.add_middleware(RequestIdMiddleware)
 
     # Structured error handler (blueprint: error messages that teach)
     @app.exception_handler(HTTPException)
@@ -92,10 +94,14 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return RedirectResponse(url="/v1/memory/health")
 
     async def _record_usage(operation: str, request: Request):
-        api_key = getattr(request.state, "api_key", None)
-        if api_key and settings.track_usage:
-            from clsplusplus.usage import record_usage
-            await record_usage(api_key, operation, settings)
+        """Fire-and-forget usage tracking. Must never crash a user request."""
+        try:
+            api_key = getattr(request.state, "api_key", None)
+            if api_key and settings.track_usage:
+                from clsplusplus.usage import record_usage
+                await record_usage(api_key, operation, settings)
+        except Exception:
+            pass  # Usage tracking failure must not affect user responses
 
     @app.post("/v1/memory/write")
     async def write_memory(req: WriteRequest, request: Request):
@@ -230,9 +236,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             )
             return {"model": req.model, "reply": reply}
         except Exception as e:
+            import logging
+            logging.getLogger(__name__).error("Demo chat error: %s", e)
             raise HTTPException(
                 status_code=500,
-                detail=f"Demo error: {str(e)[:200]}",
+                detail="Demo error: An internal error occurred. Check server logs.",
             )
 
     @app.get("/v1/memory/health", response_model=HealthResponse)
@@ -307,6 +315,16 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     async def billing_usage(request: Request):
         """Billing API: usage for current period (alias for /v1/usage)."""
         return await usage_endpoint(request)
+
+    @app.on_event("shutdown")
+    async def shutdown():
+        """Cleanly close all connection pools on shutdown."""
+        for store in [memory_service.l0, memory_service.l1, memory_service.l2, memory_service.l3]:
+            if hasattr(store, "close"):
+                try:
+                    await store.close()
+                except Exception:
+                    pass
 
     return app
 

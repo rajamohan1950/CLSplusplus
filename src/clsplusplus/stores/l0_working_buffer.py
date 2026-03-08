@@ -76,15 +76,21 @@ class L0WorkingBuffer(BaseStore):
         return None
 
     async def delete(self, item_id: str, namespace: str) -> bool:
-        """Delete from buffer."""
+        """Delete from buffer. Returns True only if item existed."""
         key = f"{self._ns_key(namespace)}:{item_id}"
-        await self.client.delete(key)
+        deleted_count = await self.client.delete(key)
         await self.client.lrem(f"{self.LIST_KEY}:{namespace}", 1, item_id)
-        return True
+        return deleted_count > 0
 
     async def list_ids(self, namespace: str, limit: int = 100) -> list[str]:
         """List item IDs for sleep cycle."""
         return await self.client.lrange(f"{self.LIST_KEY}:{namespace}", 0, limit - 1)
+
+    async def close(self) -> None:
+        """Cleanly shut down the Redis client."""
+        if self._client:
+            await self._client.close()
+            self._client = None
 
     async def health(self) -> dict:
         """Health check."""
@@ -92,4 +98,6 @@ class L0WorkingBuffer(BaseStore):
             await self.client.ping()
             return {"status": "healthy", "store": "L0"}
         except Exception as e:
-            return {"status": "unhealthy", "store": "L0", "error": str(e)}
+            import logging
+            logging.getLogger(__name__).error("L0 health check failed: %s", e)
+            return {"status": "unhealthy", "store": "L0", "error": "Connection failed"}

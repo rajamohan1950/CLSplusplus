@@ -47,10 +47,10 @@ class ReconsolidationGate:
         conflict = self.conflict_score(new, old)
         if conflict < self.settings.conflict_threshold:
             return True  # No real conflict
-        # Quorum: weighted sum of evidence confidence
-        quorum = sum(0.2 for _ in evidence) / max(len(evidence), 1)
-        if len(evidence) >= 3:
-            quorum = 0.9  # Strong evidence
+        # Quorum: each piece of evidence contributes 0.2, capped at 1.0
+        if not evidence:
+            return False
+        quorum = min(1.0, len(evidence) * 0.2)
         return quorum >= self.settings.quorum_threshold
 
     def prepare_for_reconsolidation(
