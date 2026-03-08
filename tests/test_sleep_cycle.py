@@ -195,6 +195,27 @@ class TestSleepN3:
         report = await sleep_orchestrator.run(ns)
         assert report["deduped"] >= 1
 
+    @pytest.mark.asyncio
+    async def test_no_embedding_skipped_in_dedup(self, sleep_orchestrator):
+        """Items without embeddings are skipped in N3 dedup (line 89)."""
+        l1 = sleep_orchestrator.l1
+        ns = "test-ns"
+        # One item with no embedding, one with embedding
+        item_no_emb = MemoryItem(
+            id="no-emb", text="no embedding", namespace=ns,
+            embedding=None, confidence=0.5, salience=0.5,
+        )
+        item_with_emb = MemoryItem(
+            id="has-emb", text="has embedding", namespace=ns,
+            embedding=[0.5] * 384, confidence=0.5, salience=0.5,
+        )
+        l1.items[ns] = {"no-emb": item_no_emb, "has-emb": item_with_emb}
+
+        report = await sleep_orchestrator.run(ns)
+        assert report["error"] is None
+        # The no-embedding item should be skipped, not cause an error
+        assert report["deduped"] == 0
+
 
 # ---------------------------------------------------------------------------
 # REM: Consolidation

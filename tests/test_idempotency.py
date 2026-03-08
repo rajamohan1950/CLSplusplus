@@ -1,12 +1,12 @@
 """Idempotency tests - request deduplication, cache key generation, Redis caching."""
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from clsplusplus.config import Settings
-from clsplusplus.idempotency import _cache_key, cache_response, get_cached_response
+from clsplusplus.idempotency import _cache_key, _redis_client, _redis_client_cache, cache_response, get_cached_response
 
 
 # ---------------------------------------------------------------------------
@@ -148,3 +148,41 @@ class TestIdempotencyRoundTrip:
             # Different request = cache miss
             result2 = await get_cached_response("key1", "POST", "/write", b"body2", s)
             assert result2 is None
+
+
+# ---------------------------------------------------------------------------
+# _redis_client real implementation (lines 15-18)
+# ---------------------------------------------------------------------------
+
+class TestRedisClientFactory:
+
+    def test_creates_and_caches_client(self):
+        """Cover lines 15-18: _redis_client creates and caches Redis client."""
+        import redis.asyncio as real_redis_async
+
+        mock_client = MagicMock()
+        original_cache = _redis_client_cache.copy()
+        _redis_client_cache.clear()
+        try:
+            with patch.object(real_redis_async, "from_url", return_value=mock_client) as mock_from_url:
+                # First call: creates client
+                client1 = _redis_client("redis://test-factory:6379")
+                mock_from_url.assert_called_once_with(
+                    "redis://test-factory:6379", decode_responses=True
+                )
+                assert client1 is mock_client
+
+                # Second call: returns cached (no new from_url call)
+                client2 = _redis_client("redis://test-factory:6379")
+                assert client2 is client1
+                assert mock_from_url.call_count == 1
+
+                # Different URL: creates new client
+                mock_client2 = MagicMock()
+                mock_from_url.return_value = mock_client2
+                client3 = _redis_client("redis://other-factory:6379")
+                assert client3 is mock_client2
+                assert mock_from_url.call_count == 2
+        finally:
+            _redis_client_cache.clear()
+            _redis_client_cache.update(original_cache)
