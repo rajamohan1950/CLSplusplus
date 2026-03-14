@@ -47,9 +47,8 @@ class TestSettingsDefaults:
         s = Settings()
         assert "postgresql" in s.database_url or "postgres" in s.database_url
 
-    def test_default_embedding_model(self):
+    def test_default_embedding_dim(self):
         s = Settings()
-        assert s.embedding_model == "all-MiniLM-L6-v2"
         assert s.embedding_dim == 384
 
     def test_plasticity_coefficients_defaults(self):

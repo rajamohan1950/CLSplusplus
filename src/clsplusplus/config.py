@@ -43,8 +43,7 @@ class Settings(BaseSettings):
     minio_secure: bool = False
     minio_bucket: str = "cls-l3"
 
-    # Embeddings
-    embedding_model: str = "all-MiniLM-L6-v2"
+    # Embeddings (used by L1/L2/L3 tiers, not by phase engine)
     embedding_dim: int = 384
 
     # Plasticity coefficients (α, β, γ, λ, δ)
@@ -72,6 +71,17 @@ class Settings(BaseSettings):
     # Working buffer
     l0_capacity_tokens: int = 4096
     l0_ttl_seconds: int = 300
+
+    # Phase dynamics — Gas → Liquid transition
+    # Maps 1:1 to: F(θ, Σ, ρ, τ) = E_pred − Σ·S_model + λ·L_landauer
+    phase_kT: float = 1.0                # Boltzmann analog (energy scale for Landauer cost)
+    phase_lambda: float = 0.5            # Energy budget constraint λ (scales Landauer term in F)
+    phase_tau_c1: float = 10.0           # Critical τ for gas→liquid phase boundary
+    phase_tau_default: float = 50.0      # τ for normal factual statements
+    phase_tau_override: float = 200.0    # τ for override statements ("only", "exclusively")
+    phase_strength_floor: float = 0.05   # s < floor → gas phase (not retrievable)
+    phase_capacity: int = 1000           # Max items per namespace (denominator for ρ)
+    phase_beta_retrieval: float = 0.15   # Retrieval reinforcement: s *= (1 + β·ln(1+R))
 
     # Demo LLM keys (optional; demo uses these for real Claude/OpenAI/Gemini)
     anthropic_api_key: Optional[str] = None

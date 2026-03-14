@@ -4,17 +4,17 @@ Real Claude, OpenAI, Gemini only. Requires API keys in .env.
 Run: uvicorn clsplusplus.demo_local:app --reload --port 8080
 """
 
-import hashlib
 import secrets
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Path, Query
+from fastapi import FastAPI, HTTPException, Path
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from clsplusplus.config import Settings
+from clsplusplus.memory_phase import PhaseMemoryEngine
 
 app = FastAPI(title="CLS++ Demo (Local)", version="0.1.0")
 
@@ -27,11 +27,22 @@ app.add_middleware(
 )
 
 # =============================================================================
-# In-memory stores (replaces Redis + PostgreSQL for local testing)
+# In-memory stores
 # =============================================================================
 
-# Memory store: namespace -> list of {id, text, confidence, ...}
-_memory: dict[str, list[dict[str, Any]]] = {}
+# Phase Memory Engine — thermodynamic Gas → Liquid memory system
+# F(θ, Σ, ρ, τ) = E_prediction − Σ·S_model + λ·L_landauer
+_phase_settings = Settings()
+_phase_engine = PhaseMemoryEngine(
+    kT=_phase_settings.phase_kT,
+    lambda_budget=_phase_settings.phase_lambda,
+    tau_c1=_phase_settings.phase_tau_c1,
+    tau_default=_phase_settings.phase_tau_default,
+    tau_override=_phase_settings.phase_tau_override,
+    strength_floor=_phase_settings.phase_strength_floor,
+    capacity=_phase_settings.phase_capacity,
+    beta_retrieval=_phase_settings.phase_beta_retrieval,
+)
 
 # Integration store: id -> integration dict
 _integrations: dict[str, dict[str, Any]] = {}
@@ -44,63 +55,8 @@ _webhooks: dict[str, dict[str, Any]] = {}
 
 
 # =============================================================================
-# Chat (existing)
+# Demo Status
 # =============================================================================
-
-class ChatRequest(BaseModel):
-    model: str
-    message: str
-    namespace: str = "demo"
-
-
-def _get_memory_context(namespace: str, query: str) -> str:
-    items = _memory.get(namespace, [])
-    return "\n".join(f"- {t['text']}" for t in items) if items else "No prior context yet."
-
-
-def _store_memory(namespace: str, text: str, source: str = "user",
-                  salience: float = 0.5, authority: float = 0.5) -> dict:
-    item = {
-        "id": str(uuid4()),
-        "text": text,
-        "namespace": namespace,
-        "source": source,
-        "store_level": "L0",
-        "confidence": min(salience * 0.6 + authority * 0.4, 1.0),
-        "salience": salience,
-        "authority": authority,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    _memory.setdefault(namespace, []).append(item)
-    return item
-
-
-def _store_if_statement(namespace: str, message: str) -> None:
-    is_q = "?" in message or any(
-        message.strip().lower().startswith(w)
-        for w in ("what", "who", "where", "when", "how", "which", "is my", "do you")
-    )
-    if not is_q:
-        _store_memory(namespace, message)
-
-
-def _search_memory(namespace: str, query: str, limit: int = 10) -> list[dict]:
-    items = _memory.get(namespace, [])
-    # Simple keyword matching with RECENCY BOOST (no embeddings in demo mode)
-    # Newer items with same relevance score win — latest fact overrides older ones.
-    query_words = set(query.lower().split())
-    scored = []
-    for idx, item in enumerate(items):
-        text_words = set(item["text"].lower().split())
-        overlap = len(query_words & text_words)
-        relevance = overlap / max(len(query_words), 1)
-        if relevance > 0:
-            # Recency boost: later items (higher idx) get a small bonus
-            recency = idx / max(len(items), 1) * 0.1
-            scored.append((relevance + recency, item))
-    scored.sort(key=lambda x: x[0], reverse=True)
-    return [item for _, item in scored[:limit]]
-
 
 @app.get("/v1/demo/status")
 async def status():
@@ -110,32 +66,6 @@ async def status():
         "openai": bool(getattr(s, "openai_api_key", None)),
         "gemini": bool(getattr(s, "google_api_key", None)),
     }
-
-
-@app.post("/v1/demo/chat")
-async def chat(req: ChatRequest):
-    if req.model not in ("claude", "openai", "gemini"):
-        return {"error": "model must be claude, openai, or gemini"}
-    if not req.message.strip():
-        return {"error": "message required"}
-
-    settings = Settings()
-    _store_if_statement(req.namespace, req.message.strip())
-    memory_context = _get_memory_context(req.namespace, req.message)
-    system = f"""You are a friendly, helpful assistant. Chat naturally.
-When the user tells you something, reply naturally. When they ask a question, use this context if relevant:
-{memory_context}
-Respond naturally. Don't mention "memory" or "context"."""
-
-    from clsplusplus.demo_llm_calls import call_claude, call_openai, call_gemini
-    if req.model == "claude":
-        reply = await call_claude(settings, system, req.message.strip())
-    elif req.model == "openai":
-        reply = await call_openai(settings, system, req.message.strip())
-    else:
-        reply = await call_gemini(settings, system, req.message.strip())
-
-    return {"model": req.model, "reply": reply}
 
 
 # =============================================================================
@@ -270,7 +200,7 @@ async def delete_webhook(integration_id: str = Path(...), webhook_id: str = Path
 
 
 # =============================================================================
-# Memory Cycle (in-memory, real LLM calls)
+# Memory Cycle (uses Phase Engine exclusively)
 # =============================================================================
 
 class MemoryCycleReq(BaseModel):
@@ -288,131 +218,80 @@ async def memory_cycle(req: MemoryCycleReq):
 
     settings = Settings()
     cycle_id = str(uuid4())
-    phases = {}
+    extraction_caller = _make_extraction_caller(settings)
 
-    # Phase 1: ENCODE
+    # Phase 1: ENCODE — ingest through the thermodynamic attention gate
     encode_items = []
     for stmt in req.statements:
-        item = _store_memory(req.namespace, stmt, source="memory-cycle",
-                             salience=0.9, authority=0.8)
-        encode_items.append({
-            "id": item["id"],
-            "text": item["text"],
-            "store_level": item["store_level"],
-            "confidence": item["confidence"],
-        })
+        item = await _phase_engine.ingest(stmt, req.namespace, extraction_caller)
+        if item:
+            encode_items.append({
+                "id": item.id,
+                "text": item.fact.raw_text,
+                "strength": round(item.consolidation_strength, 4),
+                "phase": "liquid" if item.consolidation_strength >= _phase_engine.STRENGTH_FLOOR else "gas",
+            })
 
-    phases["encode"] = {
-        "stored": len(encode_items),
-        "total": len(req.statements),
-        "items": encode_items,
-    }
-
-    # Phase 2: RETRIEVE
+    # Phase 2: RETRIEVE — free-energy-ranked search
     retrieve_results = []
     for query in req.queries:
-        found = _search_memory(req.namespace, query, limit=10)
+        results = _phase_engine.search(query, req.namespace, limit=10)
         retrieve_results.append({
             "query": query,
-            "found": len(found),
-            "items": [{"id": i["id"], "text": i["text"], "confidence": i["confidence"]}
-                      for i in found[:5]],
+            "found": len(results),
+            "items": [{"id": item.id, "text": item.fact.raw_text,
+                        "strength": round(item.consolidation_strength, 4),
+                        "score": round(score, 4)}
+                       for score, item in results[:5]],
         })
 
     total_found = sum(r["found"] for r in retrieve_results)
-    all_items = [item for r in retrieve_results for item in r.get("items", [])]
-    avg_confidence = (sum(i["confidence"] for i in all_items) / len(all_items)) if all_items else 0.0
 
-    phases["retrieve"] = {
-        "queries": len(req.queries),
-        "total_found": total_found,
-        "confidence_avg": round(avg_confidence, 3),
-        "results": retrieve_results,
-    }
-
-    # Phase 3: AUGMENT (real LLM calls)
+    # Phase 3: AUGMENT (real LLM calls with phase-engine context)
     augment_results = {}
     from clsplusplus.demo_llm_calls import call_claude, call_openai, call_gemini
+    callers = {"claude": call_claude, "openai": call_openai, "gemini": call_gemini}
 
     for model in req.models:
         model_results = []
         for query in req.queries[:2]:
-            found = _search_memory(req.namespace, query, limit=8)
-            memory_context = "\n".join(f"- {i['text']}" for i in found) if found else "No prior context."
-
-            system_prompt = f"""You are a helpful assistant. Use this context to answer:
-{memory_context}
-Answer naturally based on the context provided."""
-
+            memory_context, debug_items = _phase_engine.build_augmented_context(
+                query, req.namespace, limit=5
+            )
+            system_prompt = f"You are a helpful assistant.\n\n{memory_context}\n\nAnswer naturally."
             try:
-                if model == "claude":
-                    reply = await call_claude(settings, system_prompt, query)
-                elif model == "openai":
-                    reply = await call_openai(settings, system_prompt, query)
-                elif model == "gemini":
-                    reply = await call_gemini(settings, system_prompt, query)
-                else:
-                    reply = f"Unknown model: {model}"
-
+                reply = await callers[model](settings, system_prompt, query)
                 model_results.append({
-                    "query": query,
-                    "response": reply,
-                    "memory_context_items": len(found),
-                    "memory_used": len(found) > 0,
+                    "query": query, "response": reply,
+                    "memory_context_items": len(debug_items), "memory_used": len(debug_items) > 0,
                 })
             except Exception as e:
-                model_results.append({
-                    "query": query,
-                    "error": str(e),
-                    "memory_used": False,
-                })
-
+                model_results.append({"query": query, "error": str(e), "memory_used": False})
         augment_results[model] = model_results
 
-    phases["augment"] = augment_results
-
-    # Phase 4: CROSS-SESSION PERSISTENCE
-    cross_session_results = []
-    for query in req.queries[:2]:
-        found = _search_memory(req.namespace, query, limit=10)
-        cross_session_results.append({
-            "query": query,
-            "found": len(found),
-            "persisted": len(found) > 0,
-        })
-
-    all_persisted = all(r.get("persisted", False) for r in cross_session_results)
-    total_cross = sum(r["found"] for r in cross_session_results)
-
-    phases["cross_session"] = {
-        "namespace": req.namespace,
-        "memories_persisted": all_persisted,
-        "items_found": total_cross,
-        "results": cross_session_results,
-    }
-
     # Verdict
-    encode_ok = phases["encode"]["stored"] == phases["encode"]["total"]
-    retrieve_ok = phases["retrieve"]["total_found"] > 0
+    encode_ok = len(encode_items) > 0
+    retrieve_ok = total_found > 0
     augment_ok = any(
         any(r.get("memory_used", False) for r in results)
-        for results in phases["augment"].values()
+        for results in augment_results.values()
     )
-    persist_ok = phases["cross_session"]["memories_persisted"]
 
-    if encode_ok and retrieve_ok and augment_ok and persist_ok:
-        verdict = "PASS"
-    elif encode_ok and retrieve_ok:
-        verdict = "PARTIAL"
-    else:
-        verdict = "FAIL"
+    verdict = "PASS" if (encode_ok and retrieve_ok and augment_ok) else (
+        "PARTIAL" if (encode_ok and retrieve_ok) else "FAIL"
+    )
 
     return {
         "cycle_id": cycle_id,
         "namespace": req.namespace,
         "models": req.models,
-        "phases": phases,
+        "phases": {
+            "encode": {"stored": len(encode_items), "total": len(req.statements), "items": encode_items},
+            "retrieve": {"queries": len(req.queries), "total_found": total_found, "results": retrieve_results},
+            "augment": augment_results,
+        },
         "verdict": verdict,
+        "phase_debug": _phase_engine.get_phase_debug(req.namespace),
     }
 
 
@@ -462,6 +341,18 @@ async def _route_to_llm(settings: Settings, system: str, user_msg: str) -> tuple
     if last_reply:
         return last_reply, "unknown"
     return "I'm having trouble connecting right now. Please try again in a moment.", "none"
+
+
+def _make_extraction_caller(settings: Settings):
+    """Create an LLM caller for the phase engine's attention gate.
+
+    Returns an async function(system, user_msg) → str that routes
+    through the same failover pipeline as chat responses.
+    """
+    async def caller(system: str, user_msg: str) -> str:
+        reply, _ = await _route_to_llm(settings, system, user_msg)
+        return reply
+    return caller
 
 
 class SessionMessageReq(BaseModel):
@@ -533,17 +424,32 @@ async def send_message(req: SessionMessageReq, session_id: str = Path(...)):
 
     user_msg = req.message.strip()
     now = datetime.now(timezone.utc).isoformat()
+    settings = Settings()
 
-    # 1. Store user message in history; store in GLOBAL memory (only statements, not questions)
+    # 1. Store user message in session conversation history
     session["messages"].append({"role": "user", "content": user_msg, "timestamp": now})
-    _store_if_statement(_GLOBAL_NS, user_msg)
 
-    # 2. Search GLOBAL memory for relevant context (already sorted: newest-relevant first)
-    found = _search_memory(_GLOBAL_NS, user_msg, limit=10)
-    memory_snippets = [i["text"] for i in found]
-    memory_context = "\n".join(f"- {t}" for t in memory_snippets) if found else "No prior context yet."
+    # 2. PHASE ENGINE: Ingest message through the Gas → Liquid attention gate.
+    #    The phase engine uses the LLM to extract structured facts (Fact dataclass).
+    #    If the message is a factual statement, it condenses from gas to liquid.
+    #    If it's a question/greeting, it stays gas (returns None, not stored).
+    #    Surprise (Σ) is computed as KL divergence against existing beliefs.
+    #    Contradicted memories receive irreversible surprise damage.
+    extraction_caller = _make_extraction_caller(settings)
+    await _phase_engine.ingest(user_msg, _GLOBAL_NS, extraction_caller)  # returns list now
 
-    # 3. Build conversation history for THIS session only (last 20 messages)
+    # 3. PHASE ENGINE: Retrieve via free energy ranking.
+    #    Score = -F(item) × relevance(query, item)
+    #    Items below strength_floor (gas phase) are excluded.
+    #    No "NEWEST FIRST" hack — the physics handles conflict resolution.
+    #    NOTE: Only call build_augmented_context (which calls search() internally).
+    #    Do NOT call search() separately — that would double-count retrieval.
+    memory_context, phase_debug_items = _phase_engine.build_augmented_context(
+        user_msg, _GLOBAL_NS, limit=5
+    )
+    phase_results = phase_debug_items  # Already computed by build_augmented_context
+
+    # 4. Build conversation history for THIS session only (last 20 messages)
     recent_messages = session["messages"][-20:]
     convo_lines = []
     for m in recent_messages[:-1]:  # Exclude the message we just added
@@ -551,48 +457,46 @@ async def send_message(req: SessionMessageReq, session_id: str = Path(...)):
         convo_lines.append(f"{role_label}: {m['content']}")
     conversation_history = "\n".join(convo_lines) if convo_lines else ""
 
-    # 4. Build augmented system prompt with BOTH memory + conversation history
+    # 5. Build augmented system prompt — physics-driven, no hacks
     system_parts = [
         "You are a helpful, friendly assistant. Chat naturally and conversationally.",
     ]
     if conversation_history:
         system_parts.append(f"Recent conversation in this chat:\n{conversation_history}")
-    if found:
-        system_parts.append(f"Memory (facts the user told you, listed NEWEST FIRST):\n{memory_context}")
-    system_parts.append("""CRITICAL RULE: When memory contains conflicting facts about the same topic, ONLY use the NEWEST fact (listed first). The newest fact COMPLETELY REPLACES any older conflicting facts. For example, if memory says "- X eats banana only" then "- X eats apple", the answer is ONLY banana because that fact is newer and the word "only" means exclusively that.
-Respond naturally. Never mention 'memory' or 'context' explicitly.""")
+    if phase_results:
+        system_parts.append(memory_context)
+    system_parts.append(
+        "Use the strongest-recalled memories as ground truth. "
+        "Respond naturally. Never mention 'memory' or 'context' explicitly."
+    )
     system = "\n\n".join(system_parts)
 
-    # 5. Route to LLM with automatic failover
-    settings = Settings()
+    # 6. Route to LLM with automatic failover
     reply, model_used = await _route_to_llm(settings, system, user_msg)
 
-    # 6. Store AI response in history + memory
+    # 7. Store AI response in session history (NOT in phase memory — only user facts)
     reply_ts = datetime.now(timezone.utc).isoformat()
+    memory_used = len(phase_results) > 0
     session["messages"].append({
         "role": "assistant", "content": reply, "timestamp": reply_ts,
-        "memory_used": len(found) > 0, "memory_count": len(found),
+        "memory_used": memory_used, "memory_count": len(phase_results),
     })
-    # Don't store assistant replies in memory — only user statements are facts.
-    # Assistant replies are noise ("That's great! Apples are healthy...") and pollute search.
 
-    # 7. Return response + debug info
-    all_memory = _memory.get(_GLOBAL_NS, [])
+    # 8. Return response + full thermodynamic debug info
+    phase_debug = _phase_engine.get_phase_debug(_GLOBAL_NS)
 
     return {
         "reply": reply,
-        "memory_used": len(found) > 0,
-        "memory_count": len(found),
+        "memory_used": memory_used,
+        "memory_count": len(phase_results),
         "debug": {
             "model_used": model_used,
             "augmented_prompt": system,
             "user_message": user_msg,
-            "memory_searched": memory_snippets,
+            "memory_searched": [d["text"] for d in phase_debug_items],
             "conversation_history_lines": len(convo_lines),
-            "memory_store": [
-                {"text": item["text"], "source": item["source"], "created_at": item["created_at"]}
-                for item in all_memory
-            ],
+            "memory_store": phase_debug.get("items", []),
+            "phase_dynamics": phase_debug,
         },
     }
 
