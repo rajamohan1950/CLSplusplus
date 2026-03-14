@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="CLS++ Integrations — Connect your app in 30 seconds. Zero-code API integration.">
+  <title>CLS++ | Integrations</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="index.html" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="index.html#tryit" class="btn btn-primary">Try It</a>
+        <a href="index.html">Home</a>
+        <a href="docs.html">Docs</a>
+        <a href="integrations.html" style="color: var(--accent);">Integrations</a>
+        <a href="chat.html">Chat</a>
+        <a href="https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener">GitHub</a>
+      </div>
+      <button class="nav-toggle" aria-label="Menu">&#9776;</button>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <header class="int-hero">
+    <div class="container">
+      <h1>Integrate in <span class="gradient-text">30 Seconds</span></h1>
+      <p class="int-hero-sub">Two steps. Zero code. Your app gets persistent memory across every LLM.</p>
+    </div>
+  </header>
+
+  <!-- Step 1: Create Integration -->
+  <section id="create" class="section">
+    <div class="container">
+      <h2>Step 1: Create Your Integration</h2>
+      <p class="section-lead">Name your app, get an API key instantly.</p>
+
+      <div class="int-form-card">
+        <div class="int-form-row">
+          <div class="int-form-group">
+            <label for="int-name">App Name</label>
+            <input type="text" id="int-name" placeholder="My Awesome App" maxlength="128">
+          </div>
+          <div class="int-form-group">
+            <label for="int-namespace">Namespace</label>
+            <input type="text" id="int-namespace" placeholder="default" maxlength="64" value="default">
+          </div>
+        </div>
+        <button type="button" class="btn btn-primary btn-large" id="btn-create">Create Integration</button>
+      </div>
+
+      <!-- Result (hidden until created) -->
+      <div id="create-result" class="int-result" style="display: none;">
+        <div class="int-result-header">
+          <span class="int-badge int-badge-success">Created</span>
+          <span id="result-name" class="int-result-name"></span>
+        </div>
+        <div class="int-key-box">
+          <label>Your API Key <span class="int-warning">(save now — shown only once)</span></label>
+          <div class="int-copy-row">
+            <code id="result-key" class="int-key-display"></code>
+            <button type="button" class="btn btn-outline btn-sm" id="btn-copy-key">Copy</button>
+          </div>
+        </div>
+
+        <!-- Auto-generated code snippets -->
+        <div class="int-snippets">
+          <h3>Quick Start</h3>
+          <div class="int-tabs">
+            <button class="int-tab active" data-lang="python">Python</button>
+            <button class="int-tab" data-lang="javascript">JavaScript</button>
+            <button class="int-tab" data-lang="curl">cURL</button>
+          </div>
+          <pre class="int-code" id="snippet-python"><code># pip install clsplusplus
+from clsplusplus import CLS
+
+client = CLS(api_key="<span class="snippet-key"></span>")
+
+# Store a memory
+client.memories.encode("User prefers dark mode")
+
+# Retrieve memories
+results = client.memories.retrieve("user preferences")
+for item in results.items:
+    print(item.text, item.confidence)</code></pre>
+
+          <pre class="int-code" id="snippet-javascript" style="display:none;"><code>// Write memory
+const res = await fetch("https://clsplusplus-api.onrender.com/v1/memories/encode", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer <span class="snippet-key"></span>"
+  },
+  body: JSON.stringify({ text: "User prefers dark mode", namespace: "default" })
+});
+
+// Read memory
+const read = await fetch("https://clsplusplus-api.onrender.com/v1/memories/retrieve", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer <span class="snippet-key"></span>"
+  },
+  body: JSON.stringify({ query: "user preferences", namespace: "default" })
+});</code></pre>
+
+          <pre class="int-code" id="snippet-curl" style="display:none;"><code># Write memory
+curl -X POST https://clsplusplus-api.onrender.com/v1/memories/encode \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <span class="snippet-key"></span>" \
+  -d '{"text": "User prefers dark mode", "namespace": "default"}'
+
+# Read memory
+curl -X POST https://clsplusplus-api.onrender.com/v1/memories/retrieve \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <span class="snippet-key"></span>" \
+  -d '{"query": "user preferences", "namespace": "default"}'</code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Step 2: Webhook Setup -->
+  <section id="webhooks" class="section section-alt">
+    <div class="container">
+      <h2>Step 2: Subscribe to Events (Optional)</h2>
+      <p class="section-lead">Get notified when memories are created, promoted, or deleted.</p>
+
+      <div class="int-form-card" id="webhook-form" style="display:none;">
+        <div class="int-form-row">
+          <div class="int-form-group" style="flex:2;">
+            <label for="wh-url">Webhook URL</label>
+            <input type="url" id="wh-url" placeholder="https://your-app.com/webhook" maxlength="2048">
+          </div>
+        </div>
+        <div class="int-form-group">
+          <label>Events</label>
+          <div class="int-checkbox-row">
+            <label class="int-checkbox"><input type="checkbox" value="*" checked> All events</label>
+            <label class="int-checkbox"><input type="checkbox" value="memory.created"> memory.created</label>
+            <label class="int-checkbox"><input type="checkbox" value="memory.deleted"> memory.deleted</label>
+            <label class="int-checkbox"><input type="checkbox" value="memory.promoted"> memory.promoted</label>
+            <label class="int-checkbox"><input type="checkbox" value="consolidation.complete"> consolidation.complete</label>
+          </div>
+        </div>
+        <button type="button" class="btn btn-primary" id="btn-webhook">Subscribe</button>
+      </div>
+
+      <div id="webhook-result" class="int-result" style="display: none;">
+        <div class="int-result-header">
+          <span class="int-badge int-badge-success">Subscribed</span>
+        </div>
+        <div class="int-key-box">
+          <label>Signing Secret <span class="int-warning">(save now — shown only once)</span></label>
+          <div class="int-copy-row">
+            <code id="wh-secret" class="int-key-display"></code>
+            <button type="button" class="btn btn-outline btn-sm" id="btn-copy-secret">Copy</button>
+          </div>
+        </div>
+        <p class="int-hint">Verify webhooks with: <code>HMAC-SHA256(secret_hash, payload)</code> in <code>X-CLS-Signature-256</code> header.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Memory Cycle Test -->
+  <section id="cycle" class="section">
+    <div class="container">
+      <h2>Test Memory Lifecycle</h2>
+      <p class="section-lead">Prove the full cycle: encode &rarr; retrieve &rarr; augment with LLM &rarr; cross-session persistence.</p>
+
+      <div class="int-form-card">
+        <div class="int-form-group">
+          <label for="cycle-statements">Statements (one per line)</label>
+          <textarea id="cycle-statements" rows="3" placeholder="My name is Alice&#10;I prefer dark mode&#10;My project is called Atlas"></textarea>
+        </div>
+        <div class="int-form-group">
+          <label for="cycle-queries">Queries (one per line)</label>
+          <textarea id="cycle-queries" rows="2" placeholder="What is my name?&#10;What are my preferences?"></textarea>
+        </div>
+        <button type="button" class="btn btn-primary btn-large" id="btn-cycle">Run Memory Cycle</button>
+      </div>
+
+      <div id="cycle-result" style="display: none;">
+        <div class="int-phases" id="cycle-phases"></div>
+        <div class="int-verdict" id="cycle-verdict"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Connector Gallery -->
+  <section id="connectors" class="section section-alt">
+    <div class="container">
+      <h2>Pre-Built Connectors</h2>
+      <p class="section-lead">Drop-in integrations for popular frameworks.</p>
+
+      <div class="int-connector-grid">
+        <div class="int-connector-card">
+          <div class="int-connector-icon">&#x1f9e0;</div>
+          <h3>LangChain</h3>
+          <p>Use CLS++ as a LangChain memory backend. Persistent context across chains.</p>
+          <pre class="int-connector-code"><code>from clsplusplus import CLS
+memory = CLS(api_key="...").as_langchain_memory()</code></pre>
+        </div>
+        <div class="int-connector-card">
+          <div class="int-connector-icon">&#x1f916;</div>
+          <h3>CrewAI</h3>
+          <p>Shared memory for multi-agent crews. Every agent remembers everything.</p>
+          <pre class="int-connector-code"><code>from clsplusplus import CLS
+crew_memory = CLS(api_key="...").for_crew("crew-1")</code></pre>
+        </div>
+        <div class="int-connector-card">
+          <div class="int-connector-icon">&#x26a1;</div>
+          <h3>Zapier / n8n</h3>
+          <p>Zero-code automation. Trigger on memory events, store from any app.</p>
+          <pre class="int-connector-code"><code>Webhook URL: https://clsplusplus-api.onrender.com/v1/memories/encode
+Auth: Bearer cls_live_xxx</code></pre>
+        </div>
+        <div class="int-connector-card">
+          <div class="int-connector-icon">&#x2601;</div>
+          <h3>AWS Bedrock</h3>
+          <p>Native integration with AWS Bedrock Agents via our adapter.</p>
+          <pre class="int-connector-code"><code>from clsplusplus.integrations.aws import BedrockCLSAdapter
+adapter = BedrockCLSAdapter(api_url, api_key)</code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <p>&copy; 2025 AlphaForge AI Labs. CLS++ is patent-pending.</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+  <script>
+    if (window.location.search.includes('local=1') || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      window.CLS_API_URL = 'http://localhost:8090';
+    }
+  </script>
+  <script src="integrations.js"></script>
+</body>
+</html>

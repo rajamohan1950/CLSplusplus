@@ -184,3 +184,150 @@ class HealthResponse(BaseModel):
     status: str = "healthy"
     stores: dict[str, dict[str, Any]]
     version: str = "0.1.0"
+
+
+# ============================================================================
+# Integration models — Self-service API integration management
+# ============================================================================
+
+MAX_INTEGRATION_NAME_LEN = 128
+MAX_URL_LEN = 2048
+MAX_LABEL_LEN = 128
+
+
+class IntegrationCreate(BaseModel):
+    """Request to register a new integration."""
+
+    name: str = Field(..., min_length=1, max_length=MAX_INTEGRATION_NAME_LEN)
+    description: str = Field(default="", max_length=1024)
+    namespace: str = Field(default="default", min_length=1, max_length=MAX_NAMESPACE_LEN)
+    owner_email: Optional[str] = Field(default=None, max_length=256)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("namespace")
+    @classmethod
+    def ns_valid(cls, v: str) -> str:
+        return _validate_namespace(v)
+
+
+class IntegrationResponse(BaseModel):
+    """Integration details returned to client."""
+
+    id: str
+    name: str
+    description: str
+    namespace: str
+    status: str
+    owner_email: Optional[str] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+    key_count: int = 0
+    webhook_count: int = 0
+
+
+class ApiKeyCreate(BaseModel):
+    """Request to create a new API key for an integration."""
+
+    scopes: list[str] = Field(
+        default=["memories:read", "memories:write"],
+        max_length=20,
+    )
+    label: str = Field(default="", max_length=MAX_LABEL_LEN)
+    expires_in_days: Optional[int] = Field(default=None, ge=1, le=3650)
+
+
+class ApiKeyResponse(BaseModel):
+    """API key returned to client. Full key shown only on creation."""
+
+    id: str
+    integration_id: str
+    key_prefix: str
+    key_hint: str
+    scopes: list[str]
+    label: str
+    status: str
+    created_at: datetime
+    expires_at: Optional[datetime] = None
+    last_used_at: Optional[datetime] = None
+    # Only populated on creation — never returned again
+    key: Optional[str] = None
+
+
+class WebhookCreate(BaseModel):
+    """Request to subscribe to webhook events."""
+
+    url: str = Field(..., min_length=10, max_length=MAX_URL_LEN)
+    events: list[str] = Field(
+        default=["*"],
+        max_length=50,
+    )
+    description: str = Field(default="", max_length=1024)
+    namespace_filter: Optional[str] = Field(default=None, max_length=MAX_NAMESPACE_LEN)
+
+
+class WebhookResponse(BaseModel):
+    """Webhook subscription returned to client."""
+
+    id: str
+    integration_id: str
+    url: str
+    events: list[str]
+    description: str
+    status: str
+    failure_count: int = 0
+    created_at: datetime
+    namespace_filter: Optional[str] = None
+    # Only populated on creation
+    secret: Optional[str] = None
+
+
+class IntegrationEventResponse(BaseModel):
+    """Audit log entry."""
+
+    id: str
+    integration_id: str
+    event_type: str
+    actor: str
+    description: str
+    resource_type: Optional[str] = None
+    resource_id: Optional[str] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
+# ============================================================================
+# Memory Cycle — Multi-session LLM memory lifecycle test
+# ============================================================================
+
+
+class MemoryCycleRequest(BaseModel):
+    """Request to run a full memory lifecycle test."""
+
+    statements: list[str] = Field(
+        ...,
+        min_length=1,
+        max_length=20,
+        description="Facts to store as memories",
+    )
+    queries: list[str] = Field(
+        ...,
+        min_length=1,
+        max_length=10,
+        description="Questions to ask each model",
+    )
+    models: list[str] = Field(
+        default=["claude", "openai"],
+        max_length=3,
+        description="LLM models to test",
+    )
+    namespace: str = Field(
+        default="cycle-test",
+        min_length=1,
+        max_length=MAX_NAMESPACE_LEN,
+    )
+
+    @field_validator("namespace")
+    @classmethod
+    def ns_valid(cls, v: str) -> str:
+        return _validate_namespace(v)

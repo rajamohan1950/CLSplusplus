@@ -7,15 +7,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from clsplusplus.config import Settings
+from clsplusplus.integration_service import IntegrationService
 from clsplusplus.memory_service import MemoryService
 from clsplusplus.middleware import AuthMiddleware, RateLimitMiddleware, RequestIdMiddleware
 from clsplusplus.models import (
     AdjudicateRequest,
+    ApiKeyCreate,
     DemoChatRequest,
     ForgetRequest,
     HealthResponse,
+    IntegrationCreate,
+    MemoryCycleRequest,
     ReadRequest,
     ReadResponse,
+    WebhookCreate,
     WriteRequest,
 )
 from clsplusplus.models import _validate_item_id as validate_item_id
@@ -28,6 +33,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     settings = settings or Settings()
     memory_service = MemoryService(settings)
     sleep_orchestrator = SleepOrchestrator(settings)
+    integration_service = IntegrationService(settings)
 
     app = FastAPI(
         title="CLS++ API",
@@ -243,6 +249,35 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 detail="Demo error: An internal error occurred. Check server logs.",
             )
 
+    @app.post("/v1/demo/memory-cycle")
+    async def memory_cycle(req: MemoryCycleRequest):
+        """Run full memory lifecycle: encode → retrieve → augment → cross-session.
+
+        Proves memory persists across models and sessions.
+        """
+        for m in req.models:
+            if m not in ("claude", "openai", "gemini"):
+                raise HTTPException(status_code=400, detail=f"Invalid model: {m}. Use claude, openai, or gemini.")
+
+        from clsplusplus.memory_cycle import run_memory_cycle
+
+        try:
+            result = await run_memory_cycle(
+                memory_service, settings,
+                statements=req.statements,
+                queries=req.queries,
+                models=req.models,
+                namespace=req.namespace,
+            )
+            return result
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error("Memory cycle error: %s", e)
+            raise HTTPException(
+                status_code=500,
+                detail="Memory cycle error: An internal error occurred. Check server logs.",
+            )
+
     @app.get("/v1/memory/health", response_model=HealthResponse)
     async def health():
         """Composite health + per-store metrics."""
@@ -316,6 +351,151 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         """Billing API: usage for current period (alias for /v1/usage)."""
         return await usage_endpoint(request)
 
+    # =========================================================================
+    # Integration Management API — Self-service integration endpoints
+    # =========================================================================
+
+    @app.post("/v1/integrations")
+    async def create_integration(req: IntegrationCreate):
+        """Register a new integration. Returns integration + first API key."""
+        integration, api_key = await integration_service.register(req)
+        return {
+            "integration": integration.model_dump(mode="json"),
+            "api_key": api_key.model_dump(mode="json"),
+            "_hint": "Save your API key now — it won't be shown again.",
+        }
+
+    @app.get("/v1/integrations")
+    async def list_integrations(namespace: str = _ns_query()):
+        """List all integrations for a namespace."""
+        try:
+            validate_namespace(namespace)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        items = await integration_service.list_all(namespace)
+        return {"integrations": [i.model_dump(mode="json") for i in items]}
+
+    @app.get("/v1/integrations/{integration_id}")
+    async def get_integration(
+        integration_id: str = Path(..., min_length=1, max_length=64),
+    ):
+        """Get integration details."""
+        result = await integration_service.get(integration_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="Integration not found")
+        return result.model_dump(mode="json")
+
+    @app.delete("/v1/integrations/{integration_id}")
+    async def delete_integration(
+        integration_id: str = Path(..., min_length=1, max_length=64),
+    ):
+        """Deactivate an integration (revokes all keys, disables webhooks)."""
+        deleted = await integration_service.delete(integration_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Integration not found")
+        return {"deleted": True, "integration_id": integration_id}
+
+    # --- API Keys ---
+
+    @app.post("/v1/integrations/{integration_id}/keys")
+    async def create_api_key(
+        req: ApiKeyCreate,
+        integration_id: str = Path(..., min_length=1, max_length=64),
+    ):
+        """Create a new scoped API key. Key is shown only once."""
+        try:
+            result = await integration_service.create_key(integration_id, req)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if not result:
+            raise HTTPException(status_code=404, detail="Integration not found")
+        return {
+            "api_key": result.model_dump(mode="json"),
+            "_hint": "Save your API key now — it won't be shown again.",
+        }
+
+    @app.get("/v1/integrations/{integration_id}/keys")
+    async def list_api_keys(
+        integration_id: str = Path(..., min_length=1, max_length=64),
+    ):
+        """List API keys for an integration (keys are masked)."""
+        keys = await integration_service.list_keys(integration_id)
+        return {"keys": [k.model_dump(mode="json") for k in keys]}
+
+    @app.post("/v1/integrations/{integration_id}/keys/{key_id}/rotate")
+    async def rotate_api_key(
+        integration_id: str = Path(..., min_length=1, max_length=64),
+        key_id: str = Path(..., min_length=1, max_length=64),
+    ):
+        """Rotate an API key. Old key has 24h grace period."""
+        result = await integration_service.rotate_key(key_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="API key not found or already revoked")
+        return {
+            "new_key": result.model_dump(mode="json"),
+            "_hint": "Old key is valid for 24 more hours. Save the new key now.",
+        }
+
+    @app.delete("/v1/integrations/{integration_id}/keys/{key_id}")
+    async def revoke_api_key(
+        integration_id: str = Path(..., min_length=1, max_length=64),
+        key_id: str = Path(..., min_length=1, max_length=64),
+    ):
+        """Revoke an API key immediately."""
+        revoked = await integration_service.revoke_key(key_id)
+        if not revoked:
+            raise HTTPException(status_code=404, detail="API key not found or already revoked")
+        return {"revoked": True, "key_id": key_id}
+
+    # --- Webhooks ---
+
+    @app.post("/v1/integrations/{integration_id}/webhooks")
+    async def create_webhook(
+        req: WebhookCreate,
+        integration_id: str = Path(..., min_length=1, max_length=64),
+    ):
+        """Subscribe to webhook events. Signing secret shown only once."""
+        try:
+            result = await integration_service.subscribe_webhook(integration_id, req)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if not result:
+            raise HTTPException(status_code=404, detail="Integration not found")
+        return {
+            "webhook": result.model_dump(mode="json"),
+            "_hint": "Save your webhook signing secret now — it won't be shown again.",
+        }
+
+    @app.get("/v1/integrations/{integration_id}/webhooks")
+    async def list_webhooks(
+        integration_id: str = Path(..., min_length=1, max_length=64),
+    ):
+        """List webhook subscriptions for an integration."""
+        webhooks = await integration_service.list_webhooks(integration_id)
+        return {"webhooks": [w.model_dump(mode="json") for w in webhooks]}
+
+    @app.delete("/v1/integrations/{integration_id}/webhooks/{webhook_id}")
+    async def delete_webhook(
+        integration_id: str = Path(..., min_length=1, max_length=64),
+        webhook_id: str = Path(..., min_length=1, max_length=64),
+    ):
+        """Unsubscribe from webhook events."""
+        deleted = await integration_service.unsubscribe_webhook(webhook_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Webhook not found")
+        return {"deleted": True, "webhook_id": webhook_id}
+
+    # --- Audit Events ---
+
+    @app.get("/v1/integrations/{integration_id}/events")
+    async def list_integration_events(
+        integration_id: str = Path(..., min_length=1, max_length=64),
+        limit: int = Query(default=50, ge=1, le=200),
+    ):
+        """Get audit log for an integration."""
+        events = await integration_service.get_events(integration_id, limit)
+        return {"events": [e.model_dump(mode="json") for e in events]}
+
     @app.on_event("shutdown")
     async def shutdown():
         """Cleanly close all connection pools on shutdown."""
@@ -325,6 +505,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                     await store.close()
                 except Exception:
                     pass
+        try:
+            await integration_service.close()
+        except Exception:
+            pass
 
     return app
 

@@ -1,5 +1,7 @@
 """CLS++ Memory Service - orchestrates all stores and pipelines."""
 
+import asyncio
+import logging
 from typing import Optional
 
 from clsplusplus.config import Settings
@@ -8,6 +10,8 @@ from clsplusplus.models import MemoryItem, ReadRequest, ReadResponse, WriteReque
 from clsplusplus.plasticity import PlasticityEngine
 from clsplusplus.reconsolidation import ReconsolidationGate
 from clsplusplus.stores import L0WorkingBuffer, L1IndexingStore, L2SchemaGraph, L3PostgresStore
+
+logger = logging.getLogger(__name__)
 
 
 class MemoryService:
@@ -22,6 +26,7 @@ class MemoryService:
         self.l1 = L1IndexingStore(settings)
         self.l2 = L2SchemaGraph(settings)
         self.l3 = L3PostgresStore(settings)  # Postgres-backed (free tier, no MinIO)
+        self._webhook_dispatcher = None  # Lazy init to avoid circular imports
 
     def _request_to_item(self, req: WriteRequest) -> MemoryItem:
         """Convert write request to MemoryItem."""
@@ -37,6 +42,25 @@ class MemoryService:
             object=req.object,
         )
 
+    def _dispatch_webhook(self, event_type: str, item: MemoryItem) -> None:
+        """Fire webhook event (fire-and-forget, never blocks)."""
+        if self._webhook_dispatcher is None:
+            return
+        try:
+            payload = {
+                "id": item.id,
+                "text": item.text,
+                "namespace": item.namespace,
+                "store_level": item.store_level.value if hasattr(item.store_level, 'value') else str(item.store_level),
+                "confidence": item.confidence,
+                "source": item.source,
+            }
+            asyncio.create_task(
+                self._webhook_dispatcher.dispatch(event_type, payload, item.namespace)
+            )
+        except Exception:
+            pass  # Webhook dispatch must never crash memory operations
+
     async def write(self, req: WriteRequest) -> MemoryItem:
         """Write memory: L0 (session buffer) + L1 (episodic persistence)."""
         item = self._request_to_item(req)
@@ -48,6 +72,9 @@ class MemoryService:
         # L1: Episodic store - always persist for retrieval
         item.store_level = item.store_level  # Keep metadata
         await self.l1.write(item)
+
+        # Webhook: fire memory.created event
+        self._dispatch_webhook("memory.created", item)
 
         return item
 
@@ -117,6 +144,17 @@ class MemoryService:
         for store in [self.l0, self.l1, self.l2, self.l3]:
             ok = await store.delete(item_id, namespace)
             deleted = deleted or ok
+
+        # Webhook: fire memory.deleted event
+        if deleted and self._webhook_dispatcher:
+            try:
+                payload = {"id": item_id, "namespace": namespace}
+                asyncio.create_task(
+                    self._webhook_dispatcher.dispatch("memory.deleted", payload, namespace)
+                )
+            except Exception:
+                pass
+
         return deleted
 
     async def health(self) -> dict:

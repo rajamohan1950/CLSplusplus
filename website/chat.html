@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="CLS++ Chat — Persistent memory across every LLM. Just chat.">
+  <title>CLS++ | Chat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="chat-body">
+
+  <div class="chat-layout">
+    <!-- Sidebar -->
+    <aside class="chat-sidebar" id="chat-sidebar">
+      <div class="chat-sidebar-header">
+        <a href="index.html" class="chat-logo">CLS<span class="logo-plus">++</span></a>
+        <button class="chat-new-btn" id="btn-new-chat">+ New Chat</button>
+      </div>
+      <div class="chat-session-list" id="session-list">
+        <!-- Sessions rendered by JS -->
+      </div>
+      <div class="chat-sidebar-footer">
+        <a href="index.html">Home</a>
+        <a href="docs.html">Docs</a>
+        <a href="integrations.html">Integrations</a>
+      </div>
+    </aside>
+
+    <!-- Main Chat Area -->
+    <main class="chat-main">
+      <div class="chat-header" id="chat-header">
+        <button class="chat-menu-btn" id="btn-menu">&#9776;</button>
+        <span class="chat-header-name" id="chat-header-name">New Chat</span>
+        <span class="chat-header-badge">CLS++ Memory</span>
+      </div>
+
+      <div class="chat-messages" id="chat-messages">
+        <div class="chat-welcome" id="chat-welcome">
+          <h2>CLS++ Chat</h2>
+          <p>Persistent memory across every LLM. Just start typing.</p>
+          <p class="chat-welcome-sub">Your messages are remembered across the conversation. Try telling me something, then ask about it later.</p>
+        </div>
+      </div>
+
+      <div class="chat-input-area">
+        <div class="chat-input-wrap">
+          <textarea id="chat-input" class="chat-input" placeholder="Type a message..." rows="1" maxlength="4096"></textarea>
+          <button class="chat-send-btn" id="btn-send">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Debug Panel (right side) -->
+    <aside class="debug-panel" id="debug-panel">
+      <div class="debug-upper" id="debug-upper">
+        <div class="debug-section-title">Augmented Prompt &amp; LLM Response</div>
+        <div class="debug-content" id="debug-augmented">
+          <span class="debug-placeholder">Send a message to see what's sent to the LLM...</span>
+        </div>
+      </div>
+      <div class="debug-divider"></div>
+      <div class="debug-lower" id="debug-lower">
+        <div class="debug-section-title">Session Memory Store</div>
+        <div class="debug-content" id="debug-memory">
+          <span class="debug-placeholder">Memory items will appear here...</span>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    if (window.location.search.includes('local=1') || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      window.CLS_API_URL = 'http://localhost:8090';
+    }
+  </script>
+  <script src="chat.js"></script>
+</body>
+</html>

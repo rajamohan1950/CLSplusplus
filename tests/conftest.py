@@ -379,6 +379,7 @@ def mock_memory_service(mock_l0, mock_l1, mock_l2, mock_l3, mock_embedding_servi
     svc.l1 = mock_l1
     svc.l2 = mock_l2
     svc.l3 = mock_l3
+    svc._webhook_dispatcher = None
     return svc
 
 
