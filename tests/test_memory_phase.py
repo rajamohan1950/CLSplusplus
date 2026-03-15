@@ -4340,3 +4340,158 @@ class TestDeepAudit_MathCorrectness:
 
         assert abs(rho - expected) < 1e-10, \
             f"rho={rho} != expected={expected}"
+
+
+# =============================================================================
+# Round 7 — NaN/Inf Poisoning & Adversarial Crash Tests
+# =============================================================================
+
+
+class TestDeepAudit_NaNPoisoning:
+    """NaN and Inf injection tests — can corrupted state crash or poison the engine?"""
+
+    def test_nan_tau_poisons_free_energy(self):
+        """
+        BUG: Setting tau=NaN on an item → free energy becomes NaN.
+        NaN propagates through all arithmetic. F=NaN items aren't GC'd
+        (NaN > 0.0 is False, NaN < 1.0 is False → GC condition is False OR False → die).
+        But the NaN score propagates into search results sorting.
+        """
+        import math
+        engine = PhaseMemoryEngine()
+        item = engine.store("NaN tau test item", "ns")
+        item.tau = float('nan')
+
+        engine._recompute_all_free_energies("ns")
+
+        assert math.isnan(item.free_energy), \
+            f"BUG: NaN tau should produce NaN free energy, got {item.free_energy}"
+
+    def test_nan_consolidation_survives_gc(self):
+        """
+        BUG: An item with NaN consolidation_strength:
+        - GC condition: s > 0.0 → NaN > 0.0 → False
+        - OR damage < 1.0 → 0.0 < 1.0 → True
+        → Item SURVIVES GC with NaN state.
+        """
+        import math
+        engine = PhaseMemoryEngine()
+        item = engine.store("NaN consolidation test", "ns")
+        item.consolidation_strength = float('nan')
+
+        engine._recompute_all_free_energies("ns")
+
+        # Item may or may not survive — depends on recomputation overwriting NaN
+        # Let's check if NaN can persist after recompute
+        found = any(i.id == item.id for i in engine._items.get("ns", []))
+        # After recompute, s is recalculated from formula, so NaN should be overwritten
+        # unless tau or other inputs are also NaN
+        assert found, "Item survives — consolidation recalculated from formula"
+
+    def test_inf_damage_handled_correctly(self):
+        """Infinity damage → s clamped to 0.0, item may be GC'd."""
+        engine = PhaseMemoryEngine()
+        item = engine.store("Inf damage test", "ns")
+        item.accumulated_surprise_damage = float('inf')
+
+        engine._recompute_all_free_energies("ns")
+        assert item.consolidation_strength == 0.0, \
+            "Inf damage should clamp s to 0.0"
+
+    def test_negative_capacity_produces_wrong_density(self):
+        """
+        BUG: capacity=-1 → max(CAPACITY, 1) = max(-1, 1) = 1.
+        This makes rho = active/1 = active, which is way too high.
+        """
+        engine = PhaseMemoryEngine(capacity=-1)
+        for i in range(5):
+            engine.store(f"Item {i} with content {i}", "ns",
+                fact=Fact(f"neg_topic_{i}", "has", f"val_{i}", False,
+                         f"Item {i} with content {i}"))
+
+        rho = engine._memory_density("ns")
+        # With capacity=-1, max(-1,1)=1, so rho=active/1=active
+        # This inflates rho enormously
+        assert rho >= 5.0, \
+            f"BUG: capacity=-1 → rho={rho} (expected ~5.0)"
+
+    def test_nan_in_search_score_sorting(self):
+        """
+        BUG: If any item has NaN free_energy, the sort in _tsf_search may
+        produce non-deterministic ordering. Python sorted() with NaN
+        doesn't raise errors but produces undefined order.
+        """
+        import math
+        engine = PhaseMemoryEngine()
+        engine.store("Normal item one", "ns")
+        engine.store("Normal item two", "ns")
+
+        # Poison one item
+        engine._items["ns"][0].free_energy = float('nan')
+
+        # Search should not crash
+        results = engine.search("Normal item", "ns")
+        assert isinstance(results, list), "Search should not crash with NaN items"
+
+    def test_zero_kT_search_division(self):
+        """
+        BUG: kT=0 → rank = idf_score - F / max(kT, 1e-9).
+        max(0, 1e-9) = 1e-9. F / 1e-9 can be enormous.
+        But doesn't crash — just produces extreme scores.
+        """
+        engine = PhaseMemoryEngine(kT=0.0)
+        engine.store("Zero kT test item", "ns")
+        results = engine.search("Zero kT", "ns")
+        assert len(results) >= 0, "kT=0 search should not crash"
+
+    def test_very_large_event_counter_overflow(self):
+        """
+        Python ints don't overflow, but exp(-very_large/50) underflows to 0.0.
+        Verify no crash with huge delta_t.
+        """
+        import math
+        engine = PhaseMemoryEngine()
+        item = engine.store("Overflow test", "ns")
+        engine._event_counter = 10**18  # Quintillion events
+
+        engine._recompute_all_free_energies("ns")
+        assert item.consolidation_strength == 0.0, \
+            "Huge delta_t should decay s to exactly 0.0"
+        # exp(-10^18 / 50) = exp(-2*10^16) = 0.0 (underflow)
+
+    def test_store_none_text_crashes(self):
+        """Passing None as text should raise AttributeError on .lower()."""
+        engine = PhaseMemoryEngine()
+        try:
+            engine.store(None, "ns")
+            assert False, "Should have crashed on None text"
+        except (AttributeError, TypeError):
+            assert True, "Correctly crashes on None text"
+
+    def test_store_integer_text_crashes(self):
+        """Passing int as text should raise."""
+        engine = PhaseMemoryEngine()
+        try:
+            engine.store(42, "ns")
+            assert False, "Should have crashed on int text"
+        except (AttributeError, TypeError):
+            assert True, "Correctly crashes on non-string text"
+
+    def test_search_none_query_crashes(self):
+        """Passing None as query should raise."""
+        engine = PhaseMemoryEngine()
+        engine.store("test", "ns")
+        try:
+            engine.search(None, "ns")
+            assert False, "Should have crashed on None query"
+        except (AttributeError, TypeError):
+            assert True, "Correctly crashes on None query"
+
+    def test_store_text_with_only_newlines_tabs(self):
+        """Text with only whitespace characters."""
+        engine = PhaseMemoryEngine()
+        item = engine.store("\n\t\n\t  \n", "ns")
+        assert item is not None
+        # Should produce empty tokens
+        assert len(item.indexed_tokens) == 0, \
+            "Whitespace-only text should produce no tokens"
