@@ -161,6 +161,75 @@ class Fact:
     raw_text: str      # Original user message, unmodified
 
 
+# =============================================================================
+# Cross-Entity Resonance (CER) — Kuramoto Coupled Oscillators
+# =============================================================================
+
+
+@dataclass
+class EntityNode:
+    """
+    An entity oscillator in the Kuramoto coupling field.
+
+    Each named entity discovered at write time gets a node. The node
+    accumulates an IDF-weighted token frequency spectrum (its 'natural frequency')
+    and maintains coupling edges to co-occurring entities.
+
+    When two entities share enough experience (K > K_critical), they synchronize —
+    forming a coherent cluster whose shared tokens ARE the answers to
+    multi-entity queries.
+    """
+
+    name: str                                        # Canonical name (lowercase)
+    aliases: set                                     # Alternative forms: {"mel", "melanie"}
+    token_spectrum: Counter                          # token → IDF-weighted frequency
+    memory_ids: list                                 # PhaseMemoryItem IDs mentioning this entity
+    birth_order: int                                 # First appearance (event counter)
+    total_mentions: int = 0                          # Number of store() calls
+    theta: float = 0.0                               # Oscillator phase (radians)
+    omega: float = 0.0                               # Natural frequency (spectrum entropy)
+    cached_magnitude_sq: float = 0.0                 # For O(1) cosine updates
+
+
+@dataclass
+class EntanglementEdge:
+    """
+    Weighted coupling between two entity oscillators.
+
+    Computed incrementally at store() time. The coupling_strength K(a,b) is
+    the IDF-weighted cosine similarity of token spectra.
+
+    shared_tokens stores the actual overlapping tokens — these ARE the
+    resonant frequencies = answers to "what do A and B share?"
+    """
+
+    entity_a: str                                    # EntityNode.name
+    entity_b: str                                    # EntityNode.name
+    coupling_strength: float = 0.0                   # K(a,b) — Kuramoto coupling
+    shared_tokens: Counter = field(default_factory=Counter)  # resonant frequencies
+    shared_memory_ids: list = field(default_factory=list)
+    last_updated: int = 0                            # Event counter at last update
+    is_synchronized: bool = False                    # K > K_critical
+
+
+@dataclass
+class ResonanceCluster:
+    """
+    A synchronized cluster of entities above K_critical.
+
+    Emergent structure: entities sharing enough experience self-organize
+    into clusters. Multi-hop queries traverse within-cluster edges.
+    The cluster_spectrum is the intersection of all member spectra —
+    it represents what ALL members have in common.
+    """
+
+    cluster_id: str
+    members: set                                     # EntityNode names
+    cluster_spectrum: Counter                        # Shared tokens across ALL members
+    formation_order: int = 0
+    coherence: float = 0.0                           # Mean K within cluster
+
+
 @dataclass
 class PhaseMemoryItem:
     """
@@ -344,6 +413,14 @@ class PhaseMemoryEngine:
 
         # Document frequency for IDF computation (self-computed from corpus)
         self._doc_freq: Counter = Counter()
+
+        # --- Cross-Entity Resonance (CER) — Kuramoto Coupled Oscillators ---
+        self._entity_nodes: dict[str, EntityNode] = {}
+        self._entity_alias_map: dict[str, str] = {}
+        self._entanglement_graph: dict[str, dict[str, EntanglementEdge]] = {}
+        self._resonance_clusters: dict[str, ResonanceCluster] = {}
+        self._entity_index: dict[str, list[str]] = {}  # token → entity names
+        self._K_critical: float = 0.15  # Synchronization phase transition threshold
 
     # =========================================================================
     # Core Physics — Information Content (Shannon Entropy)
@@ -692,6 +769,378 @@ class PhaseMemoryEngine:
         return active / max(self.CAPACITY, 1)
 
     # =========================================================================
+    # Cross-Entity Resonance — Entity Detection (Zero LLM)
+    # =========================================================================
+
+    @staticmethod
+    def _extract_entities(text: str) -> list[str]:
+        """
+        Extract entity candidates from raw text via capitalization heuristic.
+
+        Rules (zero LLM, zero regex):
+        1. Words starting with uppercase that are NOT sentence-initial
+        2. Multi-word entities via consecutive capitals: "New York" → "new york"
+
+        Returns normalized (lowercase) entity names.
+        """
+        words = text.split()
+        entities: list[str] = []
+        i = 0
+        while i < len(words):
+            word = words[i]
+            if not word:
+                i += 1
+                continue
+
+            # Skip sentence-initial words
+            is_sentence_start = (i == 0) or (
+                i > 0 and len(words[i - 1]) > 0 and words[i - 1][-1] in ".!?"
+            )
+
+            if (
+                not is_sentence_start
+                and word[0].isupper()
+                and word.lower() not in _STOP_WORDS
+                and len(word) > 1
+            ):
+                # Check for multi-word entity (consecutive capitals)
+                entity_parts = [word]
+                j = i + 1
+                while (
+                    j < len(words)
+                    and words[j]
+                    and words[j][0].isupper()
+                    and words[j].lower() not in _STOP_WORDS
+                ):
+                    entity_parts.append(words[j])
+                    j += 1
+                entity = " ".join(entity_parts).lower().strip()
+                if entity not in entities:
+                    entities.append(entity)
+                i = j
+            else:
+                i += 1
+
+        return entities
+
+    def _resolve_alias(self, name: str) -> str:
+        """
+        Resolve an entity name to its canonical form.
+
+        Rules:
+        1. Exact match in alias_map → return canonical
+        2. Prefix/substring match (len ≥ 3) → merge
+        3. No match → new entity
+        """
+        if name in self._entity_alias_map:
+            return self._entity_alias_map[name]
+
+        for canonical, node in self._entity_nodes.items():
+            if name in canonical or canonical in name:
+                if len(name) >= 3:
+                    self._entity_alias_map[name] = canonical
+                    node.aliases.add(name)
+                    return canonical
+
+        return name
+
+    # =========================================================================
+    # Cross-Entity Resonance — Write-Time Coupling
+    # =========================================================================
+
+    def _cer_update(self, item: PhaseMemoryItem, text: str, namespace: str) -> None:
+        """
+        Cross-Entity Resonance update at write time.
+
+        Relationships between entities are discovered and stored here,
+        amortized over N store() calls. Query time just follows
+        pre-computed entanglement links — O(1).
+
+        Steps:
+        1. Extract entities from text
+        2. Create/update EntityNodes with IDF-weighted token spectra
+        3. For entity pairs in this item: update EntanglementEdge
+        4. For entities sharing tokens with OTHER entities: update edges (top-10)
+        5. Check synchronization threshold + update clusters
+
+        Complexity: O(E² × S + 10 × S) per store, E=1-3 typical.
+        """
+        entities_raw = self._extract_entities(text)
+
+        # Also include fact.subject if available
+        if (
+            item.fact
+            and item.fact.subject
+            and item.fact.subject not in _STOP_WORDS
+            and len(item.fact.subject) > 1
+        ):
+            subject = item.fact.subject.lower()
+            if subject not in entities_raw:
+                entities_raw.append(subject)
+
+        if not entities_raw:
+            return
+
+        # Resolve aliases
+        entities = list(set(self._resolve_alias(e) for e in entities_raw))
+
+        # Compute IDF for item tokens
+        tokens_with_idf: dict[str, float] = {}
+        for token in item.indexed_tokens:
+            tokens_with_idf[token] = self._compute_idf(token)
+
+        # Create/update EntityNodes
+        for entity_name in entities:
+            if entity_name not in self._entity_nodes:
+                self._entity_nodes[entity_name] = EntityNode(
+                    name=entity_name,
+                    aliases={entity_name},
+                    token_spectrum=Counter(),
+                    memory_ids=[],
+                    birth_order=self._event_counter,
+                )
+
+            node = self._entity_nodes[entity_name]
+            node.memory_ids.append(item.id)
+            node.total_mentions += 1
+
+            # Update token spectrum (IDF-weighted)
+            for token, idf in tokens_with_idf.items():
+                if token != entity_name:
+                    old_val = node.token_spectrum.get(token, 0.0)
+                    new_val = old_val + idf
+                    node.token_spectrum[token] = new_val
+                    # Incremental magnitude update
+                    node.cached_magnitude_sq += new_val * new_val - old_val * old_val
+
+            # Update entity index (token → entity names)
+            for token in item.indexed_tokens:
+                if token not in self._entity_index:
+                    self._entity_index[token] = []
+                if entity_name not in self._entity_index[token]:
+                    self._entity_index[token].append(entity_name)
+
+            # Compute natural frequency (spectrum entropy)
+            total_weight = sum(node.token_spectrum.values())
+            if total_weight > 0:
+                entropy = 0.0
+                for count in node.token_spectrum.values():
+                    p = count / total_weight
+                    if p > 0:
+                        entropy -= p * math.log2(p)
+                node.omega = entropy
+
+        # Update entanglement edges for entity pairs IN this item
+        for i in range(len(entities)):
+            for j in range(i + 1, len(entities)):
+                self._update_entanglement(entities[i], entities[j], item)
+
+        # Cross-item coupling: entities sharing tokens with OTHER entities
+        for entity_name in entities:
+            related: Counter = Counter()
+            for token in item.indexed_tokens:
+                if token in self._entity_index:
+                    for other in self._entity_index[token]:
+                        if other != entity_name:
+                            related[other] += tokens_with_idf.get(token, 1.0)
+
+            for other_entity, shared_weight in related.most_common(10):
+                if shared_weight > self._K_critical * 0.5:
+                    self._update_entanglement(entity_name, other_entity, item)
+
+        # Update clusters
+        for entity_name in entities:
+            self._update_clusters(entity_name)
+
+    def _update_entanglement(
+        self,
+        entity_a: str,
+        entity_b: str,
+        item: PhaseMemoryItem,
+    ) -> None:
+        """
+        Incrementally update the entanglement edge between two entities.
+
+        K(a,b) = cosine similarity of IDF-weighted token spectra.
+        Computed incrementally — no full recomputation.
+
+        Complexity: O(|shared_tokens|).
+        """
+        a, b = (entity_a, entity_b) if entity_a < entity_b else (entity_b, entity_a)
+
+        if a not in self._entanglement_graph:
+            self._entanglement_graph[a] = {}
+
+        if b not in self._entanglement_graph[a]:
+            self._entanglement_graph[a][b] = EntanglementEdge(
+                entity_a=a,
+                entity_b=b,
+            )
+
+        edge = self._entanglement_graph[a][b]
+        edge.last_updated = self._event_counter
+
+        # Track shared memories
+        node_a = self._entity_nodes.get(a)
+        node_b = self._entity_nodes.get(b)
+        if not node_a or not node_b:
+            return
+
+        if item.id in node_a.memory_ids and item.id in node_b.memory_ids:
+            if item.id not in edge.shared_memory_ids:
+                edge.shared_memory_ids.append(item.id)
+
+        # Recompute shared tokens from spectra
+        shared = Counter()
+        for token in node_a.token_spectrum:
+            if token in node_b.token_spectrum:
+                shared[token] = min(
+                    node_a.token_spectrum[token],
+                    node_b.token_spectrum[token],
+                )
+        edge.shared_tokens = shared
+
+        # Coupling strength = cosine similarity
+        dot_product = sum(
+            node_a.token_spectrum[t] * node_b.token_spectrum[t]
+            for t in shared
+        )
+        mag_a = math.sqrt(max(node_a.cached_magnitude_sq, 1e-18))
+        mag_b = math.sqrt(max(node_b.cached_magnitude_sq, 1e-18))
+
+        edge.coupling_strength = dot_product / (mag_a * mag_b)
+        edge.is_synchronized = edge.coupling_strength > self._K_critical
+
+    def _update_clusters(self, entity_name: str) -> None:
+        """
+        Update resonance clusters after entanglement edges change.
+
+        BFS on synchronized edges → connected components.
+        Complexity: O(degree(entity)).
+        """
+        visited: set[str] = set()
+        queue = [entity_name]
+        cluster_members: set[str] = set()
+
+        while queue:
+            current = queue.pop(0)
+            if current in visited:
+                continue
+            visited.add(current)
+            cluster_members.add(current)
+
+            # Forward edges
+            if current in self._entanglement_graph:
+                for other, edge in self._entanglement_graph[current].items():
+                    if edge.is_synchronized and other not in visited:
+                        queue.append(other)
+
+            # Reverse edges (graph stored with a < b)
+            for a, edges in self._entanglement_graph.items():
+                if current in edges and edges[current].is_synchronized and a not in visited:
+                    queue.append(a)
+
+        if len(cluster_members) < 2:
+            return
+
+        # Check if cluster already exists
+        for cluster in self._resonance_clusters.values():
+            if cluster.members == cluster_members:
+                return  # Already exists
+
+        # Remove old clusters that overlap
+        to_remove = [
+            cid for cid, c in self._resonance_clusters.items()
+            if c.members & cluster_members
+        ]
+        for cid in to_remove:
+            del self._resonance_clusters[cid]
+
+        # Create new cluster with spectrum = intersection of all member spectra
+        cluster_spectrum = Counter()
+        first = True
+        for member in cluster_members:
+            node = self._entity_nodes.get(member)
+            if not node:
+                continue
+            if first:
+                cluster_spectrum = Counter(node.token_spectrum)
+                first = False
+            else:
+                cluster_spectrum = Counter({
+                    t: min(cluster_spectrum[t], node.token_spectrum[t])
+                    for t in cluster_spectrum
+                    if t in node.token_spectrum
+                })
+
+        # Compute coherence (mean K within cluster)
+        k_sum = 0.0
+        k_count = 0
+        members_list = sorted(cluster_members)
+        for i in range(len(members_list)):
+            for j in range(i + 1, len(members_list)):
+                a, b = members_list[i], members_list[j]
+                edge = self._entanglement_graph.get(a, {}).get(b)
+                if edge:
+                    k_sum += edge.coupling_strength
+                    k_count += 1
+
+        cluster_id = str(uuid4())
+        self._resonance_clusters[cluster_id] = ResonanceCluster(
+            cluster_id=cluster_id,
+            members=cluster_members,
+            cluster_spectrum=cluster_spectrum,
+            formation_order=self._event_counter,
+            coherence=k_sum / max(k_count, 1),
+        )
+
+    # =========================================================================
+    # Cross-Entity Resonance — GC for Entity Structures
+    # =========================================================================
+
+    def _cer_gc_item(self, item: PhaseMemoryItem) -> None:
+        """Clean entity structures when a memory item is garbage collected."""
+        item_id = item.id
+        subject = item.fact.subject.lower() if item.fact and item.fact.subject else None
+
+        if subject and subject in self._entity_nodes:
+            node = self._entity_nodes[subject]
+            if item_id in node.memory_ids:
+                node.memory_ids.remove(item_id)
+            if not node.memory_ids:
+                # Entity has no more memories — remove
+                del self._entity_nodes[subject]
+                # Clean alias map
+                aliases_to_remove = [
+                    alias for alias, canonical in self._entity_alias_map.items()
+                    if canonical == subject
+                ]
+                for alias in aliases_to_remove:
+                    del self._entity_alias_map[alias]
+
+    def _prune_entanglement_graph(self) -> None:
+        """Prune stale entanglement edges. Called during free energy recomputation."""
+        EDGE_DECAY = 0.99
+        PRUNE_THRESHOLD = 0.01
+
+        to_remove: list[tuple[str, str]] = []
+        for a in self._entanglement_graph:
+            for b, edge in self._entanglement_graph[a].items():
+                age = self._event_counter - edge.last_updated
+                if age > 100:
+                    edge.coupling_strength *= EDGE_DECAY ** (age / 100)
+                    edge.is_synchronized = edge.coupling_strength > self._K_critical
+
+                if edge.coupling_strength < PRUNE_THRESHOLD:
+                    to_remove.append((a, b))
+
+        for a, b in to_remove:
+            if a in self._entanglement_graph and b in self._entanglement_graph[a]:
+                del self._entanglement_graph[a][b]
+                if not self._entanglement_graph[a]:
+                    del self._entanglement_graph[a]
+
+    # =========================================================================
     # Store — Self-Sufficient Ingestion (Zero LLM)
     # =========================================================================
 
@@ -823,6 +1272,9 @@ class PhaseMemoryEngine:
         # --- Recompute free energy for ALL items ---
         self._recompute_all_free_energies(namespace)
 
+        # --- Cross-Entity Resonance: Write-Time Coupling ---
+        self._cer_update(item, text, namespace)
+
         return item
 
     # =========================================================================
@@ -842,10 +1294,14 @@ class PhaseMemoryEngine:
                 alive.append(item)
             else:
                 self._deindex_item(item)
+                self._cer_gc_item(item)
                 # Decrement doc freq for dead item's tokens
                 for token in set(item.indexed_tokens):
                     self._doc_freq[token] = max(0, self._doc_freq.get(token, 1) - 1)
         self._items[namespace] = alive
+
+        # Prune stale entanglement edges
+        self._prune_entanglement_graph()
 
     # =========================================================================
     # Retrieval — IDF-Weighted Token Match + Boltzmann Ranking
@@ -858,24 +1314,53 @@ class PhaseMemoryEngine:
         limit: int = 10,
     ) -> list[tuple[float, PhaseMemoryItem]]:
         """
-        Thermodynamic Semantic Field (TSF) retrieval. Zero external calls.
+        Unified retrieval: Cross-Entity Resonance (CER) + TSF.
 
-        Ranking equation:
-            rank(q, i) = Σ idf(matched_tokens) - F_i / kT
+        For multi-entity queries (2+ recognized entities):
+            Uses pre-computed entanglement graph — O(1) edge lookup.
+            CER results merged with TSF results, CER boosted 2×.
 
-        Search path (sub-μs):
-            query → tokenize + normalize → lookup token_index
-            → union candidates → IDF-weighted score → Boltzmann rank → top-k
+        For single-entity or unrecognized queries:
+            Falls back to standard TSF (IDF-weighted Boltzmann ranking).
 
-        Fallback: if zero candidates, return all liquid items by -F/kT.
+        Zero external calls. Sub-millisecond.
         """
         self._recompute_all_free_energies(namespace)
 
-        # Tokenize query (same pipeline as store)
         query_tokens = _tokenize(query)
         query_token_set = set(query_tokens)
 
-        # Index lookup → candidates with matched tokens
+        # --- CER: Multi-entity detection ---
+        query_entities = self._detect_multi_entity_query(query_token_set, namespace)
+
+        if len(query_entities) >= 2:
+            cer_results = self._cer_search(
+                query_entities, query_token_set, namespace, limit,
+            )
+            if cer_results:
+                tsf_results = self._tsf_search(
+                    query_tokens, query_token_set, namespace, limit,
+                )
+                return self._merge_cer_and_tsf(cer_results, tsf_results, limit)
+
+        return self._tsf_search(query_tokens, query_token_set, namespace, limit)
+
+    # =========================================================================
+    # TSF Search — Standard Token-Index Retrieval
+    # =========================================================================
+
+    def _tsf_search(
+        self,
+        query_tokens: list[str],
+        query_token_set: set[str],
+        namespace: str,
+        limit: int,
+    ) -> list[tuple[float, PhaseMemoryItem]]:
+        """
+        Standard Thermodynamic Semantic Field retrieval.
+
+        rank(q, i) = Σ idf(matched_tokens) - F_i / kT
+        """
         candidates: dict[str, tuple[PhaseMemoryItem, list[str]]] = {}
 
         for token in query_tokens:
@@ -897,14 +1382,10 @@ class PhaseMemoryEngine:
 
                 self._update_field_radius(item)
 
-                # IDF-weighted match score
                 idf_score = sum(self._compute_idf(t) for t in matched_tokens)
-
-                # Boltzmann rank: IDF score - F/kT
                 rank = idf_score - item.free_energy / max(self.kT, 1e-9)
                 scored.append((rank, item))
         else:
-            # Fallback: return all liquid items by -F/kT
             items = self._items.get(namespace, [])
             for item in items:
                 if item.consolidation_strength < self.STRENGTH_FLOOR:
@@ -918,6 +1399,152 @@ class PhaseMemoryEngine:
             item.retrieval_count += 1
 
         return scored[:limit]
+
+    # =========================================================================
+    # CER Search — Entanglement Graph Traversal
+    # =========================================================================
+
+    def _detect_multi_entity_query(
+        self,
+        query_token_set: set[str],
+        namespace: str,
+    ) -> list[str]:
+        """
+        Detect if query references 2+ known entities.
+
+        O(Q) — one hash lookup per query token against _entity_nodes.
+        """
+        matched: list[str] = []
+        for token in query_token_set:
+            canonical = token
+            if token in self._entity_alias_map:
+                canonical = self._entity_alias_map[token]
+            if canonical in self._entity_nodes:
+                # Verify entity has items in this namespace
+                node = self._entity_nodes[canonical]
+                has_ns = any(
+                    item_id
+                    for item_id in node.memory_ids
+                    if any(
+                        item.id == item_id
+                        for item in self._items.get(namespace, [])
+                    )
+                )
+                if has_ns and canonical not in matched:
+                    matched.append(canonical)
+        return matched
+
+    def _cer_search(
+        self,
+        entities: list[str],
+        query_tokens: set[str],
+        namespace: str,
+        limit: int,
+    ) -> list[tuple[float, PhaseMemoryItem]]:
+        """
+        Search via the entanglement graph.
+
+        For 2 entities: O(1) edge lookup → shared_tokens = resonant frequencies.
+        For 3+ entities: cluster lookup → cluster_spectrum.
+
+        Score: K × idf × s − F/kT
+        """
+        scored: list[tuple[float, PhaseMemoryItem]] = []
+
+        if len(entities) == 2:
+            a, b = sorted(entities)
+            edge = self._entanglement_graph.get(a, {}).get(b)
+
+            if edge and edge.coupling_strength > 0:
+                # Use shared_tokens as resonant frequencies
+                search_tokens = edge.shared_tokens
+                if not search_tokens:
+                    return []
+
+                for token, weight in search_tokens.most_common(20):
+                    if token in self._token_index:
+                        for item in self._token_index[token]:
+                            if item.namespace != namespace:
+                                continue
+                            if item.consolidation_strength < self.STRENGTH_FLOOR:
+                                continue
+                            idf = self._compute_idf(token)
+                            cer_score = (
+                                edge.coupling_strength * idf
+                                * item.consolidation_strength
+                                - item.free_energy / max(self.kT, 1e-9)
+                            )
+                            scored.append((cer_score, item))
+
+                # Also include shared memories
+                for memory_id in edge.shared_memory_ids:
+                    for item in self._items.get(namespace, []):
+                        if item.id == memory_id and item.consolidation_strength >= self.STRENGTH_FLOOR:
+                            rank = (
+                                edge.coupling_strength * 10.0
+                                - item.free_energy / max(self.kT, 1e-9)
+                            )
+                            scored.append((rank, item))
+
+        elif len(entities) >= 3:
+            # Find cluster containing all entities
+            entity_set = set(entities)
+            for cluster in self._resonance_clusters.values():
+                if entity_set.issubset(cluster.members):
+                    for token, weight in cluster.cluster_spectrum.most_common(20):
+                        if token in self._token_index:
+                            for item in self._token_index[token]:
+                                if item.namespace != namespace:
+                                    continue
+                                if item.consolidation_strength < self.STRENGTH_FLOOR:
+                                    continue
+                                idf = self._compute_idf(token)
+                                cer_score = (
+                                    cluster.coherence * idf
+                                    - item.free_energy / max(self.kT, 1e-9)
+                                )
+                                scored.append((cer_score, item))
+                    break
+
+        # Deduplicate by item ID, keeping highest score
+        seen: dict[str, tuple[float, PhaseMemoryItem]] = {}
+        for score, item in scored:
+            if item.id not in seen or score > seen[item.id][0]:
+                seen[item.id] = (score, item)
+
+        result = sorted(seen.values(), key=lambda x: x[0], reverse=True)
+        return result[:limit]
+
+    def _merge_cer_and_tsf(
+        self,
+        cer_results: list[tuple[float, PhaseMemoryItem]],
+        tsf_results: list[tuple[float, PhaseMemoryItem]],
+        limit: int,
+    ) -> list[tuple[float, PhaseMemoryItem]]:
+        """
+        Merge CER and TSF results. CER gets 2× boost because pre-computed
+        cross-entity resonances are more likely correct for multi-entity queries.
+        """
+        CER_BOOST = 2.0
+
+        merged: dict[str, tuple[float, PhaseMemoryItem]] = {}
+
+        for score, item in cer_results:
+            merged[item.id] = (score * CER_BOOST, item)
+
+        for score, item in tsf_results:
+            if item.id in merged:
+                existing_score = merged[item.id][0]
+                merged[item.id] = (max(existing_score, score), item)
+            else:
+                merged[item.id] = (score, item)
+
+        result = sorted(merged.values(), key=lambda x: x[0], reverse=True)
+
+        for _, item in result[:limit]:
+            item.retrieval_count += 1
+
+        return result[:limit]
 
     # =========================================================================
     # Augmented Context Builder
@@ -977,4 +1604,13 @@ class PhaseMemoryEngine:
             "liquid_count": sum(1 for i in items if i.consolidation_strength >= self.STRENGTH_FLOOR),
             "gas_count": sum(1 for i in items if i.consolidation_strength < self.STRENGTH_FLOOR),
             "items": [item.to_debug_dict(strength_floor=self.STRENGTH_FLOOR) for item in items],
+            "cer": {
+                "entity_count": len(self._entity_nodes),
+                "edge_count": sum(len(edges) for edges in self._entanglement_graph.values()),
+                "cluster_count": len(self._resonance_clusters),
+                "synchronized_edges": sum(
+                    1 for edges in self._entanglement_graph.values()
+                    for edge in edges.values() if edge.is_synchronized
+                ),
+            },
         }
