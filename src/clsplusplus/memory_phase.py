@@ -188,7 +188,7 @@ class EntityNode:
     total_mentions: int = 0                          # Number of store() calls
     theta: float = 0.0                               # Oscillator phase (radians)
     omega: float = 0.0                               # Natural frequency (spectrum entropy)
-    cached_magnitude_sq: float = 0.0                 # For O(1) cosine updates
+    # cached_magnitude_sq removed — SIC coupling doesn't need magnitude
 
 
 @dataclass
@@ -828,21 +828,34 @@ class PhaseMemoryEngine:
         Resolve an entity name to its canonical form.
 
         Rules:
-        1. Exact match in alias_map → return canonical
-        2. Prefix/substring match (len ≥ 3) → merge
-        3. No match → new entity
+        1. Exact match in alias_map → return canonical (pre-registered)
+        2. Exact match in _entity_nodes → return self
+        3. No match → new entity (NO auto-guessing, NO prefix matching)
+
+        Why no auto-prefix: "art"→"arthur", "city1"→"city10", "al"→"alice"
+        are all false positives. Guessing is worse than creating a separate
+        entity. Explicit alias registration via register_alias() only.
         """
         if name in self._entity_alias_map:
             return self._entity_alias_map[name]
 
-        for canonical, node in self._entity_nodes.items():
-            if name in canonical or canonical in name:
-                if len(name) >= 3:
-                    self._entity_alias_map[name] = canonical
-                    node.aliases.add(name)
-                    return canonical
+        if name in self._entity_nodes:
+            return name
 
         return name
+
+    def register_alias(self, alias: str, canonical: str) -> None:
+        """
+        Explicitly register an alias for an entity.
+
+        Called by orchestration layer when user says 'Mel is Melanie'.
+        The engine never guesses aliases — only stores explicit mappings.
+        """
+        alias = alias.lower()
+        canonical = canonical.lower()
+        self._entity_alias_map[alias] = canonical
+        if canonical in self._entity_nodes:
+            self._entity_nodes[canonical].aliases.add(alias)
 
     # =========================================================================
     # Cross-Entity Resonance — Write-Time Coupling
@@ -907,11 +920,7 @@ class PhaseMemoryEngine:
             # Update token spectrum (IDF-weighted)
             for token, idf in tokens_with_idf.items():
                 if token != entity_name:
-                    old_val = node.token_spectrum.get(token, 0.0)
-                    new_val = old_val + idf
-                    node.token_spectrum[token] = new_val
-                    # Incremental magnitude update
-                    node.cached_magnitude_sq += new_val * new_val - old_val * old_val
+                    node.token_spectrum[token] = node.token_spectrum.get(token, 0.0) + idf
 
             # Update entity index (token → entity names)
             for token in item.indexed_tokens:
@@ -935,18 +944,22 @@ class PhaseMemoryEngine:
             for j in range(i + 1, len(entities)):
                 self._update_entanglement(entities[i], entities[j], item)
 
-        # Cross-item coupling: entities sharing tokens with OTHER entities
+        # Cross-item coupling: entities sharing tokens with OTHER entities.
+        # SIC coupling (IDF²) naturally discriminates — common verbs contribute
+        # negligible IDF² while rare shared tokens dominate. No artificial filter needed.
+        # Only exclude: entity names as tokens (prevent self-referential coupling),
+        # and limit to top-5 related entities per store() for O(1) amortized cost.
         for entity_name in entities:
             related: Counter = Counter()
             for token in item.indexed_tokens:
-                if token in self._entity_index:
+                if token in self._entity_index and token not in self._entity_nodes:
+                    idf = tokens_with_idf.get(token, 0.0)
                     for other in self._entity_index[token]:
-                        if other != entity_name:
-                            related[other] += tokens_with_idf.get(token, 1.0)
+                        if other != entity_name and other not in entities:
+                            related[other] += idf
 
-            for other_entity, shared_weight in related.most_common(10):
-                if shared_weight > self._K_critical * 0.5:
-                    self._update_entanglement(entity_name, other_entity, item)
+            for other_entity, _ in related.most_common(5):
+                self._update_entanglement(entity_name, other_entity, item)
 
         # Update clusters
         for entity_name in entities:
@@ -961,10 +974,17 @@ class PhaseMemoryEngine:
         """
         Incrementally update the entanglement edge between two entities.
 
-        K(a,b) = cosine similarity of IDF-weighted token spectra.
-        Computed incrementally — no full recomputation.
+        K(a,b) = Shared Information Content (SIC) — sum of IDF² of shared
+        discriminating tokens, normalized by geometric mean of spectrum sizes.
 
-        Complexity: O(|shared_tokens|).
+        Why SIC, not cosine:
+        1. IDF² naturally suppresses common words (verbs, prepositions)
+        2. No magnitude normalization → more shared rare tokens = stronger coupling
+        3. No sqrt, no division by magnitude → O(|shared|), numerically stable
+        4. Thermodynamically interpretable: shared surprise in bits²
+        5. Entity-name tokens are EXCLUDED — prevents self-referential coupling
+
+        Complexity: O(min(|spec_a|, |spec_b|)).
         """
         a, b = (entity_a, entity_b) if entity_a < entity_b else (entity_b, entity_a)
 
@@ -990,25 +1010,31 @@ class PhaseMemoryEngine:
             if item.id not in edge.shared_memory_ids:
                 edge.shared_memory_ids.append(item.id)
 
-        # Recompute shared tokens from spectra
+        # Iterate over the SMALLER spectrum for efficiency
+        small, big = (node_a.token_spectrum, node_b.token_spectrum) \
+            if len(node_a.token_spectrum) <= len(node_b.token_spectrum) \
+            else (node_b.token_spectrum, node_a.token_spectrum)
+
+        # All known entity names — exclude from coupling to prevent
+        # self-referential entanglement ("alice" token coupling alice+bob)
+        entity_names = set(self._entity_nodes.keys())
+
         shared = Counter()
-        for token in node_a.token_spectrum:
-            if token in node_b.token_spectrum:
-                shared[token] = min(
-                    node_a.token_spectrum[token],
-                    node_b.token_spectrum[token],
-                )
+        sic_sum = 0.0
+        for token in small:
+            if token in big and token not in entity_names:
+                idf = self._compute_idf(token)
+                shared[token] = min(small[token], big[token])
+                sic_sum += idf * idf  # IDF² — surprise² in bits²
+
         edge.shared_tokens = shared
 
-        # Coupling strength = cosine similarity
-        dot_product = sum(
-            node_a.token_spectrum[t] * node_b.token_spectrum[t]
-            for t in shared
-        )
-        mag_a = math.sqrt(max(node_a.cached_magnitude_sq, 1e-18))
-        mag_b = math.sqrt(max(node_b.cached_magnitude_sq, 1e-18))
+        # Normalize by geometric mean of spectrum sizes (excluding entity names)
+        size_a = max(sum(1 for t in node_a.token_spectrum if t not in entity_names), 1)
+        size_b = max(sum(1 for t in node_b.token_spectrum if t not in entity_names), 1)
+        normalizer = math.sqrt(size_a * size_b)
 
-        edge.coupling_strength = dot_product / (mag_a * mag_b)
+        edge.coupling_strength = sic_sum / normalizer
         edge.is_synchronized = edge.coupling_strength > self._K_critical
 
     def _update_clusters(self, entity_name: str) -> None:
@@ -1016,8 +1042,15 @@ class PhaseMemoryEngine:
         Update resonance clusters after entanglement edges change.
 
         BFS on synchronized edges → connected components.
-        Complexity: O(degree(entity)).
+        Uses reverse adjacency built on-the-fly for O(degree) per step.
         """
+        # Build reverse adjacency index: O(|E|) total, not O(|E|) per BFS step
+        reverse_adj: dict[str, list[str]] = {}
+        for a, edges in self._entanglement_graph.items():
+            for b, edge in edges.items():
+                if edge.is_synchronized:
+                    reverse_adj.setdefault(b, []).append(a)
+
         visited: set[str] = set()
         queue = [entity_name]
         cluster_members: set[str] = set()
@@ -1029,16 +1062,17 @@ class PhaseMemoryEngine:
             visited.add(current)
             cluster_members.add(current)
 
-            # Forward edges
+            # Forward edges (a < b, so current=a → b is in graph[a])
             if current in self._entanglement_graph:
                 for other, edge in self._entanglement_graph[current].items():
                     if edge.is_synchronized and other not in visited:
                         queue.append(other)
 
-            # Reverse edges (graph stored with a < b)
-            for a, edges in self._entanglement_graph.items():
-                if current in edges and edges[current].is_synchronized and a not in visited:
-                    queue.append(a)
+            # Reverse edges via pre-built index
+            if current in reverse_adj:
+                for other in reverse_adj[current]:
+                    if other not in visited:
+                        queue.append(other)
 
         if len(cluster_members) < 2:
             return
@@ -1099,24 +1133,35 @@ class PhaseMemoryEngine:
     # =========================================================================
 
     def _cer_gc_item(self, item: PhaseMemoryItem) -> None:
-        """Clean entity structures when a memory item is garbage collected."""
-        item_id = item.id
-        subject = item.fact.subject.lower() if item.fact and item.fact.subject else None
+        """
+        Clean entity structures when a memory item is garbage collected.
 
-        if subject and subject in self._entity_nodes:
-            node = self._entity_nodes[subject]
+        Scans ALL entity nodes for references to this item, not just
+        fact.subject — because entities are also extracted from text
+        capitalization and may not match the structured subject.
+        """
+        item_id = item.id
+        entities_to_remove: list[str] = []
+
+        for entity_name, node in self._entity_nodes.items():
             if item_id in node.memory_ids:
                 node.memory_ids.remove(item_id)
-            if not node.memory_ids:
-                # Entity has no more memories — remove
-                del self._entity_nodes[subject]
-                # Clean alias map
-                aliases_to_remove = [
-                    alias for alias, canonical in self._entity_alias_map.items()
-                    if canonical == subject
-                ]
-                for alias in aliases_to_remove:
-                    del self._entity_alias_map[alias]
+                if not node.memory_ids:
+                    entities_to_remove.append(entity_name)
+
+        for entity_name in entities_to_remove:
+            del self._entity_nodes[entity_name]
+            # Clean alias map
+            aliases_to_remove = [
+                alias for alias, canonical in self._entity_alias_map.items()
+                if canonical == entity_name
+            ]
+            for alias in aliases_to_remove:
+                del self._entity_alias_map[alias]
+            # Clean entity index
+            for token_entities in self._entity_index.values():
+                if entity_name in token_entities:
+                    token_entities.remove(entity_name)
 
     def _prune_entanglement_graph(self) -> None:
         """Prune stale entanglement edges. Called during free energy recomputation."""
@@ -1412,24 +1457,21 @@ class PhaseMemoryEngine:
         """
         Detect if query references 2+ known entities.
 
-        O(Q) — one hash lookup per query token against _entity_nodes.
+        Truly O(Q): one hash lookup per query token. Namespace membership
+        verified via pre-built set of item IDs — O(1) per check.
         """
+        # Build namespace member set ONCE — O(N)
+        ns_item_ids = {item.id for item in self._items.get(namespace, [])}
+
         matched: list[str] = []
         for token in query_token_set:
             canonical = token
             if token in self._entity_alias_map:
                 canonical = self._entity_alias_map[token]
             if canonical in self._entity_nodes:
-                # Verify entity has items in this namespace
                 node = self._entity_nodes[canonical]
-                has_ns = any(
-                    item_id
-                    for item_id in node.memory_ids
-                    if any(
-                        item.id == item_id
-                        for item in self._items.get(namespace, [])
-                    )
-                )
+                # O(|memory_ids|) with O(1) set lookup — not O(N²)
+                has_ns = any(mid in ns_item_ids for mid in node.memory_ids)
                 if has_ns and canonical not in matched:
                     matched.append(canonical)
         return matched

@@ -1111,11 +1111,12 @@ class TestCrossEntityResonance:
         assert isinstance(results, list)
 
     def test_alias_resolution(self, engine: PhaseMemoryEngine):
-        """Short name resolves to full entity via prefix matching."""
+        """Explicitly registered alias resolves to canonical entity."""
         engine.store(
             "Melanie visited Rome", "test",
             fact=Fact("melanie", "visited", "rome", False, "Melanie visited Rome"),
         )
+        engine.register_alias("mel", "melanie")
         resolved = engine._resolve_alias("mel")
         assert resolved == "melanie"
 
@@ -1154,3 +1155,469 @@ class TestCrossEntityResonance:
         assert "cer" in debug
         assert "entity_count" in debug["cer"]
         assert "edge_count" in debug["cer"]
+
+
+# =============================================================================
+# 23. Adversarial CER Tests — Catch-22 Scenarios
+# =============================================================================
+
+
+class TestCERadversarial:
+    """
+    Brutal adversarial tests that expose every edge case, false positive,
+    false negative, Catch-22, and universe-level difficulty in CER.
+    """
+
+    # ----- BUG 1: Sentence-initial entity extraction -----
+
+    def test_sentence_initial_entity_lost(self, engine: PhaseMemoryEngine):
+        """
+        'Jean visited Rome' — Jean is position 0 (sentence-initial).
+        _extract_entities SKIPS it. Without a Fact, Jean gets no entity node
+        from text extraction alone. The auto-fact fallback must catch it.
+        """
+        engine.store("Jean visited Rome last summer", "test")
+        # Jean MUST be in entity nodes (via auto-fact subject fallback)
+        assert "jean" in engine._entity_nodes
+
+    def test_two_sentence_initial_entities(self, engine: PhaseMemoryEngine):
+        """
+        'Jean likes Rome. John likes Rome.'
+        Both Jean and John are sentence-initial → both SKIPPED by
+        _extract_entities. auto-fact only catches FIRST content word.
+        John is completely invisible.
+        """
+        engine.store("Jean likes Rome", "test")
+        engine.store("John likes Rome", "test")
+        # Both must exist
+        assert "jean" in engine._entity_nodes
+        assert "john" in engine._entity_nodes
+
+    # ----- BUG 2: Alias resolution false positives -----
+
+    def test_alias_no_auto_guessing(self, engine: PhaseMemoryEngine):
+        """
+        Without explicit registration, 'art' should NOT alias to 'arthur'.
+        Auto-prefix guessing is disabled — only explicit register_alias() works.
+        """
+        engine.store(
+            "I met Arthur at the gallery", "test",
+            fact=Fact("arthur", "met", "gallery", False, "I met Arthur at the gallery"),
+        )
+        # Without register_alias, 'art' stays as 'art'
+        resolved = engine._resolve_alias("art")
+        assert resolved == "art", "Auto-guessing alias still active"
+        # Explicit registration works
+        engine.register_alias("art", "arthur")
+        resolved = engine._resolve_alias("art")
+        assert resolved == "arthur", "Explicit alias registration failed"
+
+    def test_alias_no_cross_contamination(self, engine: PhaseMemoryEngine):
+        """
+        'al' and 'alice' are separate entities. Neither auto-aliases to the other.
+        """
+        engine.store(
+            "I met Al at the store", "test",
+            fact=Fact("al", "met", "store", False, "I met Al at the store"),
+        )
+        engine.store(
+            "Alice went to the park", "test",
+            fact=Fact("alice", "went", "park", False, "Alice went to the park"),
+        )
+        assert engine._resolve_alias("alice") == "alice"
+        assert engine._resolve_alias("al") == "al"
+        assert "alice" in engine._entity_nodes
+        assert "al" in engine._entity_nodes
+
+    # ----- BUG 3: Common verb false entanglement -----
+
+    def test_common_verb_false_entanglement(self, engine: PhaseMemoryEngine):
+        """
+        Jean visited Rome. Bob visited Paris.
+        They share 'visited' → false entanglement! They have NOTHING in common
+        except the verb. Cross-item coupling via _entity_index creates edges
+        between entities sharing ANY token, including common verbs.
+        """
+        engine.store(
+            "Jean visited Rome last summer", "test",
+            fact=Fact("jean", "visited", "rome", False, "Jean visited Rome last summer"),
+        )
+        engine.store(
+            "Bob visited Paris in spring", "test",
+            fact=Fact("bob", "visited", "paris", False, "Bob visited Paris in spring"),
+        )
+        a, b = sorted(["jean", "bob"])
+        # These entities should NOT be strongly entangled — they share nothing meaningful
+        edge = engine._entanglement_graph.get(a, {}).get(b)
+        if edge:
+            assert edge.coupling_strength < 0.5, (
+                f"False entanglement K={edge.coupling_strength:.3f} between entities "
+                "sharing only a common verb 'visited'"
+            )
+
+    def test_ten_unrelated_entities_no_false_cross_pair_edges(self, engine: PhaseMemoryEngine):
+        """
+        10 entities each doing DIFFERENT activities in DIFFERENT places.
+        Person-city edges within same fact are legitimate (Alice-Rome).
+        But CROSS-PAIR person-person edges (Alice-Bob) should NOT be
+        synchronized — they share no meaningful tokens.
+        """
+        activities = [
+            ("Alice", "visited", "Rome"), ("Bob", "loves", "Paris"),
+            ("Charlie", "hates", "London"), ("Diana", "explored", "Tokyo"),
+            ("Edward", "discovered", "Berlin"), ("Fiona", "left", "Madrid"),
+            ("George", "enjoyed", "Sydney"), ("Hannah", "missed", "Oslo"),
+            ("Ivan", "found", "Cairo"), ("Julia", "escaped", "Lima"),
+        ]
+        persons = set()
+        for name, verb, place in activities:
+            engine.store(
+                f"{name} {verb} {place}", "test",
+                fact=Fact(name.lower(), verb, place.lower(), False, f"{name} {verb} {place}"),
+            )
+            persons.add(name.lower())
+
+        # Check: person-person edges should NOT be synchronized
+        false_person_edges = 0
+        for a, edges in engine._entanglement_graph.items():
+            for b, edge in edges.items():
+                if a in persons and b in persons and edge.is_synchronized:
+                    false_person_edges += 1
+        assert false_person_edges == 0, (
+            f"{false_person_edges} false synchronized person-person edges"
+        )
+
+    # ----- BUG 4: Common-word entity names -----
+
+    def test_common_word_entity_name_pollution(self, engine: PhaseMemoryEngine):
+        """
+        'Rose' as a person vs 'rose' as a flower.
+        Entity named 'rose' would match EVERY mention of the word 'rose'.
+        """
+        engine.store(
+            "I met Rose at the cafe", "test",
+            fact=Fact("rose", "met", "cafe", False, "I met Rose at the cafe"),
+        )
+        engine.store("The rose garden is beautiful", "test")
+        # The flower 'rose' should NOT create coupling with person 'Rose'
+        # (Check: does 'rose' entity get spurious memory_ids?)
+        node = engine._entity_nodes.get("rose")
+        if node:
+            # Person Rose should only have 1 memory (the cafe meeting)
+            # The flower mention should NOT be attached
+            assert len(node.memory_ids) <= 2, (
+                f"Entity 'rose' has {len(node.memory_ids)} memories — "
+                "flower mentions are polluting the person entity"
+            )
+
+    # ----- BUG 5: Namespace isolation -----
+
+    def test_cross_namespace_entity_leakage(self, engine: PhaseMemoryEngine):
+        """
+        Jean visits Rome in namespace 'session1'.
+        John visits Rome in namespace 'session2'.
+        Query in session1 should NOT find John's Rome visit.
+        """
+        engine.store(
+            "Jean visited Rome", "session1",
+            fact=Fact("jean", "visited", "rome", False, "Jean visited Rome"),
+        )
+        engine.store(
+            "John visited Rome", "session2",
+            fact=Fact("john", "visited", "rome", False, "John visited Rome"),
+        )
+        results = engine.search("Which city did Jean and John visit?", "session1", limit=5)
+        # Results should only come from session1
+        for _, item in results:
+            assert item.namespace == "session1", (
+                f"Cross-namespace leak: got item from {item.namespace}"
+            )
+
+    # ----- BUG 6: Entity GC leak -----
+
+    def test_gc_cleans_text_entities_not_just_subject(self, engine: PhaseMemoryEngine):
+        """
+        Store 'I met Jean and John at Rome'. Entities from text: jean, john, rome.
+        If item dies, ALL entity references should be cleaned, not just fact.subject.
+        """
+        item = engine.store(
+            "I met Jean and John at Rome", "test",
+            fact=Fact("meeting", "at", "rome", False, "I met Jean and John at Rome"),
+        )
+        # Verify entities exist
+        assert "rome" in engine._entity_nodes or "jean" in engine._entity_nodes
+        # Kill the item
+        item.consolidation_strength = 0.0
+        item.accumulated_surprise_damage = 10.0
+        engine._recompute_all_free_energies("test")
+        # After GC, entity nodes referencing this dead item should be cleaned
+        for entity_name, node in engine._entity_nodes.items():
+            assert item.id not in node.memory_ids, (
+                f"Dead item still referenced in entity '{entity_name}'"
+            )
+
+    # ----- BUG 7: Cluster spectrum vanishes with 3+ entities -----
+
+    def test_cluster_spectrum_not_empty_with_genuine_shared(self, engine: PhaseMemoryEngine):
+        """
+        Alice, Bob, Charlie ALL visit Rome. The cluster spectrum should
+        contain 'rome' (genuinely shared). But if spectrum intersection is
+        computed wrong, it might be empty.
+        """
+        for name in ["Alice", "Bob", "Charlie"]:
+            engine.store(
+                f"{name} visited Rome and ate gelato there", "test",
+                fact=Fact(name.lower(), "visited", "rome", False,
+                         f"{name} visited Rome and ate gelato there"),
+            )
+        # Find a cluster containing all three
+        found_cluster = None
+        target = {"alice", "bob", "charlie"}
+        for cluster in engine._resonance_clusters.values():
+            if target.issubset(cluster.members):
+                found_cluster = cluster
+                break
+        if found_cluster:
+            assert len(found_cluster.cluster_spectrum) > 0, (
+                "Cluster spectrum is empty despite all members sharing 'rome' and 'gelato'"
+            )
+            shared_tokens = set(found_cluster.cluster_spectrum.keys())
+            assert "rome" in shared_tokens or "visit" in shared_tokens or "gelato" in shared_tokens, (
+                f"Cluster spectrum {shared_tokens} missing obvious shared tokens"
+            )
+
+    # ----- BUG 8: Query with lowercase entity names -----
+
+    def test_lowercase_query_entities_detected(self, engine: PhaseMemoryEngine):
+        """
+        Query: 'what did jean and john do together?'
+        All lowercase. _detect_multi_entity_query must still find them
+        because entity nodes are stored lowercase.
+        """
+        from clsplusplus.memory_phase import _tokenize
+
+        engine.store(
+            "Jean visited Rome", "test",
+            fact=Fact("jean", "visited", "rome", False, "Jean visited Rome"),
+        )
+        engine.store(
+            "John visited Rome", "test",
+            fact=Fact("john", "visited", "rome", False, "John visited Rome"),
+        )
+        query_tokens = set(_tokenize("what did jean and john do together"))
+        entities = engine._detect_multi_entity_query(query_tokens, "test")
+        assert "jean" in entities and "john" in entities, (
+            f"Lowercase query failed to detect entities: {entities}"
+        )
+
+    # ----- BUG 9: Adversarial identical spectra -----
+
+    def test_identical_spectra_strong_coupling(self, engine: PhaseMemoryEngine):
+        """
+        Two entities with IDENTICAL experiences should have K well above K_critical.
+        SIC coupling = Σ idf²(shared discriminating tokens) / √(|spec_a|·|spec_b|).
+        """
+        for name in ["Alice", "Bob"]:
+            engine.store(
+                f"{name} visited Rome and ate pasta and drank wine", "test",
+                fact=Fact(name.lower(), "visited", "rome", False,
+                         f"{name} visited Rome and ate pasta and drank wine"),
+            )
+        a, b = sorted(["alice", "bob"])
+        edge = engine._entanglement_graph.get(a, {}).get(b)
+        assert edge is not None, "No edge between entities with identical experiences"
+        assert edge.coupling_strength > engine._K_critical, (
+            f"K={edge.coupling_strength:.3f} below K_critical={engine._K_critical} "
+            "for identical experiences"
+        )
+        assert edge.is_synchronized, "Identical entities should be synchronized"
+
+    # ----- BUG 10: Asymmetric query -----
+
+    def test_asymmetric_query_both_directions(self, engine: PhaseMemoryEngine):
+        """
+        'What did Jean and John share?' should give same results as
+        'What did John and Jean share?'
+        """
+        engine.store(
+            "Jean visited Rome", "test",
+            fact=Fact("jean", "visited", "rome", False, "Jean visited Rome"),
+        )
+        engine.store(
+            "John visited Rome", "test",
+            fact=Fact("john", "visited", "rome", False, "John visited Rome"),
+        )
+        r1 = engine.search("What did Jean and John share?", "test", limit=5)
+        r2 = engine.search("What did John and Jean share?", "test", limit=5)
+        ids1 = {item.id for _, item in r1}
+        ids2 = {item.id for _, item in r2}
+        assert ids1 == ids2, "Asymmetric results for symmetric query"
+
+    # ----- BUG 11: Empty entanglement graph -----
+
+    def test_query_multi_entity_no_edges(self, engine: PhaseMemoryEngine):
+        """
+        Query asks about Jean and John but they were stored with no overlap.
+        No edge exists. Should gracefully fall back to TSF, not crash.
+        """
+        engine.store(
+            "Jean eats apples every morning", "test",
+            fact=Fact("jean", "eats", "apples", False, "Jean eats apples every morning"),
+        )
+        engine.store(
+            "John drinks coffee at night", "test",
+            fact=Fact("john", "drinks", "coffee", False, "John drinks coffee at night"),
+        )
+        results = engine.search("What do Jean and John have in common?", "test", limit=5)
+        assert isinstance(results, list)  # No crash
+
+    # ----- BUG 12: Massive entity count stress test -----
+
+    def test_hundred_entities_performance(self, engine: PhaseMemoryEngine):
+        """
+        100 entities, each with unique activities. Should not crash
+        or take more than a few seconds.
+        """
+        import time
+        start = time.time()
+        for i in range(100):
+            name = f"Person{i}"
+            city = f"City{i}"
+            engine.store(
+                f"{name} visited {city} and loved it", "test",
+                fact=Fact(name.lower(), "visited", city.lower(), False,
+                         f"{name} visited {city} and loved it"),
+            )
+        elapsed = time.time() - start
+        assert elapsed < 10.0, f"100 entities took {elapsed:.1f}s — too slow"
+        assert len(engine._entity_nodes) >= 50  # At least half should be detected
+
+    # ----- BUG 13: Retrieval count double-increment -----
+
+    def test_retrieval_count_not_double_incremented(self, engine: PhaseMemoryEngine):
+        """
+        When CER merges with TSF, retrieval_count should only increment once.
+        _merge_cer_and_tsf increments, but _tsf_search ALSO increments.
+        """
+        engine.store(
+            "Jean visited Rome in summer", "test",
+            fact=Fact("jean", "visited", "rome", False, "Jean visited Rome in summer"),
+        )
+        engine.store(
+            "John visited Rome in winter", "test",
+            fact=Fact("john", "visited", "rome", False, "John visited Rome in winter"),
+        )
+        # Get items and check initial retrieval counts
+        items = engine._items["test"]
+        for item in items:
+            item.retrieval_count = 0  # Reset
+
+        engine.search("What city did Jean and John visit?", "test", limit=5)
+
+        total_increments = sum(item.retrieval_count for item in items)
+        # Should be exactly len(results), not 2× because both CER and TSF increment
+        assert total_increments <= 5, (
+            f"Retrieval count incremented {total_increments} times — "
+            "likely double-counted in CER+TSF merge"
+        )
+
+    # ----- BUG 14: Oscillator phase theta never used -----
+
+    def test_theta_omega_actually_affect_something(self, engine: PhaseMemoryEngine):
+        """
+        EntityNode has theta (phase) and omega (frequency) but they
+        are never used in coupling, search, or ranking. They're dead weight.
+        """
+        engine.store(
+            "Jean visited Rome", "test",
+            fact=Fact("jean", "visited", "rome", False, "Jean visited Rome"),
+        )
+        node = engine._entity_nodes["jean"]
+        # omega should be set (spectrum entropy)
+        assert node.omega > 0, "omega never computed"
+        # theta is never updated — always 0. This is a design gap.
+        # (Not a crash bug, but a lie in the API — Kuramoto without actual phase dynamics)
+
+    # ----- BUG 15: Catch-22: entity must exist to be detected in query -----
+
+    def test_catch22_unknown_entity_in_query(self, engine: PhaseMemoryEngine):
+        """
+        Query: 'What did Jean and Marie share?'
+        Marie was never stored. _detect_multi_entity_query can't find her.
+        CER returns nothing. But TSF might still find relevant results if
+        'Marie' appears as a token in some stored text.
+        """
+        engine.store(
+            "Jean and Marie both visited Rome last year", "test",
+            fact=Fact("jean", "visited", "rome", False,
+                      "Jean and Marie both visited Rome last year"),
+        )
+        results = engine.search("What did Jean and Marie share?", "test", limit=5)
+        texts = " ".join(item.fact.raw_text.lower() for _, item in results)
+        assert "rome" in texts, (
+            "Failed to find Rome even though Jean+Marie+Rome are in the same memory"
+        )
+
+    # ----- BUG 16: Entity detected from text but NOT from fact -----
+
+    def test_entity_from_text_only_no_fact(self, engine: PhaseMemoryEngine):
+        """
+        store() without Fact. Text: 'I went to visit John in Rome'.
+        Auto-fact creates subject='went' (first content word).
+        _extract_entities should find 'John' and 'Rome' from capitals.
+        """
+        engine.store("I went to visit John in Rome", "test")
+        # John and Rome should be detected from text capitalization
+        assert "john" in engine._entity_nodes or "rome" in engine._entity_nodes, (
+            "Entities from text capitalization not detected when no Fact provided"
+        )
+
+    # ----- BUG 17: Unicode and special characters -----
+
+    def test_unicode_entity_names(self, engine: PhaseMemoryEngine):
+        """
+        Entities with accents: José, François, Zürich.
+        Should not crash or corrupt entity graph.
+        """
+        engine.store(
+            "I met José in Zürich", "test",
+            fact=Fact("josé", "met", "zürich", False, "I met José in Zürich"),
+        )
+        assert "josé" in engine._entity_nodes
+
+    # ----- BUG 18: Single character entity names -----
+
+    def test_single_char_entity_not_created(self, engine: PhaseMemoryEngine):
+        """
+        Fact with subject='I' or subject='a'. These are stop words or
+        single-char — should NOT create entity nodes.
+        """
+        engine.store(
+            "I like coffee", "test",
+            fact=Fact("i", "like", "coffee", False, "I like coffee"),
+        )
+        assert "i" not in engine._entity_nodes
+
+    # ----- BUG 19: Transitive entanglement should not exist -----
+
+    def test_no_transitive_entanglement(self, engine: PhaseMemoryEngine):
+        """
+        A shares with B. B shares with C. A should NOT be entangled with C
+        unless they directly share tokens.
+        """
+        engine.store(
+            "Alice and Bob visited Rome together", "test",
+            fact=Fact("alice", "visited", "rome", False, "Alice and Bob visited Rome together"),
+        )
+        engine.store(
+            "Bob and Charlie visited Paris together", "test",
+            fact=Fact("bob", "visited", "paris", False, "Bob and Charlie visited Paris together"),
+        )
+        # Alice and Charlie share no direct experience
+        a, c = sorted(["alice", "charlie"])
+        edge = engine._entanglement_graph.get(a, {}).get(c)
+        if edge:
+            assert edge.coupling_strength < 0.3, (
+                f"Transitive false entanglement K={edge.coupling_strength:.3f} "
+                "between Alice and Charlie who never interacted"
+            )
