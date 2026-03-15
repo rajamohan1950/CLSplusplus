@@ -218,12 +218,11 @@ async def memory_cycle(req: MemoryCycleReq):
 
     settings = Settings()
     cycle_id = str(uuid4())
-    extraction_caller = _make_extraction_caller(settings)
 
-    # Phase 1: ENCODE — ingest through the thermodynamic attention gate
+    # Phase 1: ENCODE — store through the thermodynamic engine (zero LLM)
     encode_items = []
     for stmt in req.statements:
-        item = await _phase_engine.ingest(stmt, req.namespace, extraction_caller)
+        item = _phase_engine.store(stmt, req.namespace)
         if item:
             encode_items.append({
                 "id": item.id,
@@ -343,18 +342,6 @@ async def _route_to_llm(settings: Settings, system: str, user_msg: str) -> tuple
     return "I'm having trouble connecting right now. Please try again in a moment.", "none"
 
 
-def _make_extraction_caller(settings: Settings):
-    """Create an LLM caller for the phase engine's attention gate.
-
-    Returns an async function(system, user_msg) → str that routes
-    through the same failover pipeline as chat responses.
-    """
-    async def caller(system: str, user_msg: str) -> str:
-        reply, _ = await _route_to_llm(settings, system, user_msg)
-        return reply
-    return caller
-
-
 class SessionMessageReq(BaseModel):
     message: str = Field(..., min_length=1, max_length=4096)
 
@@ -429,14 +416,12 @@ async def send_message(req: SessionMessageReq, session_id: str = Path(...)):
     # 1. Store user message in session conversation history
     session["messages"].append({"role": "user", "content": user_msg, "timestamp": now})
 
-    # 2. PHASE ENGINE: Ingest message through the Gas → Liquid attention gate.
-    #    The phase engine uses the LLM to extract structured facts (Fact dataclass).
-    #    If the message is a factual statement, it condenses from gas to liquid.
-    #    If it's a question/greeting, it stays gas (returns None, not stored).
+    # 2. PHASE ENGINE: Store message through the thermodynamic engine (zero LLM).
+    #    The engine tokenizes, indexes, detects contradictions, and manages
+    #    thermodynamic state entirely on its own. No external calls.
     #    Surprise (Σ) is computed as KL divergence against existing beliefs.
     #    Contradicted memories receive irreversible surprise damage.
-    extraction_caller = _make_extraction_caller(settings)
-    await _phase_engine.ingest(user_msg, _GLOBAL_NS, extraction_caller)  # returns list now
+    _phase_engine.store(user_msg, _GLOBAL_NS)
 
     # 3. PHASE ENGINE: Retrieve via free energy ranking.
     #    Score = -F(item) × relevance(query, item)

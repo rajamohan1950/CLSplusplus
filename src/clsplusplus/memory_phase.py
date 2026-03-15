@@ -18,6 +18,9 @@ Phase boundary: Gas → Liquid occurs when τ > τ_c1.
 Time is measured in memory events (birth_order), NOT wall-clock seconds.
 Time IS a function of memory dynamics.
 
+ZERO external dependencies. No LLM calls. No embedding models. No APIs.
+The engine is fully self-sufficient: store, retrieve, augment.
+
 References:
     - Landauer (1961): Irreversibility and heat generation in the computing process
     - Friston (2010): The free-energy principle: a unified brain theory?
@@ -29,13 +32,12 @@ Copyright (c) 2026 CLS++. All rights reserved.
 
 from __future__ import annotations
 
-import json
 import math
-import re
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional  # noqa: F401 — Optional used in type hints
+from typing import Any, Optional
 from uuid import uuid4
+
 
 # =============================================================================
 # Stop Words — Excluded from index lookup to prevent noise coupling
@@ -58,6 +60,77 @@ _STOP_WORDS: frozenset[str] = frozenset({
     "take", "give", "find", "let", "put", "keep",
 })
 
+# Override signals — words that indicate a fact REPLACES a previous belief
+_OVERRIDE_SIGNALS: frozenset[str] = frozenset({
+    "only", "exclusively", "always", "never", "actually",
+    "switched", "changed", "anymore", "longer",
+})
+
+
+# =============================================================================
+# Token Processing — Engine-Internal, Zero External Intelligence
+# =============================================================================
+
+
+def _normalize_token(token: str) -> str:
+    """
+    Minimal token normalization: strip trailing 'ing' and 's'.
+
+    NOT a stemmer. Two rules, no exceptions, no conditions beyond length.
+    The engine indexes BOTH raw and normalized forms, so imperfect
+    normalization is acceptable — raw form provides exact match fallback.
+
+    'eating' → 'eat', 'eats' → 'eat', 'visiting' → 'visit',
+    'bananas' → 'banana', 'running' → 'runn' (imperfect but unique)
+    """
+    t = token.lower()
+    if len(t) > 4 and t.endswith("ing"):
+        return t[:-3]
+    if len(t) > 3 and t.endswith("s") and not t.endswith("ss"):
+        return t[:-1]
+    return t
+
+
+def _tokenize(text: str) -> list[str]:
+    """
+    Tokenize text into index-ready tokens.
+
+    Returns a list of tokens ordered by estimated informativeness
+    (longer/rarer tokens first). Both raw and normalized forms included.
+    Stop words and single-character tokens filtered.
+
+    The ordering matters for field radius: when R(s) contracts, common
+    tokens (at the end) are de-indexed first, preserving discriminating tokens.
+    """
+    raw_tokens: list[str] = []
+    seen: set[str] = set()
+
+    for word in text.lower().split():
+        if word in _STOP_WORDS or len(word) <= 1:
+            continue
+        if word not in seen:
+            raw_tokens.append(word)
+            seen.add(word)
+        normalized = _normalize_token(word)
+        if normalized != word and normalized not in seen and len(normalized) > 1:
+            raw_tokens.append(normalized)
+            seen.add(normalized)
+
+    # Sort by length descending — longer tokens are more specific/informative
+    # This is a cheap proxy for IDF before we have corpus statistics
+    raw_tokens.sort(key=len, reverse=True)
+    return raw_tokens
+
+
+def _has_override(text: str) -> bool:
+    """Detect override signals in raw text. Pure pattern matching."""
+    words = set(text.lower().split())
+    if words & _OVERRIDE_SIGNALS:
+        return True
+    # Multi-word signals
+    lower = text.lower()
+    return "no longer" in lower or "not anymore" in lower or "switched to" in lower
+
 
 # =============================================================================
 # Data Structures — The Phases of Information
@@ -70,7 +143,7 @@ class Fact:
     Structured episodic memory unit — the LIQUID phase of information.
 
     A Fact is what remains after raw text (gas) passes through the attention
-    gate (LLM extraction). It has internal structure: a subject-relation-value
+    gate. It has internal structure: a subject-relation-value
     triple that enables contradiction detection and belief revision.
 
     The override flag captures semantic signals ("only", "exclusively",
@@ -150,6 +223,15 @@ class PhaseMemoryItem:
         Number of times this memory has been retrieved.
         Each retrieval reinforces consolidation: s *= (1 + β·ln(1+R)).
         Logarithmic saturation: the 100th recall matters less than the 1st.
+
+    indexed_tokens:
+        Engine-generated tokens from the raw text. Ordered by
+        informativeness (longer/rarer first). Used for token index
+        and field radius computation. Generated internally — no LLM.
+
+    _last_field_radius:
+        Last computed R(s) for lazy index updates. When R changes,
+        tokens are indexed/de-indexed to match the new radius.
     """
 
     id: str
@@ -172,21 +254,12 @@ class PhaseMemoryItem:
     information_content_bits: float = 0.0    # H in bits
     landauer_cost: float = 0.0               # kT·ln(2)·H / τ
 
-    # --- Thermodynamic Semantic Field (TSF) ---
-    # LLM-generated query forms: all ways a human might query this fact
-    # Ordered by priority (canonical first, then common, then rare)
-    query_field_subject: list[str] = field(default_factory=list)
-    query_field_relation: list[str] = field(default_factory=list)
-    query_field_value: list[str] = field(default_factory=list)
+    # --- Token Index (engine-generated, zero external intelligence) ---
+    indexed_tokens: list[str] = field(default_factory=list)
     _last_field_radius: int = -1  # Last R(s) for lazy index update
 
     def to_debug_dict(self, strength_floor: float = 0.05) -> dict[str, Any]:
-        """Serialize thermodynamic state for the debug panel.
-
-        Args:
-            strength_floor: The engine's STRENGTH_FLOOR for phase classification.
-                            Passed from the engine to avoid hardcoded magic numbers.
-        """
+        """Serialize thermodynamic state for the debug panel."""
         s = self.consolidation_strength
         return {
             "id": self.id,
@@ -211,42 +284,6 @@ class PhaseMemoryItem:
         }
 
 
-
-
-# =============================================================================
-# The Extraction Prompt — Attention Gate (Gas → Liquid Boundary)
-# =============================================================================
-
-_EXTRACTION_SYSTEM = (
-    "You are a precise fact extraction engine. You extract structured factual "
-    "claims from user messages AND generate query fields. You ONLY return valid JSON, nothing else."
-)
-
-_EXTRACTION_PROMPT = """Analyze the following message and extract ALL factual claims as a JSON array.
-
-Rules:
-1. If the message states FACTS about entities (who/what something is, does, has, eats, likes, etc.), extract EACH fact separately.
-2. A single message may contain MULTIPLE facts. "I went to Rome and loved the pasta" → two facts.
-3. Normalize subject and relation to lowercase canonical base forms (e.g. "eating" → "eat", "visited" → "visit", "went to" → "go to").
-4. Set "override" to true ONLY if the message contains words like: "only", "exclusively", "always", "never", "actually", "not anymore", "switched to", "changed to", "no longer", "just" (meaning exclusively) — any signal that this REPLACES a previous belief entirely.
-5. If the message is NOT a factual statement (it's a question, greeting, opinion, or command), return exactly: [{{"extract": false}}]
-6. For each fact, generate a "query_field" — all the ways a human might search for this fact:
-   - "subject_aliases": other names/spellings for the subject
-   - "relation_forms": the canonical relation PLUS all morphological variants (eat/eats/eating/ate/eaten) PLUS semantic neighbors (food/diet/meal/snack/cuisine/prefer). Include 8-15 forms.
-   - "value_aliases": other forms of the value (banana/bananas, rome/Roma)
-
-Return ONLY a valid JSON array:
-
-Format A (factual claims with query fields):
-[{{"subject": "entity_name", "relation": "relationship", "value": "the_claim", "override": false, "query_field": {{"subject_aliases": ["name1"], "relation_forms": ["form1", "form2", "form3"], "value_aliases": ["val1"]}}}}]
-
-Format B (not a fact):
-[{{"extract": false}}]
-
-Message: "{message}"
-"""
-
-
 # =============================================================================
 # PhaseMemoryEngine — Thermodynamic Memory System
 # =============================================================================
@@ -255,6 +292,11 @@ Message: "{message}"
 class PhaseMemoryEngine:
     """
     Thermodynamic memory engine implementing the Gas → Liquid phase transition.
+
+    ZERO external dependencies. No LLM calls. No embedding models. No APIs.
+    The engine is fully self-sufficient: store, retrieve, augment.
+
+    Flow: User → store() → search() → build_augmented_context() → User
 
     Minimizes the free energy functional:
 
@@ -268,10 +310,6 @@ class PhaseMemoryEngine:
     Phase transition at τ = τ_c1:
         τ < τ_c1  →  s=0 minimum of F is global  →  gas (memory evaporates)
         τ > τ_c1  →  s=1 minimum of F is global  →  liquid (memory persists)
-
-    The attention gate (LLM fact extraction) IS the phase transition mechanism.
-    Raw text (gas) condenses into structured Facts (liquid) when the extraction
-    succeeds and τ exceeds τ_c1.
     """
 
     def __init__(
@@ -285,26 +323,6 @@ class PhaseMemoryEngine:
         capacity: int = 1000,
         beta_retrieval: float = 0.15,
     ) -> None:
-        """
-        Initialize the thermodynamic memory engine.
-
-        Args:
-            kT: Boltzmann constant × temperature analog. Sets the energy scale
-                for Landauer cost. Higher kT = more expensive to maintain memories.
-            lambda_budget: Energy budget constraint (λ). Scales the Landauer term
-                in the free energy equation. Higher λ = stricter energy budget.
-            tau_c1: Critical consolidation timescale. The phase boundary.
-                τ > τ_c1 → liquid (persistent). τ < τ_c1 → gas (volatile).
-            tau_default: Default τ for normal factual statements.
-                Must be > τ_c1 for facts to persist (enter liquid phase).
-            tau_override: τ for statements with semantic override signals.
-                Much larger than τ_default → stronger consolidation, slower decay.
-            strength_floor: Consolidation strength below which a memory is
-                considered gas-phase and excluded from retrieval.
-            capacity: Maximum items per namespace. Denominator for ρ.
-            beta_retrieval: Coefficient for retrieval reinforcement.
-                s *= (1 + β·ln(1+R)) where R = retrieval count.
-        """
         # Physical constants (computational analogs)
         self.kT: float = kT
         self.LAMBDA: float = lambda_budget
@@ -316,17 +334,16 @@ class PhaseMemoryEngine:
         self.BETA_RETRIEVAL: float = beta_retrieval
 
         # State
-        self._items: dict[str, list[PhaseMemoryItem]] = {}  # namespace → items
-        self._event_counter: int = 0  # Monotonic. Time IS this counter.
-        self._dirty_namespaces: set[str] = set()  # Namespaces needing F recomputation
+        self._items: dict[str, list[PhaseMemoryItem]] = {}
+        self._event_counter: int = 0
 
-        # Triple Index — Thermodynamic Semantic Field (TSF)
-        # Keys: query form strings → lists of PhaseMemoryItems
-        # Built at ingest from LLM-generated query fields
+        # Token Index — Thermodynamic Semantic Field (TSF)
+        # Single token index: token → list of PhaseMemoryItems
         # Entries phase-transition in/out based on R(s) = floor(N × s^(1/3))
-        self._subject_index: dict[str, list[PhaseMemoryItem]] = {}
-        self._relation_index: dict[str, list[PhaseMemoryItem]] = {}
-        self._value_index: dict[str, list[PhaseMemoryItem]] = {}
+        self._token_index: dict[str, list[PhaseMemoryItem]] = {}
+
+        # Document frequency for IDF computation (self-computed from corpus)
+        self._doc_freq: Counter = Counter()
 
     # =========================================================================
     # Core Physics — Information Content (Shannon Entropy)
@@ -339,24 +356,7 @@ class PhaseMemoryEngine:
 
         H = −Σ p(c) · log₂(p(c))
 
-        where p(c) is the empirical probability of character c in the
-        normalized fact string "subject relation value".
-
-        This measures the irreducible information content of the fact —
-        the minimum number of bits needed to encode it. By Landauer's
-        principle, erasing this information costs at least kT·ln(2)·H
-        joules of energy (or its computational analog).
-
-        Character-level entropy is used (not word-level) because:
-        1. It captures structural regularity in the text itself
-        2. It's language-agnostic
-        3. It maps directly to Landauer's bit-level formulation
-        4. Short texts have enough characters for stable estimates,
-           unlike word-level where vocabulary is too small
-
-        Returns:
-            H in bits. Minimum 0.0 (constant string), typically 2.0–4.5
-            for natural language facts.
+        Character-level entropy of "subject relation value".
         """
         text = f"{fact.subject} {fact.relation} {fact.value}".lower()
         if not text:
@@ -373,75 +373,61 @@ class PhaseMemoryEngine:
         return entropy
 
     # =========================================================================
-    # Thermodynamic Semantic Field — Triple Index Architecture
+    # Token Index — Phase-Modulated Field Radius
     # =========================================================================
 
     def _index_item(self, item: PhaseMemoryItem) -> None:
         """
-        Add a memory item to the triple index under its active query field keys.
+        Add a memory item to the token index under its active tokens.
 
-        The number of indexed keys depends on the field radius R(s),
-        which is a function of consolidation strength:
+        The number of indexed tokens depends on the field radius R(s):
 
-            R(s) = floor(N_forms × s^(1/3))
+            R(s) = floor(N_tokens × s^(1/3))
 
         where 1/3 is the mean-field critical exponent ν from 3D thermodynamics.
         Liquid memories (s→1) have broad fields; gas memories have none.
+
+        Tokens are ordered by informativeness (longer first, which correlates
+        with rarity). As s decays, common tokens are de-indexed first,
+        preserving the most discriminating tokens longest.
         """
         s = item.consolidation_strength
         if s < self.STRENGTH_FLOOR:
-            # Gas phase: zero correlation length, invisible
             self._deindex_item(item)
             item._last_field_radius = 0
             return
 
-        # Compute field radius R(s) = floor(N × s^(1/3))
+        tokens = item.indexed_tokens
+        n_tokens = len(tokens)
         cube_root_s = s ** (1.0 / 3.0)
+        radius = max(1, int(n_tokens * cube_root_s))
 
-        for keys, index in [
-            (item.query_field_subject, self._subject_index),
-            (item.query_field_relation, self._relation_index),
-            (item.query_field_value, self._value_index),
-        ]:
-            n_keys = len(keys)
-            radius = max(1, int(n_keys * cube_root_s))  # At least canonical form
+        # Index tokens within radius
+        for token in tokens[:radius]:
+            if token not in self._token_index:
+                self._token_index[token] = []
+            if item not in self._token_index[token]:
+                self._token_index[token].append(item)
 
-            for key in keys[:radius]:
-                if key not in index:
-                    index[key] = []
-                if item not in index[key]:
-                    index[key].append(item)
+        # De-index tokens beyond radius
+        for token in tokens[radius:]:
+            if token in self._token_index and item in self._token_index[token]:
+                self._token_index[token].remove(item)
+                if not self._token_index[token]:
+                    del self._token_index[token]
 
-            # De-index keys beyond radius
-            for key in keys[radius:]:
-                if key in index and item in index[key]:
-                    index[key].remove(item)
-                    if not index[key]:
-                        del index[key]
-
-        item._last_field_radius = int(
-            len(item.query_field_relation) * cube_root_s
-        )
+        item._last_field_radius = radius
 
     def _deindex_item(self, item: PhaseMemoryItem) -> None:
-        """Remove a memory item from all indexes."""
-        for keys, index in [
-            (item.query_field_subject, self._subject_index),
-            (item.query_field_relation, self._relation_index),
-            (item.query_field_value, self._value_index),
-        ]:
-            for key in keys:
-                if key in index and item in index[key]:
-                    index[key].remove(item)
-                    if not index[key]:
-                        del index[key]
+        """Remove a memory item from the token index entirely."""
+        for token in item.indexed_tokens:
+            if token in self._token_index and item in self._token_index[token]:
+                self._token_index[token].remove(item)
+                if not self._token_index[token]:
+                    del self._token_index[token]
 
     def _update_field_radius(self, item: PhaseMemoryItem) -> None:
-        """
-        Lazy field radius update. Only re-indexes if R(s) has changed.
-
-        Called during search for candidate items. O(1) if radius unchanged.
-        """
+        """Lazy field radius update. Only re-indexes if R(s) has changed."""
         s = item.consolidation_strength
         if s < self.STRENGTH_FLOOR:
             if item._last_field_radius != 0:
@@ -450,24 +436,57 @@ class PhaseMemoryEngine:
             return
 
         cube_root_s = s ** (1.0 / 3.0)
-        new_radius = max(1, int(len(item.query_field_relation) * cube_root_s))
+        new_radius = max(1, int(len(item.indexed_tokens) * cube_root_s))
 
         if new_radius != item._last_field_radius:
             self._index_item(item)
 
-    @staticmethod
-    def _tokenize_query(query: str) -> list[str]:
+    def _compute_idf(self, token: str) -> float:
         """
-        Tokenize a query into lookup tokens, filtering stop words.
+        Compute Inverse Document Frequency for a token.
 
-        Returns unigrams + bigrams for multi-word query form matching.
+        idf(t) = log(1 + N / (1 + df(t)))
+
+        Self-computed from the engine's own corpus. Zero external knowledge.
+        N = total items across all namespaces.
+        df(t) = number of items containing token t.
         """
-        words = [w for w in query.lower().split() if w not in _STOP_WORDS and len(w) > 1]
+        total_items = sum(len(items) for items in self._items.values())
+        df = self._doc_freq.get(token, 0)
+        return math.log(1.0 + total_items / (1.0 + df))
 
-        # Generate bigrams for multi-word query forms (e.g. "favorite food")
-        bigrams = [f"{words[i]} {words[i+1]}" for i in range(len(words) - 1)]
+    # =========================================================================
+    # Contradiction Detection — Token Overlap (No S/R/V Required)
+    # =========================================================================
 
-        return words + bigrams
+    def _detect_contradiction(
+        self,
+        new_tokens: set[str],
+        existing_item: PhaseMemoryItem,
+    ) -> tuple[str, float]:
+        """
+        Detect contradiction between new text and existing memory via token overlap.
+
+        Returns:
+            ('confirmation', 0.0) — high overlap, same content
+            ('contradiction', surprise) — partial overlap, different content
+            ('unrelated', 0.0) — low overlap, different topics
+        """
+        old_tokens = set(existing_item.indexed_tokens)
+        if not old_tokens or not new_tokens:
+            return "unrelated", 0.0
+
+        shared = new_tokens & old_tokens
+        union = new_tokens | old_tokens
+        shared_ratio = len(shared) / max(len(union), 1)
+
+        if shared_ratio > 0.6:
+            return "confirmation", 0.0
+        if shared_ratio > 0.25:
+            # Jaccard distance as surprise proxy
+            surprise = 1.0 - shared_ratio
+            return "contradiction", surprise
+        return "unrelated", 0.0
 
     # =========================================================================
     # Core Physics — Surprise (KL Divergence)
@@ -481,89 +500,69 @@ class PhaseMemoryEngine:
         """
         Compute surprise Σ as KL divergence D_KL(new || existing_model).
 
-        Information-theoretic surprise measures how much the new observation
-        deviates from the system's existing beliefs on the same
-        (subject, relation) dimension.
-
-        Mathematical formulation:
-            Let P_new be the distribution concentrated on new_fact.value.
-            Let P_old be the distribution over existing values for the same
-            (subject, relation).
-
-            D_KL(P_new || P_old) = Σ P_new(v) · ln(P_new(v) / P_old(v))
-
-        For discrete facts (single values, not distributions):
-            - If P_old has no entry for (subject, relation): Σ = 0
-              (new information, no contradiction — nothing to be surprised about)
-            - If P_old.value == P_new.value: Σ = 0
-              (confirmation, no surprise)
-            - If values differ (soft contradiction):
-              Σ = 1 − J(new_value, old_value)
-              where J is the Jaccard similarity of character bigrams.
-              This approximates the overlap between value distributions.
-            - If values differ AND override=True (hard override):
-              Σ = −ln(ε) where ε = 1e-6, capped at practical maximum.
-              The override signal concentrates ALL probability mass on the
-              new value, making P_old(new_value) → 0, so D_KL → ∞.
-              We cap at −ln(1e-6) ≈ 13.8 for numerical stability.
-
-        Args:
-            new_fact: The newly extracted Fact.
-            existing_items: All items in the namespace.
-
-        Returns:
-            (surprise_value, list_of_contradicted_items)
-            surprise_value: Σ ∈ [0, ~13.8]
-            contradicted_items: Items that share (subject, relation) with
-                different values — these will receive surprise damage.
+        For structured facts: matches on (subject, relation) dimension.
         """
         contradicted: list[PhaseMemoryItem] = []
         max_surprise = 0.0
 
         for item in existing_items:
-            # Match on (subject, relation) dimension
             if (
                 item.fact.subject == new_fact.subject
                 and item.fact.relation == new_fact.relation
                 and item.consolidation_strength >= self.STRENGTH_FLOOR
             ):
-                # Same entity, same relation — check value
                 if item.fact.value == new_fact.value:
-                    # Confirmation — zero surprise, reinforcement (handled elsewhere)
-                    continue
+                    continue  # Confirmation
 
-                # Contradiction detected — compute KL divergence
                 contradicted.append(item)
 
                 if new_fact.override:
-                    # Hard override: D_KL → ∞, capped
-                    # P_new concentrates on new_value, P_old has zero mass there
-                    # D_KL = -ln(ε) where ε → 0
                     sigma = -math.log(1e-6)  # ≈ 13.8 nats
                 else:
-                    # Soft contradiction: use Jaccard distance on character bigrams
-                    # as proxy for distributional divergence
                     sigma = self._bigram_divergence(new_fact.value, item.fact.value)
 
                 max_surprise = max(max_surprise, sigma)
 
         return max_surprise, contradicted
 
+    def _compute_surprise_from_tokens(
+        self,
+        new_text: str,
+        new_tokens: set[str],
+        namespace: str,
+    ) -> tuple[float, list[PhaseMemoryItem]]:
+        """
+        Compute surprise from raw text using token overlap.
+
+        Used when storing raw text without structured (S, R, V) facts.
+        Detects contradictions by finding existing memories with high
+        token overlap but different content.
+        """
+        existing = self._items.get(namespace, [])
+        contradicted: list[PhaseMemoryItem] = []
+        max_surprise = 0.0
+        is_override = _has_override(new_text)
+
+        for item in existing:
+            if item.consolidation_strength < self.STRENGTH_FLOOR:
+                continue
+
+            result, surprise = self._detect_contradiction(new_tokens, item)
+
+            if result == "confirmation":
+                # High overlap = likely same content, reinforce
+                item.retrieval_count += 1
+            elif result == "contradiction":
+                contradicted.append(item)
+                if is_override:
+                    surprise = -math.log(1e-6)  # Override amplification
+                max_surprise = max(max_surprise, surprise)
+
+        return max_surprise, contradicted
+
     @staticmethod
     def _bigram_divergence(new_value: str, old_value: str) -> float:
-        """
-        Approximate KL divergence via 1 − Jaccard similarity of character bigrams.
-
-        Bigrams capture local structure. Jaccard similarity J ∈ [0, 1] measures
-        set overlap. D_approx = 1 − J gives a [0, 1] divergence measure.
-
-        For identical strings: J = 1, D = 0 (no surprise).
-        For completely different strings: J = 0, D = 1 (max soft surprise).
-
-        This is a lower bound on true KL divergence for the soft-contradiction
-        case (no override signal). The override case uses the exact -ln(ε)
-        formulation instead.
-        """
+        """Approximate KL divergence via 1 − Jaccard similarity of character bigrams."""
         def _bigrams(s: str) -> set[str]:
             s = s.lower().strip()
             return {s[i:i + 2] for i in range(len(s) - 1)} if len(s) >= 2 else {s}
@@ -593,57 +592,46 @@ class PhaseMemoryEngine:
         """
         Apply irreversible surprise damage to contradicted memories.
 
-        When a new memory contradicts an existing one, the old memory's
-        consolidation is DAMAGED. This models Misanin-Miller-Lewis
-        reconsolidation: retrieving (or being reminded of) a memory
-        makes it labile — susceptible to modification.
-
         Damage formula:
             D = σ(Σ_norm) · (τ_new / τ_old) · amplifier
 
-        where:
-            Σ_norm = Σ / Σ_max, normalized surprise ∈ [0, 1]
-            σ(x) = 1 / (1 + exp(-10·(x - 0.5))), sigmoid sharpening
-                Converts normalized surprise into a damage probability.
-                Low surprise → near-zero damage. High surprise → near-total damage.
-                The sigmoid models the nonlinear nature of belief revision:
-                small surprises are absorbed, large surprises are catastrophic.
-            τ_new / τ_old = relative consolidation strength.
-                A strongly consolidated new memory (high τ_new) does more
-                damage to a weakly consolidated old memory (low τ_old).
-            amplifier = 1.5 if override, 1.0 otherwise.
-
-        The damage is ACCUMULATED (irreversible). A memory that has been
-        contradicted multiple times accumulates damage from each event.
-        This models the thermodynamic arrow: you can't un-surprise a system.
-
-        Args:
-            surprise: Σ from the new fact (in nats).
-            contradicted: Items to damage.
-            new_fact: The new fact (used for override amplifier and τ).
+        where σ is a sigmoid sharpening function.
         """
-        # Maximum possible surprise: -ln(1e-6) ≈ 13.8 nats
         SIGMA_MAX = -math.log(1e-6)
         sigma_norm = min(surprise / SIGMA_MAX, 1.0)
 
-        # Sigmoid sharpening: small surprises → negligible damage,
-        # large surprises → near-total damage
-        # σ(x) = 1 / (1 + exp(-k·(x - 0.5))) with k=10 for sharp transition
         sigmoid_damage = 1.0 / (1.0 + math.exp(-10.0 * (sigma_norm - 0.5)))
 
         amplifier = 1.5 if new_fact.override else 1.0
         tau_new = self.TAU_OVERRIDE if new_fact.override else self.TAU_DEFAULT
 
         for item in contradicted:
-            # Relative consolidation: how much stronger is the new memory?
             tau_ratio = tau_new / max(item.tau, 1e-6)
-            # Scale tau_ratio to be meaningful: cap at 2x effect
-            tau_factor = min(tau_ratio, 4.0) / 4.0 + 0.5  # ∈ [0.5, 1.5]
-
+            tau_factor = min(tau_ratio, 4.0) / 4.0 + 0.5
             damage = sigmoid_damage * tau_factor * amplifier
             item.accumulated_surprise_damage = min(
                 item.accumulated_surprise_damage + damage,
-                2.0,  # Cap: beyond 2.0, item is irrecoverably dead anyway (s clamped to 0)
+                2.0,
+            )
+
+    def _apply_token_surprise_damage(
+        self,
+        surprise: float,
+        contradicted: list[PhaseMemoryItem],
+        is_override: bool,
+    ) -> None:
+        """Apply surprise damage for token-based contradiction detection."""
+        SIGMA_MAX = -math.log(1e-6)
+        sigma_norm = min(surprise / SIGMA_MAX, 1.0)
+
+        sigmoid_damage = 1.0 / (1.0 + math.exp(-10.0 * (sigma_norm - 0.5)))
+        amplifier = 1.5 if is_override else 1.0
+
+        for item in contradicted:
+            damage = sigmoid_damage * amplifier
+            item.accumulated_surprise_damage = min(
+                item.accumulated_surprise_damage + damage,
+                2.0,
             )
 
     # =========================================================================
@@ -655,42 +643,6 @@ class PhaseMemoryEngine:
         Compute the order parameter s(t) — consolidation strength.
 
         s(t) = s₀ · exp(−Δt / τ) · (1 + β · ln(1 + R)) − D
-
-        where:
-            s₀ = 1.0     (initial strength at birth)
-            Δt           = current_event_counter − birth_order
-                           (memory-relative time, NOT wall-clock)
-            τ            = consolidation timescale (events)
-            β            = retrieval reinforcement coefficient
-            R            = retrieval_count
-            D            = accumulated_surprise_damage
-
-        Term-by-term physics:
-
-        exp(−Δt / τ):
-            Natural exponential decay. Every memory fades without reinforcement.
-            τ sets the timescale: high τ = slow decay = liquid phase.
-            At the phase boundary τ = τ_c1, the decay rate exactly balances
-            the minimum persistence threshold (strength_floor).
-
-        (1 + β · ln(1 + R)):
-            Retrieval reinforcement. Each time a memory is recalled, it
-            strengthens. Logarithmic saturation models the psychological
-            finding that early retrievals have more impact than later ones
-            (spacing effect, Ebbinghaus).
-
-        −D:
-            Irreversible surprise damage. Subtracted directly from strength.
-            This is the thermodynamic arrow — entropy increases.
-            A memory that has been contradicted cannot fully recover.
-
-        Phase transition:
-            When τ > τ_c1: exp(−Δt/τ) decays slowly → s stays above floor → LIQUID
-            When τ < τ_c1: exp(−Δt/τ) decays fast → s drops below floor → GAS
-            The transition is continuous but sharp near τ_c1.
-
-        Returns:
-            s ∈ [0, 1]. Clamped.
         """
         natural_decay = math.exp(-delta_t / max(item.tau, 1e-6))
         retrieval_boost = 1.0 + self.BETA_RETRIEVAL * math.log1p(item.retrieval_count)
@@ -702,34 +654,7 @@ class PhaseMemoryEngine:
     # =========================================================================
 
     def _compute_landauer_cost(self, item: PhaseMemoryItem) -> float:
-        """
-        Compute the Landauer erasure cost per memory event.
-
-        L = kT · ln(2) · H(item) / τ
-
-        Landauer's principle (1961): The minimum thermodynamic cost of
-        erasing one bit of information is kT · ln(2) joules, where
-        k is Boltzmann's constant and T is temperature.
-
-        In our computational analog:
-            kT = energy scale parameter (sets how "expensive" memory is)
-            H(item) = Shannon entropy of the fact in bits
-            τ = consolidation timescale
-
-        The division by τ converts total erasure cost into per-event
-        maintenance cost. A strongly consolidated memory (high τ) pays
-        its Landauer cost over many events, making the per-event cost low.
-        A weakly consolidated memory (low τ) pays the same total cost
-        over fewer events, making per-event cost high.
-
-        This creates the thermodynamic incentive structure:
-            - Strongly consolidated (high τ): low per-event cost → favored
-            - Weakly consolidated (low τ): high per-event cost → disfavored
-            - The system naturally prefers consolidated memories.
-
-        Returns:
-            L ≥ 0. The Landauer cost contribution to free energy.
-        """
+        """L = kT · ln(2) · H(item) / τ"""
         return (self.kT * math.log(2) * item.information_content_bits) / max(item.tau, 1e-6)
 
     # =========================================================================
@@ -741,62 +666,19 @@ class PhaseMemoryEngine:
         Compute per-item free energy.
 
         F(θ, Σ, ρ, τ) = E_prediction(θ) − Σ · S_model(θ) + λ · L_landauer(θ, τ)
-
-        Term 1: E_prediction = 1 − s(t)
-            Prediction error. A strong memory (s → 1) means the system
-            "knows" this fact → low prediction error. A weak memory (s → 0)
-            means high uncertainty → high prediction error.
-            This is Friston's variational free energy: the system minimizes
-            prediction error by maintaining accurate world models.
-
-        Term 2: −Σ · S_model = −Σ_birth · H(item) · ρ
-            Negative sign: surprise REDUCES free energy for informative memories.
-            This is the information-theoretic incentive: surprising facts that
-            carry high information (H) in a dense memory system (ρ) are
-            VALUABLE — they reduce F and are favored for retention.
-            This prevents the system from only keeping unsurprising trivia.
-
-        Term 3: +λ · L_landauer = λ · kT · ln(2) · H / τ
-            Positive sign: maintenance has a thermodynamic COST.
-            High-information memories cost more to maintain (Landauer).
-            But high τ amortizes the cost.
-            λ scales the energy budget constraint.
-
-        Phase transition mechanics:
-            At s = 0 (gas):  F = 1 − Σ·H·ρ + λ·L  (high E_pred, but no decay)
-            At s = 1 (liquid): F = 0 − Σ·H·ρ + λ·L  (low E_pred, decay active)
-
-            When τ > τ_c1, the s=1 state has lower F → liquid is stable.
-            When τ < τ_c1, the s=0 state has lower F → gas is stable.
-            The transition occurs when these minima exchange global stability.
-
-        Args:
-            item: The memory to evaluate.
-            global_rho: Current memory density ρ = |active_items| / capacity.
-
-        Returns:
-            F(θ). Lower = more stable = better for the system.
         """
         delta_t = self._event_counter - item.birth_order
 
-        # Order parameter
         s = self._compute_consolidation(item, delta_t)
         item.consolidation_strength = s
 
-        # Term 1: Prediction error
         E_pred = 1.0 - s
-
-        # Term 2: Information value (surprise × entropy × density)
         S_model = item.information_content_bits * max(global_rho, 1e-9)
-
-        # Term 3: Landauer maintenance cost
         L_land = self._compute_landauer_cost(item)
         item.landauer_cost = L_land
 
-        # Free energy
         F = E_pred - item.surprise_at_birth * S_model + self.LAMBDA * L_land
         item.free_energy = F
-
         return F
 
     # =========================================================================
@@ -804,268 +686,169 @@ class PhaseMemoryEngine:
     # =========================================================================
 
     def _memory_density(self, namespace: str) -> float:
-        """
-        Compute memory density ρ = |active items| / capacity.
-
-        Active items are those with consolidation_strength ≥ strength_floor
-        (i.e., in the liquid phase). Gas-phase items don't contribute to density.
-
-        ρ is the effective "pressure" in the phase diagram:
-            Low ρ: sparse memory, low competition between items
-            High ρ: dense memory, competition forces consolidation or evaporation
-            At critical ρ_c: liquid → solid transition (future implementation)
-
-        Returns:
-            ρ ∈ [0, 1]. 0 = empty, 1 = at capacity.
-        """
+        """ρ = |active items| / capacity."""
         items = self._items.get(namespace, [])
         active = sum(1 for item in items if item.consolidation_strength >= self.STRENGTH_FLOOR)
         return active / max(self.CAPACITY, 1)
 
     # =========================================================================
-    # Attention Gate — Gas → Liquid Phase Transition
+    # Store — Self-Sufficient Ingestion (Zero LLM)
     # =========================================================================
 
-    async def _extract_facts(
+    def store(
         self,
-        message: str,
-        llm_caller: Callable,
-    ) -> list[tuple[Fact, list[str], list[str], list[str]]]:
-        """
-        The attention gate. The Gas → Liquid phase boundary.
-
-        Raw text (gas phase) is passed through LLM extraction. If the LLM
-        identifies factual claims, they condense into structured Facts
-        (liquid phase) with LLM-generated query fields (semantic fields).
-
-        Args:
-            message: Raw user message (gas phase).
-            llm_caller: Async function(system, user_msg) → str.
-
-        Returns:
-            List of (Fact, subject_aliases, relation_forms, value_aliases).
-            Empty list if the message stays in gas phase.
-        """
-        prompt = _EXTRACTION_PROMPT.format(message=message)
-
-        try:
-            raw_response = await llm_caller(_EXTRACTION_SYSTEM, prompt)
-            json_str = raw_response.strip()
-
-            # Try to parse as JSON array first (multi-fact format)
-            array_match = re.search(r'\[.*\]', json_str, re.DOTALL)
-            if array_match:
-                data_list = json.loads(array_match.group(0))
-                if isinstance(data_list, list):
-                    return self._parse_fact_list(data_list, message)
-
-            # Fallback: parse as single JSON object (backward compatibility)
-            all_matches = list(re.finditer(r'\{[^{}]*\}', json_str, re.DOTALL))
-            if not all_matches:
-                return []
-            json_str = all_matches[-1].group(0)
-            data = json.loads(json_str)
-            fact, sa, rf, va = self._parse_single_fact(data, message)
-            return [(fact, sa, rf, va)] if fact else []
-
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-            return []
-        except Exception:
-            return []
-
-    def _parse_single_fact(
-        self, data: dict, raw_text: str,
-    ) -> tuple[Optional[Fact], list[str], list[str], list[str]]:
-        """Parse a single fact dict into a Fact object with query field.
-
-        Returns:
-            (fact_or_none, subject_aliases, relation_forms, value_aliases)
-        """
-        empty_field: tuple[None, list[str], list[str], list[str]] = (None, [], [], [])
-
-        if data.get("extract") is False:
-            return empty_field
-
-        subject = str(data.get("subject", "")).lower().strip()
-        relation = str(data.get("relation", "")).lower().strip()
-        value = str(data.get("value", "")).lower().strip()
-        override = bool(data.get("override", False))
-
-        if not subject or not relation or not value:
-            return empty_field
-
-        # Parse query field (LLM-generated semantic field)
-        qf = data.get("query_field", {})
-        if not isinstance(qf, dict):
-            qf = {}
-
-        subject_aliases = [s.lower().strip() for s in qf.get("subject_aliases", []) if s]
-        relation_forms = [r.lower().strip() for r in qf.get("relation_forms", []) if r]
-        value_aliases = [v.lower().strip() for v in qf.get("value_aliases", []) if v]
-
-        # Ensure canonical forms are always included
-        if subject not in subject_aliases:
-            subject_aliases.insert(0, subject)
-        if relation not in relation_forms:
-            relation_forms.insert(0, relation)
-        if value not in value_aliases:
-            value_aliases.insert(0, value)
-
-        fact = Fact(
-            subject=subject,
-            relation=relation,
-            value=value,
-            override=override,
-            raw_text=raw_text,
-        )
-        return fact, subject_aliases, relation_forms, value_aliases
-
-    def _parse_fact_list(
-        self, data_list: list, raw_text: str,
-    ) -> list[tuple[Fact, list[str], list[str], list[str]]]:
-        """Parse a list of fact dicts into Fact objects with query fields."""
-        results = []
-        for data in data_list:
-            if not isinstance(data, dict):
-                continue
-            fact, sa, rf, va = self._parse_single_fact(data, raw_text)
-            if fact:
-                results.append((fact, sa, rf, va))
-        return results
-
-    async def ingest(
-        self,
-        message: str,
+        text: str,
         namespace: str,
-        llm_caller: Callable,
-    ) -> list[PhaseMemoryItem]:
+        fact: Optional[Fact] = None,
+    ) -> Optional[PhaseMemoryItem]:
         """
-        Full Gas → Liquid ingestion pipeline with multi-fact extraction.
+        Store raw text as a memory item. Zero external calls.
 
-        1. EXTRACTION (attention gate): Raw text → [Fact, ...] (or [])
-        2. For each extracted fact:
-           a. CONFIRMATION: Deduplicate if exact match exists
-           b. SURPRISE: Compute D_KL(new || existing) on (subject, relation)
-           c. DAMAGE: Apply surprise to contradicted memories
-           d. STORE: Create PhaseMemoryItem with computed thermodynamic state
-        3. FREE ENERGY: Update F for all items in namespace
+        The engine tokenizes, indexes, detects contradictions, and manages
+        thermodynamic state entirely on its own.
+
+        If a pre-extracted Fact is provided (from an external orchestration
+        layer), it's used for structured contradiction detection. Otherwise,
+        token-overlap contradiction detection is used.
 
         Args:
-            message: Raw user message.
-            namespace: Memory namespace (global shared).
-            llm_caller: Async function(system, user_msg) → str.
+            text: Raw text to store.
+            namespace: Memory namespace.
+            fact: Optional pre-extracted Fact for structured surprise computation.
 
         Returns:
-            List of PhaseMemoryItems condensed to liquid. Empty list if all stayed gas.
+            PhaseMemoryItem if stored, None if confirmed (duplicate reinforced).
         """
-        # --- Advance memory-relative time FIRST ---
         self._event_counter += 1
 
-        # --- Step 1: Attention gate (multi-fact with query fields) ---
-        extracted = await self._extract_facts(message, llm_caller)
-        if not extracted:
-            return []  # Stayed gas. Evaporated.
+        # --- Tokenize (engine-internal) ---
+        tokens = _tokenize(text)
+        token_set = set(tokens)
 
-        result_items: list[PhaseMemoryItem] = []
+        # --- Build or use Fact ---
+        if fact is None:
+            # Auto-create minimal fact from raw text
+            # Subject: first non-stop token, relation: second, value: rest
+            content_words = [w for w in text.lower().split()
+                            if w not in _STOP_WORDS and len(w) > 1]
+            if len(content_words) >= 3:
+                subject = content_words[0]
+                relation = content_words[1]
+                value = " ".join(content_words[2:])
+            elif len(content_words) == 2:
+                subject = content_words[0]
+                relation = content_words[1]
+                value = content_words[1]
+            elif len(content_words) == 1:
+                subject = content_words[0]
+                relation = ""
+                value = ""
+            else:
+                subject = ""
+                relation = ""
+                value = ""
 
-        for fact, subject_aliases, relation_forms, value_aliases in extracted:
-            existing = self._items.get(namespace, [])
-
-            # --- Step 1b: Check for CONFIRMATION (exact duplicate) ---
-            confirmed = False
-            for item in existing:
-                if (
-                    item.fact.subject == fact.subject
-                    and item.fact.relation == fact.relation
-                    and item.fact.value == fact.value
-                    and item.consolidation_strength >= self.STRENGTH_FLOOR
-                ):
-                    item.retrieval_count += 1
-                    result_items.append(item)
-                    confirmed = True
-                    break
-
-            if confirmed:
-                continue
-
-            # --- Step 2: Compute surprise ---
-            surprise, contradicted = self._compute_surprise(fact, existing)
-
-            # --- Step 3: Apply surprise damage ---
-            if contradicted:
-                self._apply_surprise_damage(surprise, contradicted, fact)
-
-            # --- Step 4: Compute thermodynamic state ---
-            rho = self._memory_density(namespace)
-            tau = self.TAU_OVERRIDE if fact.override else self.TAU_DEFAULT
-            H = self._information_content(fact)
-            L = (self.kT * math.log(2) * H) / max(tau, 1e-6)
-
-            item = PhaseMemoryItem(
-                id=str(uuid4()),
-                fact=fact,
-                namespace=namespace,
-                consolidation_strength=1.0,
-                surprise_at_birth=surprise,
-                tau=tau,
-                birth_order=self._event_counter,
-                rho_at_birth=rho,
-                free_energy=0.0,
-                retrieval_count=0,
-                accumulated_surprise_damage=0.0,
-                information_content_bits=H,
-                landauer_cost=L,
-                query_field_subject=subject_aliases,
-                query_field_relation=relation_forms,
-                query_field_value=value_aliases,
+            override = _has_override(text)
+            fact = Fact(
+                subject=subject,
+                relation=relation,
+                value=value,
+                override=override,
+                raw_text=text,
             )
 
-            # --- Step 5: Store + Index ---
-            self._items.setdefault(namespace, []).append(item)
-            self._index_item(item)
-            self._dirty_namespaces.add(namespace)
-            result_items.append(item)
+        existing = self._items.get(namespace, [])
 
-        # --- Step 6: Recompute free energy for ALL items ---
+        # --- Check for confirmation (exact duplicate) ---
+        for item in existing:
+            if (
+                item.fact.subject == fact.subject
+                and item.fact.relation == fact.relation
+                and item.fact.value == fact.value
+                and item.consolidation_strength >= self.STRENGTH_FLOOR
+            ):
+                item.retrieval_count += 1
+                return item  # Confirmation — reinforced existing
+
+        # --- Compute surprise ---
+        if fact.subject and fact.relation:
+            # Structured surprise (if we have S, R, V)
+            surprise, contradicted = self._compute_surprise(fact, existing)
+        else:
+            # Token-based surprise (raw text)
+            surprise, contradicted = self._compute_surprise_from_tokens(
+                text, token_set, namespace,
+            )
+
+        # --- Apply surprise damage ---
+        if contradicted:
+            if fact.subject and fact.relation:
+                self._apply_surprise_damage(surprise, contradicted, fact)
+            else:
+                self._apply_token_surprise_damage(
+                    surprise, contradicted, fact.override,
+                )
+
+        # --- Compute thermodynamic state ---
+        rho = self._memory_density(namespace)
+        tau = self.TAU_OVERRIDE if fact.override else self.TAU_DEFAULT
+        H = self._information_content(fact)
+        L = (self.kT * math.log(2) * H) / max(tau, 1e-6)
+
+        item = PhaseMemoryItem(
+            id=str(uuid4()),
+            fact=fact,
+            namespace=namespace,
+            consolidation_strength=1.0,
+            surprise_at_birth=surprise,
+            tau=tau,
+            birth_order=self._event_counter,
+            rho_at_birth=rho,
+            free_energy=0.0,
+            retrieval_count=0,
+            accumulated_surprise_damage=0.0,
+            information_content_bits=H,
+            landauer_cost=L,
+            indexed_tokens=tokens,
+        )
+
+        # --- Store + Index ---
+        self._items.setdefault(namespace, []).append(item)
+        self._index_item(item)
+
+        # Update document frequency
+        for token in set(tokens):
+            self._doc_freq[token] += 1
+
+        # --- Recompute free energy for ALL items ---
         self._recompute_all_free_energies(namespace)
 
-        return result_items
+        return item
 
     # =========================================================================
     # Free Energy Recomputation
     # =========================================================================
 
     def _recompute_all_free_energies(self, namespace: str) -> None:
-        """
-        Recompute F(θ) for every item in the namespace, then garbage-collect
-        gas-phase items that have decayed beyond recovery.
-
-        Must be called after any state change (new item, retrieval, damage)
-        because F depends on global ρ which changes when items enter/exit
-        the liquid phase.
-
-        Garbage collection: items with s=0 AND accumulated_surprise_damage > 1.0
-        are truly dead — they can never return to liquid phase. Removing them
-        prevents unbounded memory growth from gas-phase corpses.
-        """
+        """Recompute F(θ) for every item in the namespace, then GC dead items."""
         items = self._items.get(namespace, [])
         rho = self._memory_density(namespace)
         for item in items:
             self._compute_free_energy(item, rho)
 
-        # GC: remove items that are irrecoverably dead
-        # Condition: s=0 (clamped) AND enough damage that even retrieval can't save them
         alive = []
         for item in items:
             if item.consolidation_strength > 0.0 or item.accumulated_surprise_damage < 1.0:
                 alive.append(item)
             else:
-                # Fully dead — deindex before removal
                 self._deindex_item(item)
+                # Decrement doc freq for dead item's tokens
+                for token in set(item.indexed_tokens):
+                    self._doc_freq[token] = max(0, self._doc_freq.get(token, 1) - 1)
         self._items[namespace] = alive
 
     # =========================================================================
-    # Retrieval — Free Energy Ranked Search
+    # Retrieval — IDF-Weighted Token Match + Boltzmann Ranking
     # =========================================================================
 
     def search(
@@ -1075,85 +858,53 @@ class PhaseMemoryEngine:
         limit: int = 10,
     ) -> list[tuple[float, PhaseMemoryItem]]:
         """
-        Thermodynamic Semantic Field (TSF) retrieval.
+        Thermodynamic Semantic Field (TSF) retrieval. Zero external calls.
 
         Ranking equation:
-            rank(q, i) = (n_matched_slots - 1) - F_i / kT
+            rank(q, i) = Σ idf(matched_tokens) - F_i / kT
 
-        where n_matched_slots ∈ {1, 2, 3} is how many (S, R, V) index
-        slots the query matched, and F_i is the full free energy.
+        Search path (sub-μs):
+            query → tokenize + normalize → lookup token_index
+            → union candidates → IDF-weighted score → Boltzmann rank → top-k
 
-        Search path (sub-μs, zero ML):
-            query → tokenize → filter stopwords → generate bigrams
-            → hash lookup against subject/relation/value indexes
-            → union candidates → score each → sort → return top-k
-
-        Fallback: if zero candidates from index, return top-k liquid
-        items by pure Boltzmann rank -F/kT (maximum entropy response).
-
-        Args:
-            query: The search query.
-            namespace: Memory namespace.
-            limit: Maximum items to return.
-
-        Returns:
-            List of (score, item) tuples, sorted by score descending.
+        Fallback: if zero candidates, return all liquid items by -F/kT.
         """
-        # Ensure free energies are current
         self._recompute_all_free_energies(namespace)
 
-        # Tokenize query: unigrams + bigrams, stopwords removed
-        tokens = self._tokenize_query(query)
+        # Tokenize query (same pipeline as store)
+        query_tokens = _tokenize(query)
+        query_token_set = set(query_tokens)
 
-        # Index lookup: find candidates and track which slots matched
-        # item_id → (item, set of matched slot names)
-        candidates: dict[str, tuple[PhaseMemoryItem, set[str]]] = {}
+        # Index lookup → candidates with matched tokens
+        candidates: dict[str, tuple[PhaseMemoryItem, list[str]]] = {}
 
-        for token in tokens:
-            # Subject index
-            if token in self._subject_index:
-                for item in self._subject_index[token]:
+        for token in query_tokens:
+            if token in self._token_index:
+                for item in self._token_index[token]:
                     if item.namespace != namespace:
                         continue
                     if item.id not in candidates:
-                        candidates[item.id] = (item, set())
-                    candidates[item.id][1].add("subject")
-
-            # Relation index
-            if token in self._relation_index:
-                for item in self._relation_index[token]:
-                    if item.namespace != namespace:
-                        continue
-                    if item.id not in candidates:
-                        candidates[item.id] = (item, set())
-                    candidates[item.id][1].add("relation")
-
-            # Value index
-            if token in self._value_index:
-                for item in self._value_index[token]:
-                    if item.namespace != namespace:
-                        continue
-                    if item.id not in candidates:
-                        candidates[item.id] = (item, set())
-                    candidates[item.id][1].add("value")
+                        candidates[item.id] = (item, [])
+                    if token not in candidates[item.id][1]:
+                        candidates[item.id][1].append(token)
 
         scored: list[tuple[float, PhaseMemoryItem]] = []
 
         if candidates:
-            for item, matched_slots in candidates.values():
-                # Gas-phase items are invisible
+            for item, matched_tokens in candidates.values():
                 if item.consolidation_strength < self.STRENGTH_FLOOR:
                     continue
 
-                # Lazy field radius update
                 self._update_field_radius(item)
 
-                # TSF ranking: (n_slots - 1) - F/kT
-                n_slots = len(matched_slots)
-                rank = (n_slots - 1) - item.free_energy / max(self.kT, 1e-9)
+                # IDF-weighted match score
+                idf_score = sum(self._compute_idf(t) for t in matched_tokens)
+
+                # Boltzmann rank: IDF score - F/kT
+                rank = idf_score - item.free_energy / max(self.kT, 1e-9)
                 scored.append((rank, item))
         else:
-            # Fallback: no index hits → return all liquid items by -F/kT
+            # Fallback: return all liquid items by -F/kT
             items = self._items.get(namespace, [])
             for item in items:
                 if item.consolidation_strength < self.STRENGTH_FLOOR:
@@ -1161,10 +912,8 @@ class PhaseMemoryEngine:
                 rank = -item.free_energy / max(self.kT, 1e-9)
                 scored.append((rank, item))
 
-        # Sort by rank descending
         scored.sort(key=lambda x: x[0], reverse=True)
 
-        # Reinforcement: increment retrieval count for returned items
         for _, item in scored[:limit]:
             item.retrieval_count += 1
 
@@ -1181,28 +930,8 @@ class PhaseMemoryEngine:
         limit: int = 5,
     ) -> tuple[str, list[dict]]:
         """
-        Build the memory context string for LLM prompt augmentation.
-
-        Uses free-energy-ranked retrieval to select the most stable,
-        relevant memories. Returns a formatted string and debug data.
-
-        The context string includes consolidation strength annotations
-        so the LLM can reason about memory confidence:
-
-            "Memory (strongest recall first):
-            - [s=0.98] Raj eats banana
-            - [s=0.12] Raj eats apple"    ← if above floor; likely excluded
-
-        Memories below strength_floor are already excluded by search().
-        The physics handles conflict resolution — no "NEWEST FIRST" hack needed.
-
-        Args:
-            query: User's message/question.
-            namespace: Memory namespace.
-            limit: Max memories to include.
-
-        Returns:
-            (context_string, debug_items_list)
+        Build the memory context string for downstream consumption.
+        Zero external calls.
         """
         results = self.search(query, namespace, limit=limit)
 
@@ -1229,15 +958,7 @@ class PhaseMemoryEngine:
     # =========================================================================
 
     def get_phase_debug(self, namespace: str) -> dict[str, Any]:
-        """
-        Return the complete thermodynamic state for the debug panel.
-
-        Includes global parameters (ρ, event counter, total F, τ_c1)
-        and per-item state (s, Σ, τ, F, H, L, phase).
-
-        This is the "instrument panel" of the thermodynamic engine —
-        every number maps to a term in the free energy equation.
-        """
+        """Return the complete thermodynamic state for the debug panel."""
         self._recompute_all_free_energies(namespace)
 
         items = self._items.get(namespace, [])
