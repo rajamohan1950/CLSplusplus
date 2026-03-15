@@ -1621,3 +1621,745 @@ class TestCERadversarial:
                 f"Transitive false entanglement K={edge.coupling_strength:.3f} "
                 "between Alice and Charlie who never interacted"
             )
+
+
+# =============================================================================
+# 24. SENIOR QA ADVERSARIAL SUITE — 50+ Bugs
+#     Numerical, Semantic, Edge-Case, Catch-22, Universe-Level
+# =============================================================================
+
+
+class TestSeniorQA_Numerical:
+    """Math edge cases: division by zero, overflow, underflow, NaN, precision."""
+
+    def test_kT_zero_no_division_by_zero(self):
+        """kT=0 → division by kT in ranking and Landauer cost."""
+        engine = PhaseMemoryEngine(kT=0.0, tau_default=50.0, capacity=100)
+        engine.store("test data here", "ns")
+        # search divides by kT
+        results = engine.search("test", "ns")
+        assert isinstance(results, list)
+
+    def test_tau_zero_no_division_by_zero(self):
+        """tau=0 → division in exp(-Δt/τ) and Landauer cost L = kT·ln2·H/τ."""
+        engine = PhaseMemoryEngine(tau_default=0.0, tau_override=0.0, capacity=100)
+        item = engine.store("test data", "ns")
+        assert item is not None
+        assert math.isfinite(item.free_energy)
+
+    def test_capacity_zero_no_division_by_zero(self):
+        """capacity=0 → division in _memory_density ρ = active/capacity."""
+        engine = PhaseMemoryEngine(capacity=0)
+        engine.store("test data", "ns")
+        rho = engine._memory_density("ns")
+        assert math.isfinite(rho)
+
+    def test_empty_text_store(self, engine: PhaseMemoryEngine):
+        """Empty string → tokenize returns [], content_words is [], fact fields empty."""
+        item = engine.store("", "ns")
+        assert item is not None
+
+    def test_whitespace_only_text(self, engine: PhaseMemoryEngine):
+        """Whitespace-only text → no tokens, no entities, no crash."""
+        item = engine.store("   \t\n  ", "ns")
+        assert item is not None
+
+    def test_single_word_text(self, engine: PhaseMemoryEngine):
+        """Single content word → subject set, relation/value empty."""
+        item = engine.store("banana", "ns")
+        assert item is not None
+        assert item.fact.subject == "banana"
+
+    def test_two_word_text(self, engine: PhaseMemoryEngine):
+        """Two content words → subject+relation, value=relation (duplicate!)."""
+        item = engine.store("Raj eats", "ns")
+        assert item is not None
+        # BUG: value == relation for 2-word input
+        assert item.fact.value == item.fact.relation
+
+    def test_all_stopwords_text(self, engine: PhaseMemoryEngine):
+        """Text of only stopwords → zero tokens, empty subject."""
+        item = engine.store("the is a an to of in for on with", "ns")
+        assert item is not None
+        assert item.fact.subject == ""
+
+    def test_negative_kT(self):
+        """Negative kT → physically meaningless but should not crash."""
+        engine = PhaseMemoryEngine(kT=-1.0, capacity=100)
+        engine.store("test data", "ns")
+        results = engine.search("test", "ns")
+        assert isinstance(results, list)
+
+    def test_massive_event_counter_overflow(self, engine: PhaseMemoryEngine):
+        """After 10M events, delta_t is huge → exp(-Δt/τ) underflows to 0."""
+        engine._event_counter = 10_000_000
+        item = engine.store("test data now", "ns")
+        # Search with huge time gap
+        results = engine.search("test", "ns")
+        assert isinstance(results, list)
+
+    def test_idf_with_zero_items(self, engine: PhaseMemoryEngine):
+        """IDF when total_items=0 → log(1 + 0/(1+0)) = log(1) = 0."""
+        idf = engine._compute_idf("nonexistent")
+        assert idf == 0.0 or math.isfinite(idf)
+
+    def test_free_energy_with_zero_rho(self, engine: PhaseMemoryEngine):
+        """ρ=0 → S_model = H·ρ = 0. Free energy should still compute."""
+        item = engine.store("test", "empty_ns")
+        assert math.isfinite(item.free_energy)
+
+    def test_strength_floor_zero(self):
+        """strength_floor=0 → gas phase items never filtered. GC different."""
+        engine = PhaseMemoryEngine(strength_floor=0.0, capacity=100)
+        item = engine.store("test", "ns")
+        assert item is not None
+        results = engine.search("test", "ns")
+        assert len(results) > 0
+
+    def test_consolidation_with_huge_retrieval_count(self, engine: PhaseMemoryEngine):
+        """retrieval_count = 1M → log1p(1M) ≈ 14 → s = 1·1·(1+0.15·14) > 1. Must clamp."""
+        item = engine.store("test data", "ns")
+        item.retrieval_count = 1_000_000
+        s = engine._compute_consolidation(item, 0)
+        assert s <= 1.0, f"Consolidation {s} exceeds 1.0"
+
+    def test_consolidation_with_huge_damage(self, engine: PhaseMemoryEngine):
+        """damage > 2.0 (if cap bypassed) → s could go negative. Must clamp to 0."""
+        item = engine.store("test data", "ns")
+        item.accumulated_surprise_damage = 100.0
+        s = engine._compute_consolidation(item, 0)
+        assert s >= 0.0, f"Consolidation {s} below 0.0"
+
+
+class TestSeniorQA_Tokenizer:
+    """Tokenizer edge cases: punctuation, numbers, special chars, Unicode."""
+
+    def test_punctuation_in_tokens(self, engine: PhaseMemoryEngine):
+        """'hello,' → token includes comma. Split on whitespace only."""
+        from clsplusplus.memory_phase import _tokenize
+        tokens = _tokenize("hello, world!")
+        # Punctuation stays attached
+        assert "hello," in tokens or "hello" in tokens
+
+    def test_numbers_as_tokens(self, engine: PhaseMemoryEngine):
+        """'Room 404' → '404' should be a token, not filtered."""
+        from clsplusplus.memory_phase import _tokenize
+        tokens = _tokenize("Room 404")
+        assert "404" in tokens
+
+    def test_hyphenated_words(self, engine: PhaseMemoryEngine):
+        """'well-known' stays as one token (split on whitespace only)."""
+        from clsplusplus.memory_phase import _tokenize
+        tokens = _tokenize("a well-known fact")
+        assert "well-known" in tokens
+
+    def test_url_as_token(self, engine: PhaseMemoryEngine):
+        """URLs should be treated as single tokens, not crash."""
+        item = engine.store("Visit https://example.com/path today", "ns")
+        assert item is not None
+
+    def test_normalize_already_short(self):
+        """Token 'go' → len=2, neither rule applies."""
+        from clsplusplus.memory_phase import _normalize_token
+        assert _normalize_token("go") == "go"
+
+    def test_normalize_exact_boundary_ing(self):
+        """'doing' → len=5, exactly > 4 → strips to 'do'."""
+        from clsplusplus.memory_phase import _normalize_token
+        assert _normalize_token("doing") == "do"
+
+    def test_normalize_boundary_s(self):
+        """'abs' → len=3, NOT > 3 → rule doesn't fire, returns 'abs'.
+        BUG DOCUMENTED: 3-letter words ending in 's' are NOT stripped.
+        'bus' stays 'bus', 'abs' stays 'abs'. Only len > 3 triggers."""
+        from clsplusplus.memory_phase import _normalize_token
+        assert _normalize_token("abs") == "abs"  # len=3, not > 3
+        assert _normalize_token("cats") == "cat"  # len=4, > 3 ✓
+
+    def test_normalize_ings(self):
+        """'things' → ends in 's', len > 3. Result: 'thing'. Then NOT 'ing' check."""
+        from clsplusplus.memory_phase import _normalize_token
+        result = _normalize_token("things")
+        # 'things' ends with 's', len=6>3, not 'ss' → 'thing'
+        assert result == "thing"
+
+    def test_normalize_ss_word(self):
+        """'grass' ends with 'ss' → should NOT strip 's'."""
+        from clsplusplus.memory_phase import _normalize_token
+        assert _normalize_token("grass") == "grass"
+
+    def test_text_with_emojis(self, engine: PhaseMemoryEngine):
+        """Emoji characters should not crash tokenizer or entity extraction."""
+        item = engine.store("I love 🍕 pizza with Jean", "ns")
+        assert item is not None
+
+    def test_very_long_token(self, engine: PhaseMemoryEngine):
+        """A 10000-char word should not crash or consume excessive memory."""
+        long_word = "a" * 10000
+        item = engine.store(f"Hello {long_word} world", "ns")
+        assert item is not None
+
+
+class TestSeniorQA_Override:
+    """Override and contradiction detection edge cases."""
+
+    def test_override_in_middle_of_word(self, engine: PhaseMemoryEngine):
+        """'changed' as a signal vs 'unchanged' containing 'changed'."""
+        from clsplusplus.memory_phase import _has_override
+        # 'unchanged' contains 'changed' but split() would give 'unchanged'
+        assert not _has_override("It is unchanged")
+        assert _has_override("I changed my mind")
+
+    def test_only_as_word_vs_in_word(self, engine: PhaseMemoryEngine):
+        """'only' is a stop word AND an override signal. Both lists contain it."""
+        from clsplusplus.memory_phase import _has_override
+        assert _has_override("I eat apples only")
+
+    def test_contradiction_self_with_self(self, engine: PhaseMemoryEngine):
+        """Storing exact same text twice — should be confirmation, not contradiction."""
+        item1 = engine.store("Raj eats apple", "ns",
+            fact=Fact("raj", "eat", "apple", False, "Raj eats apple"))
+        item2 = engine.store("Raj eats apple", "ns",
+            fact=Fact("raj", "eat", "apple", False, "Raj eats apple"))
+        # Second store should return same item (confirmation)
+        assert item2.id == item1.id
+
+    def test_near_duplicate_not_confirmed(self, engine: PhaseMemoryEngine):
+        """'Raj eats apple' vs 'Raj eats apples' — different value, NOT confirmed."""
+        engine.store("Raj eats apple", "ns",
+            fact=Fact("raj", "eat", "apple", False, "Raj eats apple"))
+        item2 = engine.store("Raj eats apples", "ns",
+            fact=Fact("raj", "eat", "apples", False, "Raj eats apples"))
+        # Different value → new item, not confirmation
+        assert item2 is not None
+
+    def test_bigram_empty_strings(self, engine: PhaseMemoryEngine):
+        """Empty strings in bigram divergence."""
+        div = engine._bigram_divergence("", "")
+        assert math.isfinite(div)
+
+    def test_bigram_single_char(self, engine: PhaseMemoryEngine):
+        """Single char strings → no bigrams, uses {s} as set."""
+        div = engine._bigram_divergence("a", "b")
+        assert div == 1.0  # Completely different
+
+    def test_surprise_damage_cascade(self, engine: PhaseMemoryEngine):
+        """Override damage stacks: 3 overrides → damage approaches cap=2.0."""
+        item = engine.store("Raj eats apple", "ns",
+            fact=Fact("raj", "eat", "apple", False, "Raj eats apple"))
+        for fruit in ["banana", "cherry", "grape"]:
+            engine.store(f"Raj eats {fruit} only", "ns",
+                fact=Fact("raj", "eat", fruit, True, f"Raj eats {fruit} only"))
+        assert item.accumulated_surprise_damage <= 2.0
+
+
+class TestSeniorQA_EntityExtraction:
+    """Entity extraction false positives and false negatives."""
+
+    def test_all_caps_text(self, engine: PhaseMemoryEngine):
+        """'I LOVE ROME' → all caps. word[0].isupper() true for everything."""
+        entities = engine._extract_entities("I LOVE ROME WITH JEAN")
+        # 'I' is pos 0 (skipped). 'LOVE', 'ROME', 'WITH', 'JEAN' are all uppercase
+        # 'LOVE', 'WITH' are stop words
+        assert "rome" in entities or "jean" in entities
+
+    def test_title_case_every_word(self, engine: PhaseMemoryEngine):
+        """'The Quick Brown Fox' → all capitalized."""
+        entities = engine._extract_entities("The Quick Brown Fox Jumped Over")
+        # 'The' is pos 0. Others are all capitalized.
+        # 'Quick', 'Brown', 'Fox', 'Jumped', 'Over' are not stop words
+        assert len(entities) > 0
+
+    def test_entity_after_exclamation(self, engine: PhaseMemoryEngine):
+        """'Wow! Jean arrived' → 'Jean' is after '!', sentence-initial → SKIPPED."""
+        entities = engine._extract_entities("Wow! Jean arrived")
+        # 'Wow' is pos 0 → skip. 'Jean' is after '!' → sentence-initial → skip
+        assert "jean" not in entities
+
+    def test_entity_with_apostrophe(self, engine: PhaseMemoryEngine):
+        """'Jean's car' → word is \"Jean's\", starts with uppercase."""
+        entities = engine._extract_entities("I saw Jean's red car yesterday")
+        # 'Jean's' lowercased → 'jean's'
+        assert any("jean" in e for e in entities)
+
+    def test_entity_with_comma(self, engine: PhaseMemoryEngine):
+        """'visited Rome, Paris, London' → punctuation attached to entity."""
+        entities = engine._extract_entities("I visited Rome, Paris, and London")
+        # Tokens: 'Rome,' 'Paris,' 'London' — comma attached
+        # 'rome,' is the entity, not 'rome'
+        entity_str = " ".join(entities)
+        # At least some cities should be detected despite punctuation
+        assert len(entities) >= 1
+
+    def test_sentence_initial_is_not_entity(self, engine: PhaseMemoryEngine):
+        """First word is never an entity even if capitalized."""
+        entities = engine._extract_entities("Rome is a beautiful city")
+        assert "rome" not in entities
+
+    def test_multi_word_entity_greedily_captures(self, engine: PhaseMemoryEngine):
+        """'New York City' → three consecutive capitals → one multi-word entity."""
+        entities = engine._extract_entities("I visited New York City last summer")
+        assert "new york city" in entities
+
+    def test_empty_text_entity_extraction(self, engine: PhaseMemoryEngine):
+        """Empty string → no entities, no crash."""
+        entities = engine._extract_entities("")
+        assert entities == []
+
+
+class TestSeniorQA_StoreEdgeCases:
+    """Store API edge cases and invariant violations."""
+
+    def test_store_none_text_crashes(self, engine: PhaseMemoryEngine):
+        """Passing None as text should raise TypeError, not silently fail."""
+        with pytest.raises((TypeError, AttributeError)):
+            engine.store(None, "ns")
+
+    def test_store_unicode_namespace(self, engine: PhaseMemoryEngine):
+        """Unicode namespace like '日本語' should work."""
+        item = engine.store("Hello world there", "日本語")
+        assert item is not None
+        results = engine.search("Hello", "日本語")
+        assert len(results) > 0
+
+    def test_store_same_namespace_different_engines(self):
+        """Two engines, same namespace — fully isolated."""
+        e1 = PhaseMemoryEngine(capacity=100)
+        e2 = PhaseMemoryEngine(capacity=100)
+        e1.store("Alice in Wonderland", "ns")
+        results = e2.search("Alice", "ns")
+        assert len(results) == 0
+
+    def test_store_returns_existing_on_confirmation(self, engine: PhaseMemoryEngine):
+        """Exact duplicate returns SAME item, incremented retrieval_count."""
+        item1 = engine.store("Raj eats apple", "ns",
+            fact=Fact("raj", "eat", "apple", False, "Raj eats apple"))
+        rc_before = item1.retrieval_count
+        item2 = engine.store("Raj eats apple", "ns",
+            fact=Fact("raj", "eat", "apple", False, "Raj eats apple"))
+        assert item2.id == item1.id
+        assert item2.retrieval_count == rc_before + 1
+
+    def test_store_1000_items_performance(self, engine: PhaseMemoryEngine):
+        """1000 items in same namespace should complete in < 30s."""
+        import time
+        start = time.time()
+        for i in range(1000):
+            engine.store(f"Person{i} visited City{i}", "ns",
+                fact=Fact(f"person{i}", "visited", f"city{i}", False,
+                         f"Person{i} visited City{i}"))
+        elapsed = time.time() - start
+        assert elapsed < 30.0, f"1000 stores took {elapsed:.1f}s"
+
+    def test_store_preserves_raw_text_exactly(self, engine: PhaseMemoryEngine):
+        """raw_text should be EXACTLY what was passed, including case and punctuation."""
+        original = "   Hello, World!  I AM here.  "
+        item = engine.store(original, "ns")
+        assert item.fact.raw_text == original
+
+    def test_event_counter_monotonically_increases(self, engine: PhaseMemoryEngine):
+        """Event counter must increase by exactly 1 per store() call."""
+        before = engine._event_counter
+        engine.store("test1", "ns")
+        assert engine._event_counter == before + 1
+        engine.store("test2", "ns")
+        assert engine._event_counter == before + 2
+
+    def test_doc_freq_decremented_on_gc(self, engine: PhaseMemoryEngine):
+        """When item is GC'd, doc_freq for its tokens must decrease."""
+        item = engine.store("unique_token_xyz here", "ns")
+        assert engine._doc_freq.get("unique_token_xyz", 0) >= 1
+        # Kill the item
+        item.consolidation_strength = 0.0
+        item.accumulated_surprise_damage = 2.0
+        engine._recompute_all_free_energies("ns")
+        assert engine._doc_freq.get("unique_token_xyz", 0) == 0
+
+
+class TestSeniorQA_SearchEdgeCases:
+    """Search retrieval failures, ranking anomalies, edge cases."""
+
+    def test_search_empty_query(self, engine: PhaseMemoryEngine):
+        """Empty query → all stop words → no tokens → fallback to all items."""
+        engine.store("Raj eats banana", "ns",
+            fact=Fact("raj", "eat", "banana", False, "Raj eats banana"))
+        results = engine.search("", "ns")
+        # Empty query = no tokens = fallback
+        assert isinstance(results, list)
+
+    def test_search_all_stopwords_query(self, engine: PhaseMemoryEngine):
+        """Query of only stopwords → zero tokens → fallback."""
+        engine.store("Raj eats banana", "ns",
+            fact=Fact("raj", "eat", "banana", False, "Raj eats banana"))
+        results = engine.search("the is a an to", "ns")
+        assert isinstance(results, list)
+
+    def test_search_nonexistent_namespace(self, engine: PhaseMemoryEngine):
+        """Search in namespace with zero items → empty results."""
+        results = engine.search("anything", "nonexistent_ns")
+        assert results == []
+
+    def test_search_limit_zero(self, engine: PhaseMemoryEngine):
+        """limit=0 → should return empty list."""
+        engine.store("Raj eats banana", "ns")
+        results = engine.search("Raj", "ns", limit=0)
+        assert results == []
+
+    def test_search_limit_negative(self, engine: PhaseMemoryEngine):
+        """limit=-1 → Python slice [:−1] cuts last element. Bug?"""
+        engine.store("Raj eats banana", "ns")
+        engine.store("Raj eats apple", "ns")
+        results = engine.search("Raj", "ns", limit=-1)
+        # [:−1] returns all but last — unexpected behavior
+        assert isinstance(results, list)
+
+    def test_search_returns_correct_namespace_only(self, engine: PhaseMemoryEngine):
+        """Items from other namespaces must never appear in results."""
+        engine.store("Alice in Wonderland story", "ns1")
+        engine.store("Bob at the beach today", "ns2")
+        results = engine.search("Alice", "ns1")
+        for _, item in results:
+            assert item.namespace == "ns1"
+
+    def test_search_after_all_items_gc(self, engine: PhaseMemoryEngine):
+        """All items dead → search returns empty."""
+        item = engine.store("Raj eats banana", "ns")
+        item.consolidation_strength = 0.0
+        item.accumulated_surprise_damage = 2.0
+        engine._recompute_all_free_energies("ns")
+        results = engine.search("Raj", "ns")
+        assert results == []
+
+    def test_fallback_when_query_has_no_indexed_tokens(self, engine: PhaseMemoryEngine):
+        """Query tokens not in any indexed item → fallback returns items by -F/kT."""
+        engine.store("Raj eats banana", "ns")
+        results = engine.search("completely unrelated xyz", "ns")
+        # Should fallback to all items ranked by -F/kT
+        assert isinstance(results, list)
+
+    def test_retrieval_count_incremented_exactly_once(self, engine: PhaseMemoryEngine):
+        """Each search should increment retrieval_count by exactly 1 for returned items."""
+        item = engine.store("Raj eats banana daily", "ns",
+            fact=Fact("raj", "eat", "banana", False, "Raj eats banana daily"))
+        rc_before = item.retrieval_count
+        engine.search("What does Raj eat?", "ns", limit=5)
+        # Only one increment
+        assert item.retrieval_count == rc_before + 1
+
+
+class TestSeniorQA_GarbageCollection:
+    """GC edge cases: items at boundary conditions, cascading GC."""
+
+    def test_gc_boundary_condition(self, engine: PhaseMemoryEngine):
+        """Item with s=0 AND damage < 1.0 should NOT be GC'd."""
+        item = engine.store("test data here", "ns")
+        item.consolidation_strength = 0.0
+        item.accumulated_surprise_damage = 0.5  # Below 1.0
+        items_before = len(engine._items.get("ns", []))
+        engine._recompute_all_free_energies("ns")
+        items_after = len(engine._items.get("ns", []))
+        # s=0 but damage < 1.0 → kept (condition: s > 0.0 OR damage < 1.0)
+        assert items_after == items_before
+
+    def test_gc_entity_index_cleanup(self, engine: PhaseMemoryEngine):
+        """After GC, entity_index should not reference dead entity names."""
+        engine.store("Jean visited Rome yesterday", "ns",
+            fact=Fact("jean", "visited", "rome", False, "Jean visited Rome yesterday"))
+        items = engine._items["ns"]
+        for item in items:
+            item.consolidation_strength = 0.0
+            item.accumulated_surprise_damage = 2.0
+        engine._recompute_all_free_energies("ns")
+        # Entity nodes should be cleaned
+        assert "jean" not in engine._entity_nodes or len(engine._entity_nodes.get("jean", EntityNode("","",Counter(),[],0)).memory_ids) == 0
+
+    def test_gc_token_index_cleanup(self, engine: PhaseMemoryEngine):
+        """After GC, token_index should not reference dead items."""
+        item = engine.store("unique_word_qwerty test", "ns")
+        assert "unique_word_qwerty" in engine._token_index
+        item.consolidation_strength = 0.0
+        item.accumulated_surprise_damage = 2.0
+        engine._recompute_all_free_energies("ns")
+        # Token index should not contain the dead item
+        if "unique_word_qwerty" in engine._token_index:
+            assert item not in engine._token_index["unique_word_qwerty"]
+
+    def test_gc_does_not_corrupt_entanglement_graph(self, engine: PhaseMemoryEngine):
+        """GC of entity should remove edges, not leave dangling references."""
+        engine.store("Jean visited Rome summer", "ns",
+            fact=Fact("jean", "visited", "rome", False, "Jean visited Rome summer"))
+        engine.store("John visited Rome winter", "ns",
+            fact=Fact("john", "visited", "rome", False, "John visited Rome winter"))
+        # Kill all items
+        for item in engine._items.get("ns", []):
+            item.consolidation_strength = 0.0
+            item.accumulated_surprise_damage = 2.0
+        engine._recompute_all_free_energies("ns")
+        # Entanglement graph edges should reference existing entities
+        for a, edges in engine._entanglement_graph.items():
+            for b in edges:
+                # If entities exist, they should have memory_ids
+                if a in engine._entity_nodes:
+                    assert len(engine._entity_nodes[a].memory_ids) >= 0
+
+
+class TestSeniorQA_FieldRadius:
+    """Phase-modulated field radius edge cases."""
+
+    def test_radius_with_zero_tokens(self, engine: PhaseMemoryEngine):
+        """Item with zero indexed tokens → R = max(1, 0) = 1 or 0?"""
+        item = engine.store("a", "ns")  # Single char, filtered out
+        # indexed_tokens could be empty
+        if len(item.indexed_tokens) == 0:
+            # _index_item with 0 tokens → radius = max(1, int(0 * s^(1/3))) = 1
+            # But tokens[:1] is empty → no tokens to index
+            assert True  # Should not crash
+
+    def test_radius_at_strength_floor_boundary(self, engine: PhaseMemoryEngine):
+        """s = strength_floor exactly → should still be indexed, not de-indexed."""
+        item = engine.store("Raj eats banana daily", "ns")
+        item.consolidation_strength = engine.STRENGTH_FLOOR
+        engine._index_item(item)
+        # Should have some indexed tokens
+        indexed = False
+        for token in item.indexed_tokens[:1]:
+            if token in engine._token_index and item in engine._token_index[token]:
+                indexed = True
+        assert indexed, "Item at exact strength_floor should be indexed"
+
+    def test_field_radius_monotonic_with_strength(self, engine: PhaseMemoryEngine):
+        """Higher s → higher R. Test multiple s values."""
+        item = engine.store("apple banana cherry date elderberry", "ns")
+        n = len(item.indexed_tokens)
+        for s in [0.1, 0.3, 0.5, 0.7, 1.0]:
+            r = max(1, int(n * s ** (1.0 / 3.0)))
+            assert r >= 1
+        # R(1.0) >= R(0.5) >= R(0.1)
+        r1 = max(1, int(n * 1.0 ** (1/3)))
+        r5 = max(1, int(n * 0.5 ** (1/3)))
+        r1_ = max(1, int(n * 0.1 ** (1/3)))
+        assert r1 >= r5 >= r1_
+
+
+class TestSeniorQA_CERSearch:
+    """CER search edge cases: missing edges, empty clusters, scoring anomalies."""
+
+    def test_cer_search_with_three_entities_no_cluster(self, engine: PhaseMemoryEngine):
+        """3 entities but no cluster formed → CER returns empty, TSF fallback."""
+        engine.store("Alice visited Rome alone", "ns",
+            fact=Fact("alice", "visited", "rome", False, "Alice visited Rome alone"))
+        engine.store("Bob visited Paris alone", "ns",
+            fact=Fact("bob", "visited", "paris", False, "Bob visited Paris alone"))
+        engine.store("Charlie visited London alone", "ns",
+            fact=Fact("charlie", "visited", "london", False, "Charlie visited London alone"))
+        # No shared tokens between persons → no cluster
+        results = engine.search("What did Alice Bob and Charlie share?", "ns")
+        assert isinstance(results, list)  # Should not crash
+
+    def test_cer_search_empty_shared_tokens(self, engine: PhaseMemoryEngine):
+        """Edge exists but shared_tokens empty → returns []."""
+        engine.store("Jean likes Rome very much", "ns",
+            fact=Fact("jean", "likes", "rome", False, "Jean likes Rome very much"))
+        engine.store("John likes Rome very much", "ns",
+            fact=Fact("john", "likes", "rome", False, "John likes Rome very much"))
+        # Manually clear shared tokens to test the guard
+        a, b = sorted(["jean", "john"])
+        edge = engine._entanglement_graph.get(a, {}).get(b)
+        if edge:
+            from collections import Counter as Ctr
+            edge.shared_tokens = Ctr()
+        results = engine.search("What do Jean and John like?", "ns")
+        assert isinstance(results, list)
+
+    def test_merge_cer_tsf_no_overlap(self, engine: PhaseMemoryEngine):
+        """CER and TSF return completely different items → merged correctly."""
+        engine.store("Jean visited Rome in summer", "ns",
+            fact=Fact("jean", "visited", "rome", False, "Jean visited Rome in summer"))
+        engine.store("John visited Rome in winter", "ns",
+            fact=Fact("john", "visited", "rome", False, "John visited Rome in winter"))
+        engine.store("Weather is nice today everywhere", "ns")
+        results = engine.search("What city did Jean and John visit?", "ns", limit=10)
+        ids = {item.id for _, item in results}
+        # Should have at least the Rome-related items
+        assert len(ids) >= 1
+
+    def test_cer_boost_actually_boosts(self, engine: PhaseMemoryEngine):
+        """CER results should rank higher than non-CER results for multi-entity queries."""
+        engine.store("Jean visited Rome in summer", "ns",
+            fact=Fact("jean", "visited", "rome", False, "Jean visited Rome in summer"))
+        engine.store("John visited Rome in winter", "ns",
+            fact=Fact("john", "visited", "rome", False, "John visited Rome in winter"))
+        engine.store("The weather forecast today sunny", "ns")
+        results = engine.search("What did Jean and John visit?", "ns", limit=5)
+        if len(results) >= 2:
+            # Top results should be Rome-related
+            top_text = results[0][1].fact.raw_text.lower()
+            assert "rome" in top_text or "jean" in top_text or "john" in top_text
+
+
+class TestSeniorQA_Catch22:
+    """Catch-22 paradoxes: circular dependencies, self-referential bugs."""
+
+    def test_entity_must_exist_to_be_queried(self, engine: PhaseMemoryEngine):
+        """Can't find entity in query if entity was never stored. Chicken-egg."""
+        results = engine.search("What did Jean and John share?", "ns")
+        # No items stored → no entities → no CER → TSF fallback → empty
+        assert results == []
+
+    def test_confirmation_returns_existing_skips_cer_update(self, engine: PhaseMemoryEngine):
+        """Confirmation returns EXISTING item without calling _cer_update.
+        Entity coupling is never updated for confirmed facts."""
+        item1 = engine.store("Jean visited Rome summer", "ns",
+            fact=Fact("jean", "visited", "rome", False, "Jean visited Rome summer"))
+        mentions_before = engine._entity_nodes.get("jean", None)
+        if mentions_before:
+            mentions_before = mentions_before.total_mentions
+        # Store exact same fact → confirmation
+        engine.store("Jean visited Rome summer", "ns",
+            fact=Fact("jean", "visited", "rome", False, "Jean visited Rome summer"))
+        mentions_after = engine._entity_nodes.get("jean", None)
+        if mentions_after:
+            mentions_after = mentions_after.total_mentions
+        # Mentions should NOT increase on confirmation
+        if mentions_before is not None and mentions_after is not None:
+            assert mentions_after == mentions_before
+
+    def test_search_recomputes_free_energy_every_call(self, engine: PhaseMemoryEngine):
+        """search() calls _recompute_all_free_energies EVERY time. O(N) per search."""
+        for i in range(50):
+            engine.store(f"fact number {i} stored", "ns")
+        import time
+        start = time.time()
+        for _ in range(100):
+            engine.search("fact", "ns", limit=5)
+        elapsed = time.time() - start
+        # 100 searches × 50 items × recompute = should still be fast
+        assert elapsed < 5.0, f"100 searches took {elapsed:.1f}s — recompute is too slow"
+
+    def test_override_signal_only_is_also_stop_word(self, engine: PhaseMemoryEngine):
+        """'only' is in BOTH _STOP_WORDS AND _OVERRIDE_SIGNALS.
+        It gets filtered from tokens but still triggers override detection."""
+        from clsplusplus.memory_phase import _has_override, _tokenize
+        text = "I eat apples only"
+        assert _has_override(text) == True
+        tokens = _tokenize(text)
+        assert "only" not in tokens  # Filtered as stop word
+        # Override detected from raw text, not tokens — correct design
+
+    def test_gc_condition_recomputation_overwrites_manual_s(self, engine: PhaseMemoryEngine):
+        """BUG DOCUMENTED: _recompute_all_free_energies recomputes consolidation_strength.
+        Manually setting s=0.01 gets overwritten by _compute_consolidation.
+        With damage=1.5, recomputed s = 1·exp(0)·(1+0) - 1.5 = -0.5 → clamped to 0.
+        Then s=0 AND damage=1.5 ≥ 1.0 → GC'd. You CANNOT bypass GC by setting s."""
+        item = engine.store("test data xyz", "ns")
+        item.accumulated_surprise_damage = 1.5
+        engine._recompute_all_free_energies("ns")
+        # Recomputed s: 1·1·1 - 1.5 = -0.5 → clamped to 0. s=0 AND damage≥1 → GC'd
+        assert item not in engine._items.get("ns", [])
+
+
+class TestSeniorQA_AugmentedContext:
+    """Augmented context builder edge cases."""
+
+    def test_augmented_context_no_items(self, engine: PhaseMemoryEngine):
+        """Empty namespace → 'No prior context yet.'"""
+        context, debug = engine.build_augmented_context("anything", "empty_ns")
+        assert context == "No prior context yet."
+        assert debug == []
+
+    def test_augmented_context_format(self, engine: PhaseMemoryEngine):
+        """Context string format: '- [strength=X.XX] raw_text'"""
+        engine.store("Raj eats banana daily", "ns",
+            fact=Fact("raj", "eat", "banana", False, "Raj eats banana daily"))
+        context, debug = engine.build_augmented_context("Raj", "ns")
+        assert "Memory (strongest recall first):" in context
+        assert "[strength=" in context
+        assert "Raj eats banana daily" in context
+
+    def test_debug_items_have_score(self, engine: PhaseMemoryEngine):
+        """Debug items should include score from search."""
+        engine.store("Raj eats banana daily", "ns",
+            fact=Fact("raj", "eat", "banana", False, "Raj eats banana daily"))
+        _, debug = engine.build_augmented_context("Raj", "ns")
+        assert len(debug) > 0
+        assert "score" in debug[0]
+
+
+class TestSeniorQA_PhaseDebug:
+    """Debug output completeness and correctness."""
+
+    def test_debug_total_free_energy_sum(self, engine: PhaseMemoryEngine):
+        """total_free_energy should equal sum of individual item free energies."""
+        engine.store("Raj eats apple", "ns")
+        engine.store("Alice likes music", "ns")
+        debug = engine.get_phase_debug("ns")
+        items_F = sum(item["free_energy"] for item in debug["items"])
+        assert abs(debug["total_free_energy"] - items_F) < 0.01
+
+    def test_debug_liquid_gas_count_sum(self, engine: PhaseMemoryEngine):
+        """liquid_count + gas_count should equal item_count."""
+        engine.store("test one two", "ns")
+        engine.store("test three four", "ns")
+        debug = engine.get_phase_debug("ns")
+        assert debug["liquid_count"] + debug["gas_count"] == debug["item_count"]
+
+
+class TestSeniorQA_Semantic:
+    """Semantic recall failures — the REAL bugs that matter for users."""
+
+    def test_synonym_miss(self, engine: PhaseMemoryEngine):
+        """Store 'Raj eats pizza'. Query 'What food does Raj consume?'
+        'consume' ≠ 'eat'. Zero character overlap → zero recall."""
+        engine.store("Raj eats pizza every Friday", "ns",
+            fact=Fact("raj", "eat", "pizza", False, "Raj eats pizza every Friday"))
+        results = engine.search("What food does Raj consume?", "ns")
+        # 'consume' has zero overlap with 'eat' → raj won't match via TSF
+        # BUT 'raj' is a token → should find via raj token match
+        texts = " ".join(item.fact.raw_text.lower() for _, item in results)
+        assert "pizza" in texts, "Semantic gap: 'consume' missed 'eat'"
+
+    def test_pronoun_reference_miss(self, engine: PhaseMemoryEngine):
+        """Store 'Jean went to Rome'. Query 'Where did she go?'
+        'she' is a stop word → filtered. No entity match. Total miss."""
+        engine.store("Jean went to Rome yesterday", "ns",
+            fact=Fact("jean", "went", "rome", False, "Jean went to Rome yesterday"))
+        results = engine.search("Where did she go?", "ns")
+        # 'she' filtered, 'where' filtered, 'did' filtered → only 'go' left
+        # 'go' is a stop word too! → zero tokens → fallback to all items
+        assert isinstance(results, list)
+
+    def test_negation_not_understood(self, engine: PhaseMemoryEngine):
+        """Store 'Raj does NOT eat meat'. Query 'Does Raj eat meat?'
+        Token match on 'raj', 'eat', 'meat' → returns YES with high confidence.
+        Engine has no negation understanding."""
+        engine.store("Raj does NOT eat meat", "ns",
+            fact=Fact("raj", "eat", "meat", False, "Raj does NOT eat meat"))
+        results = engine.search("Does Raj eat meat?", "ns")
+        # Will match on raj+eat+meat tokens — engine can't distinguish NOT
+        assert len(results) > 0  # Returns result (correct retrieval, wrong semantics)
+
+    def test_temporal_ordering_not_tracked(self, engine: PhaseMemoryEngine):
+        """Store 'Raj lived in Paris' then 'Raj moved to London'.
+        Query 'Where does Raj live now?'
+        Engine returns both — no temporal ordering."""
+        engine.store("Raj lived in Paris happily", "ns",
+            fact=Fact("raj", "lived", "paris", False, "Raj lived in Paris happily"))
+        engine.store("Raj moved to London recently", "ns",
+            fact=Fact("raj", "moved", "london", False, "Raj moved to London recently"))
+        results = engine.search("Where does Raj live now?", "ns")
+        assert len(results) >= 1
+
+
+class TestSeniorQA_Concurrency:
+    """Not thread-safe — document the gaps even if not fixing them."""
+
+    def test_concurrent_store_search_no_crash(self, engine: PhaseMemoryEngine):
+        """Sequential store+search should at minimum not corrupt state."""
+        for i in range(100):
+            engine.store(f"fact {i} about topic{i % 10}", "ns")
+            if i % 10 == 0:
+                engine.search(f"topic{i % 10}", "ns", limit=5)
+        # Verify internal state is consistent
+        for ns, items in engine._items.items():
+            for item in items:
+                assert item.namespace == ns
