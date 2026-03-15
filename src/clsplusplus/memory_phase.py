@@ -1,8 +1,13 @@
 """
-Gas → Liquid Phase Transition: Thermodynamic Memory Engine.
+Gas → Liquid → Solid Phase Transition: Thermodynamic Memory Engine.
 
-Memory is a phase of matter. This module implements the Gas → Liquid
-phase transition exactly as specified by the free energy formulation:
+Memory is a phase of matter. This module implements the full phase diagram:
+
+    Gas → Liquid:  τ > τ_c1  (attention gate — experiences persist)
+    Liquid → Solid: ΔF < 0   (crystallization — episodes compress into schemas)
+    Solid → Glass:  H_history converges (over-consolidation — schemas become rigid)
+
+The free energy formulation:
 
     F(θ, Σ, ρ, τ) = E_prediction(θ) − Σ · S_model(θ) + λ · L_landauer(θ, τ)
 
@@ -33,6 +38,7 @@ Copyright (c) 2026 CLS++. All rights reserved.
 from __future__ import annotations
 
 import math
+import string
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -62,38 +68,81 @@ _STOP_WORDS: frozenset[str] = frozenset({
 
 # Override signals — words that indicate a fact REPLACES a previous belief
 _OVERRIDE_SIGNALS: frozenset[str] = frozenset({
-    "only", "exclusively", "always", "never", "actually",
-    "switched", "changed", "anymore", "longer",
+    "exclusively", "switched", "anymore",
 })
 
 
 # =============================================================================
 # Token Processing — Engine-Internal, Zero External Intelligence
+#
+# Semantic Renormalization Group (SRG): The tokenizer IS the lattice
+# discretization. Punctuation is lattice-scale (UV) noise. _strip_punctuation
+# removes it without changing the IR physics (critical exponents, field radius).
 # =============================================================================
+
+_PUNCTUATION_CHARS: frozenset[str] = frozenset(
+    string.punctuation
+    + "\u2018\u2019\u201a\u201b"  # Single curly quotes: ' ' ‚ ‛
+    + "\u201c\u201d\u201e\u201f"  # Double curly quotes: " " „ ‟
+    + "\u2013\u2014\u2015"        # En-dash, em-dash, horizontal bar: – — ―
+    + "\u2026"                     # Ellipsis: …
+    + "\u00ab\u00bb"               # Guillemets: « »
+    + "\u2039\u203a"               # Single guillemets: ‹ ›
+    + "\u00b7\u2022\u2023"         # Middle dot, bullet, triangle bullet: · • ‣
+)
+
+# Verb/adverb suffixes for auto-fact subject heuristic
+_VERB_SUFFIXES: tuple[str, ...] = ("ing", "ed", "ly")
+
+
+def _strip_punctuation(token: str) -> str:
+    """
+    RG coarse-graining: strip leading and trailing punctuation.
+
+    "Rome," → "Rome", "(hello)" → "hello", "...wow!!!" → "wow"
+    Internal punctuation preserved: "don't" → "don't", "well-known" → "well-known"
+
+    Returns empty string if ALL characters are punctuation.
+    O(1) per token.
+    """
+    start, end = 0, len(token)
+    while start < end and token[start] in _PUNCTUATION_CHARS:
+        start += 1
+    while end > start and token[end - 1] in _PUNCTUATION_CHARS:
+        end -= 1
+    return token[start:end] if start < end else ""
 
 
 def _normalize_token(token: str) -> str:
     """
     Minimal token normalization: strip trailing 'ing' and 's'.
 
-    NOT a stemmer. Two rules, no exceptions, no conditions beyond length.
+    NOT a stemmer. Two rules with minimum result length guard.
     The engine indexes BOTH raw and normalized forms, so imperfect
     normalization is acceptable — raw form provides exact match fallback.
 
-    'eating' → 'eat', 'eats' → 'eat', 'visiting' → 'visit',
-    'bananas' → 'banana', 'running' → 'runn' (imperfect but unique)
+    Result must be >= 4 chars after -ing stripping to prevent destructive
+    normalization ("string" → "str" is BLOCKED, "visiting" → "visit" is OK).
+
+    'visiting' → 'visit', 'eats' → 'eat', 'bananas' → 'banana',
+    'running' → 'runn', 'string' → 'string' (preserved — "str" too short)
     """
     t = token.lower()
     if len(t) > 4 and t.endswith("ing"):
-        return t[:-3]
+        candidate = t[:-3]
+        if len(candidate) >= 4:
+            return candidate
     if len(t) > 3 and t.endswith("s") and not t.endswith("ss"):
-        return t[:-1]
+        return t[:-1]  # "eats"→"eat", "bananas"→"banana". Known: "bias"→"bia" (raw form fallback)
     return t
 
 
 def _tokenize(text: str) -> list[str]:
     """
     Tokenize text into index-ready tokens.
+
+    SRG Step 1 (coarse-graining): strip punctuation from each word before
+    stop-word check and normalization. "Rome," → "rome", not "rome,".
 
     Returns a list of tokens ordered by estimated informativeness
     (longer/rarer tokens first). Both raw and normalized forms included.
@@ -106,13 +155,15 @@ def _tokenize(text: str) -> list[str]:
     seen: set[str] = set()
 
     for word in text.lower().split():
-        if word in _STOP_WORDS or len(word) <= 1:
+        # RG coarse-graining: strip punctuation (UV noise)
+        clean = _strip_punctuation(word)
+        if not clean or clean in _STOP_WORDS or len(clean) <= 1:
             continue
-        if word not in seen:
-            raw_tokens.append(word)
-            seen.add(word)
-        normalized = _normalize_token(word)
-        if normalized != word and normalized not in seen and len(normalized) > 1:
+        if clean not in seen:
+            raw_tokens.append(clean)
+            seen.add(clean)
+        normalized = _normalize_token(clean)
+        if normalized != clean and normalized not in seen and len(normalized) > 1:
             raw_tokens.append(normalized)
             seen.add(normalized)
 
@@ -123,8 +174,10 @@ def _tokenize(text: str) -> list[str]:
 
 
 def _has_override(text: str) -> bool:
-    """Detect override signals in raw text. Pure pattern matching."""
-    words = set(text.lower().split())
+    """Detect override signals in raw text. Pure pattern matching.
+    SRG: strip punctuation before signal check so "only," matches "only".
+    """
+    words = set(_strip_punctuation(w) for w in text.lower().split())
     if words & _OVERRIDE_SIGNALS:
         return True
     # Multi-word signals
@@ -231,6 +284,28 @@ class ResonanceCluster:
 
 
 @dataclass
+class SchemaMeta:
+    """
+    Metadata for a crystallized schema (solid/glass phase).
+
+    When ΔF(G) = F_schema − Σ F_liquid(i) + C_abstraction < 0,
+    a group of episodic memories crystallize into a schema.
+
+    The schema IS the RG soft fixed point: tokens surviving
+    multi-scale coarse-graining across ≥80% of group members.
+    """
+
+    member_ids: tuple[str, ...]             # Episodic item IDs that crystallized
+    fixed_point_tokens: tuple[str, ...]     # Φ* — RG soft fixed point
+    H_schema: float                         # Shannon entropy of schema content
+    H_sum_episodes: float                   # Σ Hᵢ at formation
+    delta_F: float                          # ΔF at crystallization (negative)
+    formation_order: int                    # Event counter at crystallization
+    absorption_count: int = 0               # Post-formation absorptions
+    H_history: tuple[float, ...] = ()       # H after each absorption (glass detector)
+
+
+@dataclass
 class PhaseMemoryItem:
     """
     A memory with continuous thermodynamic state variables.
@@ -327,6 +402,9 @@ class PhaseMemoryItem:
     indexed_tokens: list[str] = field(default_factory=list)
     _last_field_radius: int = -1  # Last R(s) for lazy index update
 
+    # --- Crystallization (Liquid → Solid phase transition) ---
+    schema_meta: Optional[SchemaMeta] = None  # Non-None = solid/glass phase
+
     def to_debug_dict(self, strength_floor: float = 0.05) -> dict[str, Any]:
         """Serialize thermodynamic state for the debug panel."""
         s = self.consolidation_strength
@@ -349,8 +427,32 @@ class PhaseMemoryItem:
             "landauer_cost": round(self.landauer_cost, 6),
             "retrieval_count": self.retrieval_count,
             "accumulated_surprise_damage": round(self.accumulated_surprise_damage, 6),
-            "phase": "liquid" if s >= strength_floor else "gas",
+            "phase": (
+                ("glass" if _is_glass_static(self) else "solid")
+                if self.schema_meta is not None
+                else ("liquid" if s >= strength_floor else "gas")
+            ),
         }
+
+
+# =============================================================================
+# Glass Detection — Static Helper
+# =============================================================================
+
+
+def _is_glass_static(item: PhaseMemoryItem) -> bool:
+    """Detect glass phase: schema entropy has converged (H stops changing)."""
+    if item.schema_meta is None:
+        return False
+    history = item.schema_meta.H_history
+    if len(history) < 4:  # Need initial + 3 absorptions
+        return False
+    last_3 = history[-3:]
+    mean_h = sum(last_3) / 3.0
+    if mean_h < 1e-9:
+        return True  # Trivially converged (near-zero entropy)
+    variance = sum((h - mean_h) ** 2 for h in last_3) / 3.0
+    return math.sqrt(variance) / mean_h < 0.01  # 1% relative std
 
 
 # =============================================================================
@@ -402,9 +504,19 @@ class PhaseMemoryEngine:
         self.CAPACITY: int = capacity
         self.BETA_RETRIEVAL: float = beta_retrieval
 
+        # --- Crystallization Constants (Liquid → Solid) ---
+        self.TAU_SCHEMA: float = self.TAU_OVERRIDE * 2.0   # 400 — crystalline stability
+        self.SCHEMA_ABSORPTION_COVERAGE: float = 0.6        # 60% token match to absorb
+        self.RG_SOFT_THRESHOLD: float = 0.8                  # 80% member coverage
+        self.GLASS_CONVERGENCE: float = 0.01                 # 1% relative std
+        self.MIN_FIXED_POINT_TOKENS: int = 2                 # ≥ 2 tokens for schema
+        self.MIN_GROUP_SIZE: int = 3                          # ≥ 3 episodes to crystallize
+
         # State
         self._items: dict[str, list[PhaseMemoryItem]] = {}
         self._event_counter: int = 0
+        self._total_item_count: int = 0  # Cached for O(1) IDF computation
+        self._item_by_id: dict[str, PhaseMemoryItem] = {}  # O(1) lookup for PESQD
 
         # Token Index — Thermodynamic Semantic Field (TSF)
         # Single token index: token → list of PhaseMemoryItems
@@ -420,6 +532,7 @@ class PhaseMemoryEngine:
         self._entanglement_graph: dict[str, dict[str, EntanglementEdge]] = {}
         self._resonance_clusters: dict[str, ResonanceCluster] = {}
         self._entity_index: dict[str, list[str]] = {}  # token → entity names
+        self._compound_entity_index: dict[str, list[tuple[str, int]]] = {}  # first_word → [(full_name, n_parts)]
         self._K_critical: float = 0.15  # Synchronization phase transition threshold
 
     # =========================================================================
@@ -518,6 +631,14 @@ class PhaseMemoryEngine:
         if new_radius != item._last_field_radius:
             self._index_item(item)
 
+    @staticmethod
+    def _safe_fe(item: PhaseMemoryItem) -> float:
+        """Guard: return 0.0 for NaN/inf free energy."""
+        fe = item.free_energy
+        if math.isnan(fe) or math.isinf(fe):
+            return 0.0
+        return fe
+
     def _compute_idf(self, token: str) -> float:
         """
         Compute Inverse Document Frequency for a token.
@@ -528,9 +649,8 @@ class PhaseMemoryEngine:
         N = total items across all namespaces.
         df(t) = number of items containing token t.
         """
-        total_items = sum(len(items) for items in self._items.values())
         df = self._doc_freq.get(token, 0)
-        return math.log(1.0 + total_items / (1.0 + df))
+        return math.log(1.0 + self._total_item_count / (1.0 + df))
 
     # =========================================================================
     # Contradiction Detection — Token Overlap (No S/R/V Required)
@@ -557,11 +677,12 @@ class PhaseMemoryEngine:
         union = new_tokens | old_tokens
         shared_ratio = len(shared) / max(len(union), 1)
 
-        if shared_ratio > 0.6:
+        if shared_ratio > 0.8:
             return "confirmation", 0.0
         if shared_ratio > 0.25:
-            # Jaccard distance as surprise proxy
-            surprise = 1.0 - shared_ratio
+            # Jaccard distance scaled to nats so sigmoid sharpening works
+            SIGMA_MAX = -math.log(1e-6)
+            surprise = (1.0 - shared_ratio) * SIGMA_MAX
             return "contradiction", surprise
         return "unrelated", 0.0
 
@@ -596,7 +717,11 @@ class PhaseMemoryEngine:
                 if new_fact.override:
                     sigma = -math.log(1e-6)  # ≈ 13.8 nats
                 else:
-                    sigma = self._bigram_divergence(new_fact.value, item.fact.value)
+                    # Scale bigram divergence [0,1] to nats so sigmoid
+                    # sharpening in _apply_surprise_damage works correctly.
+                    # Without this, non-override sigma_norm ≈ 0.07 → near-zero damage.
+                    SIGMA_MAX = -math.log(1e-6)
+                    sigma = self._bigram_divergence(new_fact.value, item.fact.value) * SIGMA_MAX
 
                 max_surprise = max(max_surprise, sigma)
 
@@ -607,18 +732,24 @@ class PhaseMemoryEngine:
         new_text: str,
         new_tokens: set[str],
         namespace: str,
-    ) -> tuple[float, list[PhaseMemoryItem]]:
+    ) -> tuple[float, list[PhaseMemoryItem], PhaseMemoryItem | None]:
         """
         Compute surprise from raw text using token overlap.
 
         Used when storing raw text without structured (S, R, V) facts.
         Detects contradictions by finding existing memories with high
         token overlap but different content.
+
+        Returns:
+            (max_surprise, contradicted_items, confirmed_item_or_None)
+            If confirmed_item is not None, the caller should return it
+            instead of creating a new item (token-level dedup).
         """
         existing = self._items.get(namespace, [])
         contradicted: list[PhaseMemoryItem] = []
         max_surprise = 0.0
         is_override = _has_override(new_text)
+        confirmed: PhaseMemoryItem | None = None
 
         for item in existing:
             if item.consolidation_strength < self.STRENGTH_FLOOR:
@@ -629,13 +760,15 @@ class PhaseMemoryEngine:
             if result == "confirmation":
                 # High overlap = likely same content, reinforce
                 item.retrieval_count += 1
+                if confirmed is None:
+                    confirmed = item
             elif result == "contradiction":
                 contradicted.append(item)
                 if is_override:
                     surprise = -math.log(1e-6)  # Override amplification
                 max_surprise = max(max_surprise, surprise)
 
-        return max_surprise, contradicted
+        return max_surprise, contradicted, confirmed
 
     @staticmethod
     def _bigram_divergence(new_value: str, old_value: str) -> float:
@@ -686,6 +819,12 @@ class PhaseMemoryEngine:
             tau_ratio = tau_new / max(item.tau, 1e-6)
             tau_factor = min(tau_ratio, 4.0) / 4.0 + 0.5
             damage = sigmoid_damage * tau_factor * amplifier
+            # Solid/glass phase resistance
+            if item.schema_meta is not None:
+                resistance = 1.0 / (1.0 + abs(item.schema_meta.delta_F))
+                if _is_glass_static(item):
+                    resistance *= 0.1  # Glass: 10× more resistant
+                damage *= resistance
             item.accumulated_surprise_damage = min(
                 item.accumulated_surprise_damage + damage,
                 2.0,
@@ -697,15 +836,28 @@ class PhaseMemoryEngine:
         contradicted: list[PhaseMemoryItem],
         is_override: bool,
     ) -> None:
-        """Apply surprise damage for token-based contradiction detection."""
+        """Apply surprise damage for token-based contradiction detection.
+
+        Same physics as _apply_surprise_damage: D = σ(Σ_norm) · τ_factor · amplifier.
+        The tau_ratio ensures ephemeral notes can't destroy override memories.
+        """
         SIGMA_MAX = -math.log(1e-6)
         sigma_norm = min(surprise / SIGMA_MAX, 1.0)
 
         sigmoid_damage = 1.0 / (1.0 + math.exp(-10.0 * (sigma_norm - 0.5)))
         amplifier = 1.5 if is_override else 1.0
+        tau_new = self.TAU_OVERRIDE if is_override else self.TAU_DEFAULT
 
         for item in contradicted:
-            damage = sigmoid_damage * amplifier
+            tau_ratio = tau_new / max(item.tau, 1e-6)
+            tau_factor = min(tau_ratio, 4.0) / 4.0 + 0.5
+            damage = sigmoid_damage * tau_factor * amplifier
+            # Solid/glass phase resistance
+            if item.schema_meta is not None:
+                resistance = 1.0 / (1.0 + abs(item.schema_meta.delta_F))
+                if _is_glass_static(item):
+                    resistance *= 0.1  # Glass: 10× more resistant
+                damage *= resistance
             item.accumulated_surprise_damage = min(
                 item.accumulated_surprise_damage + damage,
                 2.0,
@@ -778,8 +930,12 @@ class PhaseMemoryEngine:
         Extract entity candidates from raw text via capitalization heuristic.
 
         Rules (zero LLM, zero regex):
-        1. Words starting with uppercase that are NOT sentence-initial
+        1. Words starting with uppercase that are NOT the very first word
         2. Multi-word entities via consecutive capitals: "New York" → "new york"
+        3. Punctuation stripped (RG coarse-graining) before capitalization check
+
+        Post-period capitals ARE entities: "Hello. Jean likes pizza" → "jean".
+        Stop words filter out false positives ("The", "He", "She" etc.).
 
         Returns normalized (lowercase) entity names.
         """
@@ -792,28 +948,36 @@ class PhaseMemoryEngine:
                 i += 1
                 continue
 
-            # Skip sentence-initial words
-            is_sentence_start = (i == 0) or (
-                i > 0 and len(words[i - 1]) > 0 and words[i - 1][-1] in ".!?"
-            )
+            # RG coarse-graining: strip punctuation before capitalization check
+            clean = _strip_punctuation(word)
+            if not clean or len(clean) <= 1:
+                i += 1
+                continue
+
+            # Only skip the very first word (sentence-initial).
+            # Post-period capitals ARE entities — stop words filter false positives.
+            is_sentence_start = (i == 0)
 
             if (
                 not is_sentence_start
-                and word[0].isupper()
-                and word.lower() not in _STOP_WORDS
-                and len(word) > 1
+                and clean[0].isupper()
+                and clean.lower() not in _STOP_WORDS
             ):
                 # Check for multi-word entity (consecutive capitals)
-                entity_parts = [word]
+                entity_parts = [clean]
                 j = i + 1
-                while (
-                    j < len(words)
-                    and words[j]
-                    and words[j][0].isupper()
-                    and words[j].lower() not in _STOP_WORDS
-                ):
-                    entity_parts.append(words[j])
-                    j += 1
+                while j < len(words):
+                    next_clean = _strip_punctuation(words[j])
+                    if (
+                        next_clean
+                        and next_clean[0].isupper()
+                        and next_clean.lower() not in _STOP_WORDS
+                        and len(next_clean) > 1
+                    ):
+                        entity_parts.append(next_clean)
+                        j += 1
+                    else:
+                        break
                 entity = " ".join(entity_parts).lower().strip()
                 if entity not in entities:
                     entities.append(entity)
@@ -902,6 +1066,13 @@ class PhaseMemoryEngine:
         for token in item.indexed_tokens:
             tokens_with_idf[token] = self._compute_idf(token)
 
+        # Build entity token filter: compound entity parts excluded from spectrum
+        # e.g. "jean paul" → {"jean paul", "jean", "paul"}
+        all_entity_tokens: set[str] = set()
+        for e in entities:
+            all_entity_tokens.add(e)
+            all_entity_tokens.update(e.split())
+
         # Create/update EntityNodes
         for entity_name in entities:
             if entity_name not in self._entity_nodes:
@@ -918,8 +1089,9 @@ class PhaseMemoryEngine:
             node.total_mentions += 1
 
             # Update token spectrum (IDF-weighted)
+            # Exclude compound entity parts (e.g. "jean" from "jean paul")
             for token, idf in tokens_with_idf.items():
-                if token != entity_name:
+                if token not in all_entity_tokens:
                     node.token_spectrum[token] = node.token_spectrum.get(token, 0.0) + idf
 
             # Update entity index (token → entity names)
@@ -928,6 +1100,15 @@ class PhaseMemoryEngine:
                     self._entity_index[token] = []
                 if entity_name not in self._entity_index[token]:
                     self._entity_index[token].append(entity_name)
+
+            # Update compound entity index for multi-word entities
+            parts = entity_name.split()
+            if len(parts) > 1:
+                first_word = parts[0]
+                self._compound_entity_index.setdefault(first_word, [])
+                entry = (entity_name, len(parts))
+                if entry not in self._compound_entity_index[first_word]:
+                    self._compound_entity_index[first_word].append(entry)
 
             # Compute natural frequency (spectrum entropy)
             total_weight = sum(node.token_spectrum.values())
@@ -1162,6 +1343,31 @@ class PhaseMemoryEngine:
             for token_entities in self._entity_index.values():
                 if entity_name in token_entities:
                     token_entities.remove(entity_name)
+            # Clean compound entity index
+            parts = entity_name.split()
+            if len(parts) > 1 and parts[0] in self._compound_entity_index:
+                self._compound_entity_index[parts[0]] = [
+                    entry for entry in self._compound_entity_index[parts[0]]
+                    if entry[0] != entity_name
+                ]
+                if not self._compound_entity_index[parts[0]]:
+                    del self._compound_entity_index[parts[0]]
+
+        # Clean shared_memory_ids from entanglement edges
+        for edges in self._entanglement_graph.values():
+            for edge in edges.values():
+                if item_id in edge.shared_memory_ids:
+                    edge.shared_memory_ids.remove(item_id)
+
+        # Clean entanglement graph keys for removed entities
+        for entity_name in entities_to_remove:
+            # Remove as primary key
+            if entity_name in self._entanglement_graph:
+                del self._entanglement_graph[entity_name]
+            # Remove as secondary key in other entities' edges
+            for other_edges in self._entanglement_graph.values():
+                if entity_name in other_edges:
+                    del other_edges[entity_name]
 
     def _prune_entanglement_graph(self) -> None:
         """Prune stale entanglement edges. Called during free energy recomputation."""
@@ -1184,6 +1390,372 @@ class PhaseMemoryEngine:
                 del self._entanglement_graph[a][b]
                 if not self._entanglement_graph[a]:
                     del self._entanglement_graph[a]
+
+    # =========================================================================
+    # Liquid → Solid: Landauer Crystallization Engine
+    #
+    # ΔF(G) = F_schema − Σ F_liquid(i) + C_abstraction
+    # When ΔF < 0: crystallize. ONE threshold. Thermodynamically derived.
+    #
+    # Hysteresis: melt only when ΔF > F_melt = kT·ln(2)·H_lost
+    # Glass: when schema entropy converges (std(H_history)/mean < 1%)
+    # =========================================================================
+
+    def _find_crystallization_candidates(
+        self, namespace: str,
+    ) -> list[list[PhaseMemoryItem]]:
+        """
+        Find groups of liquid episodic memories that might crystallize.
+
+        Two grouping mechanisms:
+        1. Entity nodes — memories sharing a named entity
+        2. High-IDF token co-occurrence — catches non-entity patterns
+
+        Returns deduplicated candidate groups. O(E + T).
+        """
+        seen_group_keys: set[frozenset[str]] = set()
+        candidates: list[list[PhaseMemoryItem]] = []
+
+        # 1. Groups from entity nodes
+        for _entity_name, node in self._entity_nodes.items():
+            members: list[PhaseMemoryItem] = []
+            for mid in node.memory_ids:
+                item = self._item_by_id.get(mid)
+                if (item is not None
+                        and item.namespace == namespace
+                        and item.consolidation_strength >= self.STRENGTH_FLOOR
+                        and item.schema_meta is None):
+                    members.append(item)
+            if len(members) >= self.MIN_GROUP_SIZE:
+                key = frozenset(m.id for m in members)
+                if key not in seen_group_keys:
+                    seen_group_keys.add(key)
+                    candidates.append(members)
+
+        # 2. High-IDF token co-occurrence
+        for token, token_items in self._token_index.items():
+            idf = self._compute_idf(token)
+            if idf < 1.0:
+                continue  # Skip common tokens
+            ns_items = [
+                i for i in token_items
+                if i.namespace == namespace
+                and i.schema_meta is None
+                and i.consolidation_strength >= self.STRENGTH_FLOOR
+            ]
+            if len(ns_items) >= self.MIN_GROUP_SIZE:
+                key = frozenset(i.id for i in ns_items)
+                if key not in seen_group_keys:
+                    seen_group_keys.add(key)
+                    candidates.append(ns_items)
+
+        return candidates
+
+    def _compute_fixed_point(
+        self, group: list[PhaseMemoryItem],
+    ) -> tuple[list[str], dict[str, float]]:
+        """
+        RG soft fixed point: tokens in ≥ 80% of group members,
+        ordered by MI contribution (IDF² × coverage).
+
+        The fixed point IS the schema content.
+        """
+        N = len(group)
+        token_member_count: Counter = Counter()
+        for item in group:
+            for token in set(item.indexed_tokens):
+                token_member_count[token] += 1
+
+        fixed: dict[str, float] = {}
+        for token, count in token_member_count.items():
+            coverage = count / N
+            if coverage >= self.RG_SOFT_THRESHOLD:
+                idf = self._compute_idf(token)
+                fixed[token] = idf * idf * coverage  # MI contribution
+
+        ordered = sorted(fixed.keys(), key=lambda t: fixed[t], reverse=True)
+        return ordered, fixed
+
+    def _build_schema_fact(
+        self,
+        fixed_tokens: list[str],
+        group: list[PhaseMemoryItem],
+        entity_name: str = "",
+    ) -> "Fact":
+        """Build a Fact from the RG fixed point. Zero LLM."""
+        subject = entity_name if entity_name else (
+            group[0].fact.subject if group else ""
+        )
+        value = " ".join(fixed_tokens[:20])
+        raw_text = f"[Schema: {subject}] {value}"
+        return Fact(
+            subject=subject,
+            relation="schema",
+            value=value,
+            override=False,
+            raw_text=raw_text,
+        )
+
+    def _find_dominant_entity(self, group: list[PhaseMemoryItem]) -> str:
+        """Find the entity appearing in the most group members."""
+        entity_counts: Counter = Counter()
+        for item in group:
+            for entity_name, node in self._entity_nodes.items():
+                if item.id in node.memory_ids:
+                    entity_counts[entity_name] += 1
+        if entity_counts:
+            return entity_counts.most_common(1)[0][0]
+        return group[0].fact.subject if group else ""
+
+    def _compute_delta_F(
+        self,
+        group: list[PhaseMemoryItem],
+        fixed_tokens: list[str],
+        token_weights: dict[str, float],
+    ) -> tuple[float, float, float]:
+        """
+        Compute the free energy of crystallization.
+
+        ΔF = F_schema − Σ F_liquid(i) + C_abstraction
+
+        Returns (delta_F, H_schema, H_sum_episodes).
+        """
+        # Sum of individual Landauer costs
+        sum_F_liquid = sum(item.landauer_cost for item in group)
+
+        # Schema entropy
+        entity_name = self._find_dominant_entity(group)
+        schema_fact = self._build_schema_fact(fixed_tokens, group, entity_name)
+        H_schema = self._information_content(schema_fact)
+
+        # Schema Landauer cost
+        F_schema = self.kT * math.log(2) * H_schema / max(self.TAU_SCHEMA, 1e-6)
+
+        # Mutual information preserved in fixed point
+        MI_shared = sum(token_weights.values())
+
+        # Information lost during coarse-graining
+        H_sum = sum(item.information_content_bits for item in group)
+        H_lost = max(0.0, H_sum - H_schema - MI_shared)
+
+        # Abstraction cost (surface energy)
+        C_abs = self.kT * math.log(2) * H_lost / max(self.TAU_SCHEMA, 1e-6)
+
+        delta_F = F_schema - sum_F_liquid + C_abs
+        return delta_F, H_schema, H_sum
+
+    def _crystallize(
+        self,
+        group: list[PhaseMemoryItem],
+        fixed_tokens: list[str],
+        token_weights: dict[str, float],
+        delta_F: float,
+        H_schema: float,
+        H_sum: float,
+        namespace: str,
+    ) -> PhaseMemoryItem:
+        """
+        Create a schema item from a crystallizing group of episodes.
+
+        First-order transition: schema appears discontinuously.
+        Constituent episodes are set to sub-critical τ → evaporate naturally.
+        """
+        entity_name = self._find_dominant_entity(group)
+        schema_fact = self._build_schema_fact(fixed_tokens, group, entity_name)
+
+        total_retrievals = sum(item.retrieval_count for item in group)
+        max_surprise = max(
+            (item.surprise_at_birth for item in group), default=0.0,
+        )
+
+        H = self._information_content(schema_fact)
+        L = (self.kT * math.log(2) * H) / max(self.TAU_SCHEMA, 1e-6)
+
+        schema_meta = SchemaMeta(
+            member_ids=tuple(item.id for item in group),
+            fixed_point_tokens=tuple(fixed_tokens),
+            H_schema=H_schema,
+            H_sum_episodes=H_sum,
+            delta_F=delta_F,
+            formation_order=self._event_counter,
+            absorption_count=0,
+            H_history=(H_schema,),
+        )
+
+        schema_item = PhaseMemoryItem(
+            id=str(uuid4()),
+            fact=schema_fact,
+            namespace=namespace,
+            consolidation_strength=1.0,
+            surprise_at_birth=max_surprise,
+            tau=self.TAU_SCHEMA,
+            birth_order=self._event_counter,
+            rho_at_birth=self._memory_density(namespace),
+            free_energy=0.0,
+            retrieval_count=total_retrievals,
+            accumulated_surprise_damage=0.0,
+            information_content_bits=H,
+            landauer_cost=L,
+            indexed_tokens=list(fixed_tokens),
+            schema_meta=schema_meta,
+        )
+
+        # Index the schema
+        self._items.setdefault(namespace, []).append(schema_item)
+        self._total_item_count += 1
+        self._item_by_id[schema_item.id] = schema_item
+        self._index_item(schema_item)
+
+        for token in set(fixed_tokens):
+            self._doc_freq[token] += 1
+
+        # Set constituent episodes to sub-critical τ → evaporate naturally
+        for item in group:
+            item.tau = self.TAU_C1 * 0.5  # Below critical → gas phase
+
+        return schema_item
+
+    def _check_crystallization(self, namespace: str) -> None:
+        """
+        Check if any group of liquid memories should crystallize.
+
+        Called from _recompute_all_free_energies after GC.
+        ONE threshold: ΔF < 0 (thermodynamically derived).
+        """
+        candidates = self._find_crystallization_candidates(namespace)
+        for group in candidates:
+            # Verify group members are still alive (not GC'd in this pass)
+            alive_group = [
+                item for item in group
+                if item.id in self._item_by_id
+                and item.consolidation_strength >= self.STRENGTH_FLOOR
+                and item.schema_meta is None
+            ]
+            if len(alive_group) < self.MIN_GROUP_SIZE:
+                continue
+
+            fixed_tokens, weights = self._compute_fixed_point(alive_group)
+            if len(fixed_tokens) < self.MIN_FIXED_POINT_TOKENS:
+                continue
+
+            delta_F, H_schema, H_sum = self._compute_delta_F(
+                alive_group, fixed_tokens, weights,
+            )
+
+            if delta_F < 0:  # THE threshold
+                self._crystallize(
+                    alive_group, fixed_tokens, weights,
+                    delta_F, H_schema, H_sum, namespace,
+                )
+
+    def _try_schema_absorption(
+        self, new_item: PhaseMemoryItem, namespace: str,
+    ) -> bool:
+        """
+        Check if a new episode should be absorbed by an existing schema.
+
+        Returns True if absorbed (schema reinforced, episode set to evaporate).
+        """
+        schemas = [
+            item for item in self._items.get(namespace, [])
+            if item.schema_meta is not None
+            and item.consolidation_strength >= self.STRENGTH_FLOOR
+        ]
+
+        for schema in schemas:
+            fp_tokens = set(schema.schema_meta.fixed_point_tokens)
+            new_tokens = set(new_item.indexed_tokens)
+
+            if not fp_tokens:
+                continue
+
+            overlap = len(fp_tokens & new_tokens)
+            coverage = overlap / len(fp_tokens)
+
+            if coverage >= self.SCHEMA_ABSORPTION_COVERAGE:
+                # Reinforce schema
+                schema.retrieval_count += 1
+
+                # Update H_history for glass detection
+                old_meta = schema.schema_meta
+                new_H = schema.information_content_bits  # unchanged content
+                new_H_history = old_meta.H_history + (new_H,)
+
+                schema.schema_meta = SchemaMeta(
+                    member_ids=old_meta.member_ids + (new_item.id,),
+                    fixed_point_tokens=old_meta.fixed_point_tokens,
+                    H_schema=old_meta.H_schema,
+                    H_sum_episodes=old_meta.H_sum_episodes + new_item.information_content_bits,
+                    delta_F=old_meta.delta_F,
+                    formation_order=old_meta.formation_order,
+                    absorption_count=old_meta.absorption_count + 1,
+                    H_history=new_H_history,
+                )
+
+                # Accelerate episode decay (absorbed into schema)
+                new_item.tau = self.TAU_C1 * 0.5
+                return True
+
+        return False
+
+    def _check_schema_melting(self, namespace: str) -> None:
+        """
+        Check if any schema should melt back to liquid.
+
+        Hysteresis: melting requires ΔF > F_melt = kT·ln(2)·H_lost.
+        Forming a schema erases constituent detail; re-creating it costs energy.
+        """
+        schemas = [
+            item for item in self._items.get(namespace, [])
+            if item.schema_meta is not None
+            and item.consolidation_strength >= self.STRENGTH_FLOOR
+        ]
+
+        for schema in schemas:
+            meta = schema.schema_meta
+
+            # Count surviving members
+            surviving = [
+                self._item_by_id[mid]
+                for mid in meta.member_ids
+                if mid in self._item_by_id
+                and self._item_by_id[mid].consolidation_strength >= self.STRENGTH_FLOOR
+            ]
+
+            if len(surviving) < 2:
+                # Orphan schema — melt without hysteresis
+                self._melt_schema(schema)
+                continue
+
+            # Recompute ΔF with current state
+            fixed_tokens = list(meta.fixed_point_tokens)
+            _, weights = self._compute_fixed_point(surviving)
+            if not weights:
+                self._melt_schema(schema)
+                continue
+
+            delta_F, _, _ = self._compute_delta_F(surviving, fixed_tokens, weights)
+
+            # Landauer hysteresis barrier
+            H_lost = max(meta.H_sum_episodes - meta.H_schema, 0.0)
+            F_melt = self.kT * math.log(2) * H_lost
+
+            if delta_F > F_melt:
+                self._melt_schema(schema)
+
+    def _melt_schema(self, schema: PhaseMemoryItem) -> None:
+        """Dissolve a schema back into liquid-phase constituents."""
+        if schema.schema_meta is None:
+            return
+
+        # Restore surviving constituent tau
+        for mid in schema.schema_meta.member_ids:
+            member = self._item_by_id.get(mid)
+            if member is not None and member.consolidation_strength >= self.STRENGTH_FLOOR:
+                member.tau = self.TAU_DEFAULT
+
+        # Kill the schema (will be GC'd)
+        schema.consolidation_strength = 0.0
 
     # =========================================================================
     # Store — Self-Sufficient Ingestion (Zero LLM)
@@ -1223,8 +1795,21 @@ class PhaseMemoryEngine:
         if fact is None:
             # Auto-create minimal fact from raw text
             # Subject: first non-stop token, relation: second, value: rest
-            content_words = [w for w in text.lower().split()
-                            if w not in _STOP_WORDS and len(w) > 1]
+            content_words = [
+                clean for w in text.lower().split()
+                for clean in [_strip_punctuation(w)]  # strip once, reuse
+                if clean and clean not in _STOP_WORDS and len(clean) > 1
+            ]
+            # Verb-skip heuristic: skip leading verbs/adverbs to find noun subject
+            subject_idx = 0
+            while subject_idx < len(content_words) - 1:
+                if any(content_words[subject_idx].endswith(sfx) for sfx in _VERB_SUFFIXES):
+                    subject_idx += 1
+                else:
+                    break
+            # Reorder: subject first, then skipped words become relation context
+            if subject_idx > 0:
+                content_words = content_words[subject_idx:] + content_words[:subject_idx]
             if len(content_words) >= 3:
                 subject = content_words[0]
                 relation = content_words[1]
@@ -1254,15 +1839,19 @@ class PhaseMemoryEngine:
         existing = self._items.get(namespace, [])
 
         # --- Check for confirmation (exact duplicate) ---
-        for item in existing:
-            if (
-                item.fact.subject == fact.subject
-                and item.fact.relation == fact.relation
-                and item.fact.value == fact.value
-                and item.consolidation_strength >= self.STRENGTH_FLOOR
-            ):
-                item.retrieval_count += 1
-                return item  # Confirmation — reinforced existing
+        # Skip dedup when all fact fields are empty — distinct texts
+        # that produce no content words should not collapse into one item.
+        has_fact_fields = bool(fact.subject or fact.relation or fact.value)
+        if has_fact_fields:
+            for item in existing:
+                if (
+                    item.fact.subject == fact.subject
+                    and item.fact.relation == fact.relation
+                    and item.fact.value == fact.value
+                    and item.consolidation_strength >= self.STRENGTH_FLOOR
+                ):
+                    item.retrieval_count += 1
+                    return item  # Confirmation — reinforced existing
 
         # --- Compute surprise ---
         if fact.subject and fact.relation:
@@ -1270,9 +1859,11 @@ class PhaseMemoryEngine:
             surprise, contradicted = self._compute_surprise(fact, existing)
         else:
             # Token-based surprise (raw text)
-            surprise, contradicted = self._compute_surprise_from_tokens(
+            surprise, contradicted, confirmed = self._compute_surprise_from_tokens(
                 text, token_set, namespace,
             )
+            if confirmed and not contradicted:
+                return confirmed  # Token-level dedup — no new item needed
 
         # --- Apply surprise damage ---
         if contradicted:
@@ -1308,6 +1899,8 @@ class PhaseMemoryEngine:
 
         # --- Store + Index ---
         self._items.setdefault(namespace, []).append(item)
+        self._total_item_count += 1
+        self._item_by_id[item.id] = item
         self._index_item(item)
 
         # Update document frequency
@@ -1319,6 +1912,9 @@ class PhaseMemoryEngine:
 
         # --- Cross-Entity Resonance: Write-Time Coupling ---
         self._cer_update(item, text, namespace)
+
+        # --- Schema Absorption: Check if episode is absorbed by existing schema ---
+        self._try_schema_absorption(item, namespace)
 
         return item
 
@@ -1333,17 +1929,26 @@ class PhaseMemoryEngine:
         for item in items:
             self._compute_free_energy(item, rho)
 
+        # --- Liquid → Solid: Melting + Crystallization (before GC) ---
+        self._check_schema_melting(namespace)
+        self._check_crystallization(namespace)
+
+        # --- GC: Remove dead items (including melted schemas) ---
         alive = []
-        for item in items:
-            if item.consolidation_strength > 0.0 or item.accumulated_surprise_damage < 1.0:
+        all_items = self._items.get(namespace, [])  # Re-fetch (crystallization may add)
+        for item in all_items:
+            if item.consolidation_strength >= self.STRENGTH_FLOOR:
                 alive.append(item)
             else:
                 self._deindex_item(item)
                 self._cer_gc_item(item)
+                self._item_by_id.pop(item.id, None)
                 # Decrement doc freq for dead item's tokens
                 for token in set(item.indexed_tokens):
                     self._doc_freq[token] = max(0, self._doc_freq.get(token, 1) - 1)
         self._items[namespace] = alive
+        # Recompute cached total item count after GC
+        self._total_item_count = sum(len(v) for v in self._items.values())
 
         # Prune stale entanglement edges
         self._prune_entanglement_graph()
@@ -1376,7 +1981,7 @@ class PhaseMemoryEngine:
         query_token_set = set(query_tokens)
 
         # --- CER: Multi-entity detection ---
-        query_entities = self._detect_multi_entity_query(query_token_set, namespace)
+        query_entities = self._detect_multi_entity_query(query_token_set, namespace, query)
 
         if len(query_entities) >= 2:
             cer_results = self._cer_search(
@@ -1386,9 +1991,15 @@ class PhaseMemoryEngine:
                 tsf_results = self._tsf_search(
                     query_tokens, query_token_set, namespace, limit,
                 )
-                return self._merge_cer_and_tsf(cer_results, tsf_results, limit)
+                results = self._merge_cer_and_tsf(cer_results, tsf_results, limit)
+                for _, item in results:
+                    item.retrieval_count += 1
+                return results
 
-        return self._tsf_search(query_tokens, query_token_set, namespace, limit)
+        results = self._tsf_search(query_tokens, query_token_set, namespace, limit)
+        for _, item in results:
+            item.retrieval_count += 1
+        return results
 
     # =========================================================================
     # TSF Search — Standard Token-Index Retrieval
@@ -1428,21 +2039,22 @@ class PhaseMemoryEngine:
                 self._update_field_radius(item)
 
                 idf_score = sum(self._compute_idf(t) for t in matched_tokens)
-                rank = idf_score - item.free_energy / max(self.kT, 1e-9)
+                rank = idf_score - self._safe_fe(item) / max(self.kT, 1e-9)
+                # Schema boost: solid/glass items are compressed knowledge
+                if item.schema_meta is not None:
+                    rank *= 1.5
                 scored.append((rank, item))
         else:
             items = self._items.get(namespace, [])
             for item in items:
                 if item.consolidation_strength < self.STRENGTH_FLOOR:
                     continue
-                rank = -item.free_energy / max(self.kT, 1e-9)
+                rank = -self._safe_fe(item) / max(self.kT, 1e-9)
                 scored.append((rank, item))
 
         scored.sort(key=lambda x: x[0], reverse=True)
 
-        for _, item in scored[:limit]:
-            item.retrieval_count += 1
-
+        # retrieval_count incremented by search(), not here
         return scored[:limit]
 
     # =========================================================================
@@ -1453,27 +2065,78 @@ class PhaseMemoryEngine:
         self,
         query_token_set: set[str],
         namespace: str,
+        query_text: str = "",
     ) -> list[str]:
         """
         Detect if query references 2+ known entities.
 
-        Truly O(Q): one hash lookup per query token. Namespace membership
-        verified via pre-built set of item IDs — O(1) per check.
+        Two-pass detection:
+        1. Single-token entities: O(Q) hash lookups
+        2. Compound entities ("New York"): scan query words for consecutive
+           sequences matching compound entity index
+
+        Namespace membership verified via pre-built set of item IDs — O(1).
         """
         # Build namespace member set ONCE — O(N)
         ns_item_ids = {item.id for item in self._items.get(namespace, [])}
 
         matched: list[str] = []
+
+        # Pass 1: single-token entity matching
         for token in query_token_set:
             canonical = token
             if token in self._entity_alias_map:
                 canonical = self._entity_alias_map[token]
             if canonical in self._entity_nodes:
                 node = self._entity_nodes[canonical]
-                # O(|memory_ids|) with O(1) set lookup — not O(N²)
                 has_ns = any(mid in ns_item_ids for mid in node.memory_ids)
                 if has_ns and canonical not in matched:
                     matched.append(canonical)
+
+        # Pass 2: compound entity matching (e.g., "New York", "San Francisco")
+        if query_text and self._compound_entity_index:
+            query_words = [_strip_punctuation(w).lower() for w in query_text.split()]
+            i = 0
+            while i < len(query_words):
+                word = query_words[i]
+                if word in self._compound_entity_index:
+                    # Try longest match first (sorted by n_parts descending)
+                    candidates = sorted(
+                        self._compound_entity_index[word],
+                        key=lambda x: x[1],
+                        reverse=True,
+                    )
+                    found = False
+                    for compound_name, n_parts in candidates:
+                        if i + n_parts <= len(query_words):
+                            candidate = " ".join(query_words[i:i + n_parts])
+                            if candidate == compound_name:
+                                canonical = compound_name
+                                if compound_name in self._entity_alias_map:
+                                    canonical = self._entity_alias_map[compound_name]
+                                if canonical in self._entity_nodes:
+                                    node = self._entity_nodes[canonical]
+                                    has_ns = any(mid in ns_item_ids for mid in node.memory_ids)
+                                    if has_ns and canonical not in matched:
+                                        matched.append(canonical)
+                                i += n_parts
+                                found = True
+                                break
+                    if not found:
+                        i += 1
+                else:
+                    i += 1
+
+        # Deduplicate: remove single-token entities that are parts of matched compounds
+        # e.g., if "new york" matched, remove "new" if it was a false single-token match
+        compound_parts: set[str] = set()
+        for entity in matched:
+            parts = entity.split()
+            if len(parts) > 1:
+                compound_parts.update(parts)
+        if compound_parts:
+            matched = [e for e in matched if " " in e or e not in compound_parts]
+
         return matched
 
     def _cer_search(
@@ -1484,7 +2147,195 @@ class PhaseMemoryEngine:
         limit: int,
     ) -> list[tuple[float, PhaseMemoryItem]]:
         """
-        Search via the entanglement graph.
+        CER dispatcher: PESQD (per-entity decomposition) + legacy shared-token search.
+
+        PESQD decomposes the query into per-entity sub-queries, discovers
+        cross-entity resonant tokens, and scores by entity overlap.
+        Legacy CER uses pre-computed entanglement graph shared_tokens.
+
+        Results from both are merged (dedup by item ID, keep max score).
+        """
+        pesqd = self._pesqd_search(entities, query_tokens, namespace, limit)
+        if pesqd:
+            legacy = self._cer_shared_token_search(
+                entities, query_tokens, namespace, limit,
+            )
+            if legacy:
+                # Merge: dedup by item ID, keep max score
+                merged: dict[str, tuple[float, PhaseMemoryItem]] = {
+                    item.id: (score, item) for score, item in pesqd
+                }
+                for score, item in legacy:
+                    if item.id not in merged or score > merged[item.id][0]:
+                        merged[item.id] = (score, item)
+                result = sorted(merged.values(), key=lambda x: x[0], reverse=True)
+                return result[:limit]
+            return pesqd
+        return self._cer_shared_token_search(
+            entities, query_tokens, namespace, limit,
+        )
+
+    # =========================================================================
+    # PESQD — Per-Entity Sub-Query Decomposition
+    # =========================================================================
+
+    def _get_coupling(self, entities: list[str]) -> float:
+        """
+        Get coupling strength for a set of entities.
+
+        2 entities → EntanglementEdge coupling_strength.
+        3+ entities → cluster coherence, or mean pairwise coupling as fallback.
+        """
+        if len(entities) == 2:
+            a, b = sorted(entities)
+            edge = self._entanglement_graph.get(a, {}).get(b)
+            return edge.coupling_strength if edge else 0.0
+
+        # 3+ entities: try cluster coherence first
+        entity_set = set(entities)
+        for cluster in self._resonance_clusters.values():
+            if entity_set.issubset(cluster.members):
+                return cluster.coherence
+
+        # Fallback: mean pairwise coupling
+        pair_sum = 0.0
+        pair_count = 0
+        for i in range(len(entities)):
+            for j in range(i + 1, len(entities)):
+                a, b = sorted([entities[i], entities[j]])
+                edge = self._entanglement_graph.get(a, {}).get(b)
+                if edge:
+                    pair_sum += edge.coupling_strength
+                pair_count += 1
+        return pair_sum / max(pair_count, 1)
+
+    def _pesqd_search(
+        self,
+        entities: list[str],
+        query_token_set: set[str],
+        namespace: str,
+        limit: int,
+    ) -> list[tuple[float, PhaseMemoryItem]]:
+        """
+        Per-Entity Sub-Query Decomposition.
+
+        Factorizes the multi-entity response function into single-entity
+        propagators with a cross-correlation kernel.
+
+        Phase 1:   Gather each entity's memories independently.
+        Phase 1.5: Discover cross-entity resonant tokens (multi-hop bridges).
+        Phase 2:   Score by entity overlap × (IDF + filter + cross) × s − F/kT.
+
+        Zero external calls. O(E × M_e + C × T). Sub-millisecond.
+        """
+        entity_set = set(entities)
+        # Build token-level entity filter: includes compound parts
+        # e.g. "jean paul" → {"jean paul", "jean", "paul"}
+        entity_tokens = set()
+        for e in entities:
+            entity_tokens.add(e)
+            entity_tokens.update(e.split())
+        num_entities = len(entity_set)  # Use set size, not list — prevents duplicate inflation
+
+        # --- Phase 1: Per-entity memory gathering ---
+        memory_entity_map: dict[str, set[str]] = {}
+        for entity_name in entities:
+            node = self._entity_nodes.get(entity_name)
+            if not node:
+                continue
+            for mid in node.memory_ids:
+                item = self._item_by_id.get(mid)
+                if not item or item.namespace != namespace:
+                    continue
+                if item.consolidation_strength < self.STRENGTH_FLOOR:
+                    continue
+                memory_entity_map.setdefault(mid, set()).add(entity_name)
+
+        if not memory_entity_map:
+            return []
+
+        # --- Coupling strength ---
+        K_coupling = self._get_coupling(entities)
+
+        # --- Filter tokens: non-entity query tokens ---
+        filter_tokens = {
+            t for t in query_token_set
+            if t not in entity_tokens and t not in self._entity_nodes
+        }
+
+        # --- Phase 1.5: Cross-entity token discovery ---
+        # Track which entities' memories contain each non-entity token
+        token_entity_coverage: dict[str, set[str]] = {}
+        for mid, owning in memory_entity_map.items():
+            item = self._item_by_id.get(mid)
+            if not item:
+                continue  # Defensive: stale mid
+            for token in item.indexed_tokens:
+                if token not in entity_tokens and token not in self._entity_nodes:
+                    token_entity_coverage.setdefault(token, set()).update(owning)
+
+        # Tokens covered by ALL queried entities = cross-entity resonant tokens
+        cross_entity_tokens: set[str] = {
+            t for t, ents in token_entity_coverage.items()
+            if len(ents) >= num_entities
+        }
+
+        # --- Phase 2: Score each candidate memory ---
+        scored: list[tuple[float, PhaseMemoryItem]] = []
+        for mid, owning in memory_entity_map.items():
+            item = self._item_by_id.get(mid)
+            if not item:
+                continue  # Defensive: stale mid
+
+            # Entity overlap ratio: fraction of queried entities owning this memory
+            overlap_ratio = len(owning) / num_entities
+            pesqd_boost = overlap_ratio * (1.0 + K_coupling)
+
+            # IDF from memory's non-entity, non-boosted tokens (base signal)
+            item_tokens = set(item.indexed_tokens)
+            token_idf = sum(
+                self._compute_idf(t) for t in item_tokens
+                if t not in entity_tokens
+                and t not in cross_entity_tokens
+                and t not in filter_tokens
+            )
+
+            # Filter bonus: 2× IDF for query content words found in memory
+            filter_bonus = sum(
+                self._compute_idf(t) * 2.0 for t in filter_tokens
+                if t in item_tokens
+            )
+
+            # Cross-entity bonus: 3× IDF for multi-hop bridge tokens
+            # (highest boost — these are the tokens linking entities)
+            cross_bonus = sum(
+                self._compute_idf(t) * 3.0 for t in item_tokens
+                if t in cross_entity_tokens
+            )
+
+            s = item.consolidation_strength
+            rank = (
+                pesqd_boost * (token_idf + filter_bonus + cross_bonus) * s
+                - self._safe_fe(item) / max(self.kT, 1e-9)
+            )
+            scored.append((rank, item))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return scored[:limit]
+
+    # =========================================================================
+    # Legacy CER — Shared Token Search (pre-PESQD)
+    # =========================================================================
+
+    def _cer_shared_token_search(
+        self,
+        entities: list[str],
+        query_tokens: set[str],
+        namespace: str,
+        limit: int,
+    ) -> list[tuple[float, PhaseMemoryItem]]:
+        """
+        Legacy CER: search via pre-computed entanglement graph shared_tokens.
 
         For 2 entities: O(1) edge lookup → shared_tokens = resonant frequencies.
         For 3+ entities: cluster lookup → cluster_spectrum.
@@ -1498,11 +2349,13 @@ class PhaseMemoryEngine:
             edge = self._entanglement_graph.get(a, {}).get(b)
 
             if edge and edge.coupling_strength > 0:
-                # Use shared_tokens as resonant frequencies
                 search_tokens = edge.shared_tokens
                 if not search_tokens:
                     return []
 
+                # Accumulate IDF per item across all matching tokens
+                # (consistent with TSF/PESQD which sum IDFs)
+                item_idf_acc: dict[str, tuple[float, PhaseMemoryItem]] = {}
                 for token, weight in search_tokens.most_common(20):
                     if token in self._token_index:
                         for item in self._token_index[token]:
@@ -1511,25 +2364,45 @@ class PhaseMemoryEngine:
                             if item.consolidation_strength < self.STRENGTH_FLOOR:
                                 continue
                             idf = self._compute_idf(token)
-                            cer_score = (
-                                edge.coupling_strength * idf
-                                * item.consolidation_strength
-                                - item.free_energy / max(self.kT, 1e-9)
-                            )
-                            scored.append((cer_score, item))
+                            if item.id in item_idf_acc:
+                                prev_idf, _ = item_idf_acc[item.id]
+                                item_idf_acc[item.id] = (prev_idf + idf, item)
+                            else:
+                                item_idf_acc[item.id] = (idf, item)
 
-                # Also include shared memories
+                for sum_idf, item in item_idf_acc.values():
+                    cer_score = (
+                        edge.coupling_strength * sum_idf
+                        * item.consolidation_strength
+                        - self._safe_fe(item) / max(self.kT, 1e-9)
+                    )
+                    scored.append((cer_score, item))
+
+                # Also include shared memories — score via IDF of shared tokens
                 for memory_id in edge.shared_memory_ids:
-                    for item in self._items.get(namespace, []):
-                        if item.id == memory_id and item.consolidation_strength >= self.STRENGTH_FLOOR:
-                            rank = (
-                                edge.coupling_strength * 10.0
-                                - item.free_energy / max(self.kT, 1e-9)
-                            )
-                            scored.append((rank, item))
+                    item = self._item_by_id.get(memory_id)
+                    if item and item.namespace == namespace and \
+                       item.consolidation_strength >= self.STRENGTH_FLOOR:
+                        # Use sum of shared token IDFs (consistent with token-match scoring)
+                        item_token_set = set(item.indexed_tokens)
+                        shared_idf = sum(
+                            self._compute_idf(t)
+                            for t in search_tokens
+                            if t in item_token_set
+                        )
+                        if shared_idf == 0:
+                            # Fallback: mean IDF of item's tokens
+                            shared_idf = sum(
+                                self._compute_idf(t) for t in item.indexed_tokens
+                            ) / max(len(item.indexed_tokens), 1)
+                        rank = (
+                            edge.coupling_strength * shared_idf
+                            * item.consolidation_strength
+                            - self._safe_fe(item) / max(self.kT, 1e-9)
+                        )
+                        scored.append((rank, item))
 
         elif len(entities) >= 3:
-            # Find cluster containing all entities
             entity_set = set(entities)
             for cluster in self._resonance_clusters.values():
                 if entity_set.issubset(cluster.members):
@@ -1543,7 +2416,8 @@ class PhaseMemoryEngine:
                                 idf = self._compute_idf(token)
                                 cer_score = (
                                     cluster.coherence * idf
-                                    - item.free_energy / max(self.kT, 1e-9)
+                                    * item.consolidation_strength
+                                    - self._safe_fe(item) / max(self.kT, 1e-9)
                                 )
                                 scored.append((cer_score, item))
                     break
@@ -1572,7 +2446,9 @@ class PhaseMemoryEngine:
         merged: dict[str, tuple[float, PhaseMemoryItem]] = {}
 
         for score, item in cer_results:
-            merged[item.id] = (score * CER_BOOST, item)
+            # Boost positive CER scores; don't amplify negative penalties
+            boosted = score * CER_BOOST if score > 0 else score
+            merged[item.id] = (boosted, item)
 
         for score, item in tsf_results:
             if item.id in merged:
@@ -1583,9 +2459,7 @@ class PhaseMemoryEngine:
 
         result = sorted(merged.values(), key=lambda x: x[0], reverse=True)
 
-        for _, item in result[:limit]:
-            item.retrieval_count += 1
-
+        # retrieval_count incremented by search(), not here
         return result[:limit]
 
     # =========================================================================
@@ -1612,7 +2486,12 @@ class PhaseMemoryEngine:
 
         for score, item in results:
             s = item.consolidation_strength
-            lines.append(f"- [strength={s:.2f}] {item.fact.raw_text}")
+            if item.schema_meta is not None:
+                n_members = len(item.schema_meta.member_ids)
+                phase = "glass" if _is_glass_static(item) else "schema"
+                lines.append(f"- [strength={s:.2f}, {phase}, {n_members} memories] {item.fact.raw_text}")
+            else:
+                lines.append(f"- [strength={s:.2f}] {item.fact.raw_text}")
             debug_items.append({
                 "text": item.fact.raw_text,
                 "score": round(score, 4),
@@ -1643,7 +2522,22 @@ class PhaseMemoryEngine:
             "lambda": self.LAMBDA,
             "strength_floor": self.STRENGTH_FLOOR,
             "item_count": len(items),
-            "liquid_count": sum(1 for i in items if i.consolidation_strength >= self.STRENGTH_FLOOR),
+            "liquid_count": sum(
+                1 for i in items
+                if i.consolidation_strength >= self.STRENGTH_FLOOR
+                and i.schema_meta is None
+            ),
+            "solid_count": sum(
+                1 for i in items
+                if i.schema_meta is not None
+                and i.consolidation_strength >= self.STRENGTH_FLOOR
+                and not _is_glass_static(i)
+            ),
+            "glass_count": sum(
+                1 for i in items
+                if i.schema_meta is not None
+                and _is_glass_static(i)
+            ),
             "gas_count": sum(1 for i in items if i.consolidation_strength < self.STRENGTH_FLOOR),
             "items": [item.to_debug_dict(strength_floor=self.STRENGTH_FLOOR) for item in items],
             "cer": {

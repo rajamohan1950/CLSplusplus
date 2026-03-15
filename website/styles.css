@@ -1631,6 +1631,54 @@ body {
   color: #c8c8d8;
 }
 
+/* Phase dynamics debug styles */
+.debug-phase-global {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #2a2a3e;
+}
+.debug-phase-param {
+  font-size: 0.7rem;
+  color: #8888aa;
+  background: #1a1a2e;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+.debug-phase-tag {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+}
+.debug-phase-liquid {
+  color: #4caf50;
+  background: rgba(76, 175, 80, 0.15);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+.debug-phase-gas {
+  color: #f44336;
+  background: rgba(244, 67, 54, 0.15);
+  border: 1px solid rgba(244, 67, 54, 0.3);
+}
+.debug-phase-meta {
+  font-size: 0.65rem;
+  color: #6666aa;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  margin-top: 2px;
+}
+.debug-phase-fact {
+  font-size: 0.65rem;
+  color: #888;
+  font-style: italic;
+  margin-top: 2px;
+}
+
 /* --- Mobile --- */
 @media (max-width: 768px) {
   .chat-sidebar {

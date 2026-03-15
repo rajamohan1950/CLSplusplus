@@ -245,17 +245,66 @@
 
     debugAugmented.innerHTML = html;
 
-    // Lower box: session memory store
+    // Lower box: Phase Memory Dynamics — thermodynamic state
     var memHtml = '';
-    if (d.memory_store && d.memory_store.length > 0) {
+    var pd = d.phase_dynamics;
+    if (pd) {
+      // Global thermodynamic parameters
+      memHtml += '<div class="debug-phase-global">';
+      memHtml += '<span class="debug-phase-param">\u03C1=' + pd.memory_density_rho.toFixed(4) + '</span>';
+      memHtml += '<span class="debug-phase-param">events=' + pd.global_event_counter + '</span>';
+      memHtml += '<span class="debug-phase-param">\u03A3F=' + pd.total_free_energy.toFixed(2) + '</span>';
+      memHtml += '<span class="debug-phase-param">\u03C4\u2081=' + pd.tau_c1 + '</span>';
+      memHtml += '<span class="debug-phase-param">liquid=' + pd.liquid_count + '</span>';
+      memHtml += '<span class="debug-phase-param">gas=' + pd.gas_count + '</span>';
+      memHtml += '</div>';
+
+      // Per-item thermodynamic state with consolidation strength bars
+      if (pd.items && pd.items.length > 0) {
+        pd.items.forEach(function (item, i) {
+          var pct = Math.round(item.consolidation_strength * 100);
+          var color = pct > 50 ? '#4caf50' : pct > 20 ? '#ff9800' : '#f44336';
+          var phaseTag = item.phase === 'liquid'
+            ? '<span class="debug-phase-tag debug-phase-liquid">liquid</span>'
+            : '<span class="debug-phase-tag debug-phase-gas">gas</span>';
+
+          memHtml += '<div class="debug-mem-item">';
+          // Strength bar
+          memHtml += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
+          memHtml += '<div style="width:80px;height:8px;background:#222;border-radius:4px;overflow:hidden;flex-shrink:0">';
+          memHtml += '<div style="width:' + pct + '%;height:100%;background:' + color + ';border-radius:4px"></div></div>';
+          memHtml += '<span style="font-size:11px;color:' + color + ';min-width:32px">' + pct + '%</span>';
+          memHtml += phaseTag;
+          memHtml += '</div>';
+          // Fact text
+          memHtml += '<div class="debug-mem-text">' + escHtml(item.text) + '</div>';
+          // Thermodynamic parameters
+          memHtml += '<div class="debug-phase-meta">';
+          memHtml += 's=' + item.consolidation_strength.toFixed(3);
+          memHtml += ' | \u03A3=' + item.surprise_at_birth.toFixed(3);
+          memHtml += ' | \u03C4=' + item.tau.toFixed(1);
+          memHtml += ' | F=' + item.free_energy.toFixed(3);
+          memHtml += ' | H=' + item.information_content_bits.toFixed(2) + 'b';
+          memHtml += ' | L=' + item.landauer_cost.toFixed(4);
+          memHtml += ' | R=' + item.retrieval_count;
+          memHtml += '</div>';
+          // Fact structure
+          if (item.fact) {
+            memHtml += '<div class="debug-phase-fact">';
+            memHtml += '(' + escHtml(item.fact.subject) + ', ' + escHtml(item.fact.relation) + ', ' + escHtml(item.fact.value) + ')';
+            if (item.fact.override) memHtml += ' <span style="color:#f44336;font-weight:600">OVERRIDE</span>';
+            memHtml += '</div>';
+          }
+          memHtml += '</div>';
+        });
+      } else {
+        memHtml += '<span class="debug-placeholder">No memories stored yet</span>';
+      }
+    } else if (d.memory_store && d.memory_store.length > 0) {
+      // Fallback to legacy format
       memHtml += '<div class="debug-label">Total items: ' + d.memory_store.length + '</div>';
       d.memory_store.forEach(function (item, i) {
-        var srcClass = item.source === 'user' ? 'debug-src-user' : 'debug-src-assistant';
-        memHtml += '<div class="debug-mem-item">';
-        memHtml += '<span class="debug-mem-num">#' + (i + 1) + '</span> ';
-        memHtml += '<span class="' + srcClass + '">[' + item.source + ']</span> ';
-        memHtml += '<span class="debug-mem-text">' + escHtml(item.text) + '</span>';
-        memHtml += '</div>';
+        memHtml += '<div class="debug-mem-item">#' + (i+1) + ' ' + escHtml(item.text || '') + '</div>';
       });
     } else {
       memHtml = '<span class="debug-placeholder">No memories stored yet</span>';
