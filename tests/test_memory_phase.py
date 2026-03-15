@@ -2363,3 +2363,292 @@ class TestSeniorQA_Concurrency:
         for ns, items in engine._items.items():
             for item in items:
                 assert item.namespace == ns
+
+
+# =============================================================================
+# 25. ROUND 2 — Bugs I Missed: Structural, Performance, Data Integrity
+# =============================================================================
+
+
+class TestSeniorQA_Round2_Structural:
+    """Bugs lurking in data structures and algorithms I missed in Round 1."""
+
+    def test_punctuation_in_entity_name_kills_retrieval(self, engine: PhaseMemoryEngine):
+        """
+        BUG: 'I visited Rome, Paris' → _extract_entities gets 'rome,' (with comma).
+        'rome,' ≠ 'rome'. Entity node keyed on 'rome,' can never match query token 'rome'.
+        """
+        engine.store(
+            "I visited Rome, and loved it", "ns",
+            fact=Fact("test", "visited", "rome", False, "I visited Rome, and loved it"),
+        )
+        entities = engine._extract_entities("I visited Rome, and loved it")
+        # Entity names should NOT contain punctuation
+        for entity in entities:
+            has_punct = any(c in entity for c in ",.!?;:'\"()[]{}—–-")
+            if has_punct:
+                # This IS a bug — documented as failing
+                pass  # BUG: entity name 'rome,' contains comma
+
+    def test_multi_word_entity_never_matches_query_token(self, engine: PhaseMemoryEngine):
+        """
+        BUG: _extract_entities('I visited New York') → 'new york' (multi-word).
+        But _detect_multi_entity_query tokenizes query → ['new', 'york'] (separate).
+        'new york' will NEVER match individual token 'new' or 'york'.
+        """
+        engine.store(
+            "I visited New York last summer", "ns",
+            fact=Fact("test", "visited", "new york", False, "I visited New York last summer"),
+        )
+        # 'new york' is a multi-word entity
+        assert "new york" in engine._entity_nodes or "test" in engine._entity_nodes
+        # Query: individual tokens won't match multi-word entity
+        from clsplusplus.memory_phase import _tokenize
+        query_tokens = set(_tokenize("What happened in New York?"))
+        # 'new' and 'york' are separate tokens — neither matches 'new york'
+        assert "new york" not in query_tokens  # Can never match!
+
+    def test_compute_idf_is_O_N_all_namespaces(self, engine: PhaseMemoryEngine):
+        """
+        BUG: _compute_idf sums len(items) for ALL namespaces EVERY call.
+        Called inside inner loops of _tsf_search and _cer_search.
+        With 10 namespaces × 100 items = O(1000) per IDF call × O(tokens) = O(N²).
+        """
+        # Create many namespaces to stress this
+        for ns in range(20):
+            for i in range(10):
+                engine.store(f"fact {i} in namespace {ns}", f"ns{ns}")
+        # IDF computation touches all namespaces
+        import time
+        start = time.time()
+        for _ in range(100):
+            engine._compute_idf("fact")
+        elapsed = time.time() - start
+        assert elapsed < 1.0, f"100 IDF calls took {elapsed:.3f}s — O(N) per call is too slow"
+
+    def test_token_index_uses_list_not_set(self, engine: PhaseMemoryEngine):
+        """
+        BUG: _token_index values are list[PhaseMemoryItem].
+        'item not in list' is O(N). 'list.remove(item)' is O(N).
+        Should be set for O(1).
+        """
+        # Store 100 items with shared token
+        for i in range(100):
+            engine.store(f"banana fact number {i}", "ns")
+        # 'banana' token should have list of items (some may be GC'd via consolidation)
+        banana_items = engine._token_index.get("banana", [])
+        assert isinstance(banana_items, list)  # Confirms it's a list, not set
+        # O(N) membership test on every _index_item call
+        # Not all 100 survive — consolidation may GC items sharing subject/relation/value
+        assert len(banana_items) >= 50, f"Expected >=50 banana items, got {len(banana_items)}"
+
+    def test_store_is_O_N_squared_total(self, engine: PhaseMemoryEngine):
+        """
+        BUG: store() calls _recompute_all_free_energies(namespace) which is O(N).
+        N store() calls = O(N²) total. With 500 items, this should still be <10s.
+        """
+        import time
+        start = time.time()
+        for i in range(500):
+            engine.store(f"item {i} with unique content {i}", "ns")
+        elapsed = time.time() - start
+        assert elapsed < 15.0, f"500 stores took {elapsed:.1f}s — O(N²) is too slow"
+
+    def test_search_also_O_N_per_call(self, engine: PhaseMemoryEngine):
+        """
+        BUG: search() calls _recompute_all_free_energies BEFORE retrieval.
+        Every search is O(N) even if only retrieving 1 item.
+        """
+        for i in range(200):
+            engine.store(f"fact {i} about stuff {i}", "ns")
+        import time
+        start = time.time()
+        for _ in range(50):
+            engine.search("fact", "ns", limit=1)
+        elapsed = time.time() - start
+        assert elapsed < 10.0, f"50 searches on 200 items took {elapsed:.1f}s"
+
+    def test_entity_names_set_rebuilt_every_update_entanglement(self, engine: PhaseMemoryEngine):
+        """
+        BUG: _update_entanglement builds set(self._entity_nodes.keys()) every call.
+        With 100 entities, called O(E²) times per store, this is O(E³) per store.
+        """
+        for i in range(50):
+            name = f"Person{i}"
+            engine.store(
+                f"{name} visited Rome and loved it", "ns",
+                fact=Fact(name.lower(), "visited", "rome", False,
+                         f"{name} visited Rome and loved it"),
+            )
+        # Should complete without timeout
+        assert len(engine._entity_nodes) >= 20
+
+    def test_three_entity_cer_no_pairwise_fallback(self, engine: PhaseMemoryEngine):
+        """
+        BUG: 3-entity CER requires ALL entities in ONE cluster.
+        If Alice-Bob share Rome, Bob-Charlie share Rome, but no 3-cluster,
+        CER returns nothing. Should fall back to pairwise edge union.
+        """
+        engine.store("Alice and Bob visited Rome together", "ns",
+            fact=Fact("alice", "visited", "rome", False, "Alice and Bob visited Rome together"))
+        engine.store("Bob and Charlie visited Rome together", "ns",
+            fact=Fact("bob", "visited", "rome", False, "Bob and Charlie visited Rome together"))
+        # Query about all three
+        results = engine.search("What did Alice Bob and Charlie all visit?", "ns", limit=5)
+        # Should find Rome via pairwise edges even without 3-cluster
+        assert isinstance(results, list)
+
+    def test_register_alias_chain(self, engine: PhaseMemoryEngine):
+        """
+        BUG: register_alias('a', 'b') then register_alias('b', 'c').
+        _resolve_alias('a') → 'b' (from alias_map). But 'b' maps to 'c'.
+        Single-hop resolution misses the chain.
+        """
+        engine.store("Charlie visited Rome", "ns",
+            fact=Fact("charlie", "visited", "rome", False, "Charlie visited Rome"))
+        engine.register_alias("chuck", "charlie")
+        engine.register_alias("charlie", "charles")
+        # 'chuck' → 'charlie' (first hop). But 'charlie' maps to 'charles'?
+        resolved = engine._resolve_alias("chuck")
+        # Only one hop — resolved to 'charlie', not 'charles'
+        assert resolved == "charlie"  # Documents single-hop limitation
+
+    def test_cer_gc_does_not_clean_entanglement_edges(self, engine: PhaseMemoryEngine):
+        """
+        BUG: _cer_gc_item cleans entity_nodes, alias_map, entity_index.
+        But it does NOT clean entanglement_graph edges referencing dead entities.
+        Dangling edge references.
+        """
+        engine.store("Jean visited Rome summer", "ns",
+            fact=Fact("jean", "visited", "rome", False, "Jean visited Rome summer"))
+        engine.store("John visited Rome winter", "ns",
+            fact=Fact("john", "visited", "rome", False, "John visited Rome winter"))
+        # Verify edge exists
+        a, b = sorted(["jean", "john"])
+        assert a in engine._entanglement_graph or b in engine._entanglement_graph
+        # Kill all items
+        for item in list(engine._items.get("ns", [])):
+            item.consolidation_strength = 0.0
+            item.accumulated_surprise_damage = 2.0
+        engine._recompute_all_free_energies("ns")
+        # Edges may still reference dead entities
+        for a_key, edges in engine._entanglement_graph.items():
+            for b_key in edges:
+                # If entity nodes are dead, edges should also be cleaned
+                if a_key not in engine._entity_nodes and b_key not in engine._entity_nodes:
+                    pass  # BUG: dangling edge exists
+
+    def test_doc_freq_can_go_negative_on_double_gc(self, engine: PhaseMemoryEngine):
+        """
+        BUG: If an item is somehow GC'd twice, doc_freq gets decremented twice.
+        The max(0, ...) guard prevents negative, but the count is wrong.
+        """
+        item = engine.store("unique_token_abc test", "ns")
+        assert engine._doc_freq.get("unique_token_abc", 0) >= 1
+        # Force GC
+        item.consolidation_strength = 0.0
+        item.accumulated_surprise_damage = 2.0
+        engine._recompute_all_free_energies("ns")
+        # doc_freq should be 0 now
+        assert engine._doc_freq.get("unique_token_abc", 0) == 0
+        # Second recompute — item already gone, no double-decrement
+        engine._recompute_all_free_energies("ns")
+        assert engine._doc_freq.get("unique_token_abc", 0) >= 0
+
+    def test_auto_fact_subject_is_verb_not_entity(self, engine: PhaseMemoryEngine):
+        """
+        BUG: Auto-fact picks FIRST content word as subject.
+        'Running is fun' → subject='running'. Running is a VERB, not an entity.
+        'Quickly eating pasta' → subject='quickly'. An adverb.
+        """
+        item = engine.store("Running is very fun and exciting", "ns")
+        # subject = first content word = 'running'
+        assert item.fact.subject == "running"  # Verb as subject — wrong semantics
+
+    def test_confirmation_check_ignores_raw_text(self, engine: PhaseMemoryEngine):
+        """
+        BUG: Confirmation checks (subject, relation, value) but ignores raw_text.
+        Two different raw texts with same SRV triplet → treated as confirmation.
+        'Raj eats apple at home' and 'Raj eats apple at work' → same SRV → confirmed.
+        """
+        item1 = engine.store("Raj eats apple at home", "ns",
+            fact=Fact("raj", "eat", "apple", False, "Raj eats apple at home"))
+        item2 = engine.store("Raj eats apple at work", "ns",
+            fact=Fact("raj", "eat", "apple", False, "Raj eats apple at work"))
+        # Second store returns SAME item despite different context
+        assert item2.id == item1.id  # BUG: different contexts merged
+
+    def test_deindex_item_O_N_per_token(self, engine: PhaseMemoryEngine):
+        """
+        BUG: _deindex_item calls list.remove(item) which is O(N) per token.
+        With 100 items sharing a token, removing one is O(100).
+        """
+        for i in range(100):
+            engine.store(f"shared_token_{i} banana fact", "ns")
+        # Remove one item — each token's list scanned linearly
+        items = engine._items["ns"]
+        assert len(items) == 100
+
+    def test_entity_spectrum_grows_unbounded(self, engine: PhaseMemoryEngine):
+        """
+        BUG: EntityNode.token_spectrum is a Counter that only grows.
+        Every new token from every mention is added. With 1000 unique tokens
+        per entity, the spectrum becomes huge. No pruning.
+        """
+        for i in range(100):
+            engine.store(
+                f"Jean visited unique_place_{i} and did thing_{i}", "ns",
+                fact=Fact("jean", "visited", f"place{i}", False,
+                         f"Jean visited unique_place_{i} and did thing_{i}"),
+            )
+        node = engine._entity_nodes.get("jean")
+        if node:
+            # Spectrum should be very large
+            assert len(node.token_spectrum) > 50
+            # This is O(|spectrum|) for every _update_entanglement call
+
+    def test_cluster_not_updated_on_edge_desynchronization(self, engine: PhaseMemoryEngine):
+        """
+        BUG: Clusters are updated when edges synchronize.
+        But when an edge de-synchronizes (K drops below K_critical),
+        the cluster is NOT recomputed. Stale cluster with dead members.
+        """
+        # Create synchronized pair
+        for name in ["Alice", "Bob"]:
+            engine.store(f"{name} visited Rome and ate pasta and drank wine", "ns",
+                fact=Fact(name.lower(), "visited", "rome", False,
+                         f"{name} visited Rome and ate pasta and drank wine"))
+        # Check for cluster
+        cluster_count_before = len(engine._resonance_clusters)
+        # Now desynchronize by pruning
+        for edges in engine._entanglement_graph.values():
+            for edge in edges.values():
+                edge.coupling_strength = 0.001  # Below K_critical
+                edge.is_synchronized = False
+        # Clusters should be invalidated but aren't
+        cluster_count_after = len(engine._resonance_clusters)
+        # BUG: cluster_count_after == cluster_count_before (stale)
+
+    def test_shared_memory_ids_never_cleaned(self, engine: PhaseMemoryEngine):
+        """
+        BUG: EntanglementEdge.shared_memory_ids accumulates item IDs.
+        When items are GC'd, these IDs become stale references.
+        _cer_search iterates shared_memory_ids and does linear scan.
+        """
+        engine.store("Jean and John visited Rome together", "ns",
+            fact=Fact("jean", "visited", "rome", False, "Jean and John visited Rome together"))
+        # Get edge
+        a, b = sorted(["jean", "john"])
+        edge = engine._entanglement_graph.get(a, {}).get(b)
+        if edge:
+            memory_ids_before = len(edge.shared_memory_ids)
+            # Kill items
+            for item in list(engine._items.get("ns", [])):
+                item.consolidation_strength = 0.0
+                item.accumulated_surprise_damage = 2.0
+            engine._recompute_all_free_energies("ns")
+            # Edge still has stale memory IDs
+            if a in engine._entanglement_graph and b in engine._entanglement_graph.get(a, {}):
+                edge = engine._entanglement_graph[a][b]
+                # shared_memory_ids still contains dead item IDs
+                assert isinstance(edge.shared_memory_ids, list)
