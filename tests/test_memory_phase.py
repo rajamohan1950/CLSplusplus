@@ -705,8 +705,8 @@ class TestFieldRadius:
         assert indexed_count < len(all_tokens)
         assert indexed_count > 0  # At least some are indexed
 
-    def test_zero_radius_at_gas_phase(self, engine: PhaseMemoryEngine):
-        """s < floor → R=0, all tokens de-indexed (invisible)."""
+    def test_gas_phase_minimal_radius(self, engine: PhaseMemoryEngine):
+        """s < floor → R=1, gas items keep most discriminating token indexed (vivid)."""
         item = engine.store("Raj eats banana", "test")
         assert len(engine._token_index) > 0
 
@@ -714,8 +714,14 @@ class TestFieldRadius:
         item.consolidation_strength = 0.01
         engine._index_item(item)
 
-        # Should be de-indexed from all tokens
-        for token in item.indexed_tokens:
+        # Gas items should have radius=1: first (most discriminating) token stays indexed
+        assert item._last_field_radius == 1
+        # First token (longest = most informative) should still be indexed
+        first_token = item.indexed_tokens[0]
+        assert first_token in engine._token_index
+        assert item in engine._token_index[first_token]
+        # Other tokens should be de-indexed
+        for token in item.indexed_tokens[1:]:
             if token in engine._token_index:
                 assert item not in engine._token_index[token]
 
@@ -4045,8 +4051,11 @@ class TestDeepAudit_Round5:
         # Different SRV → no confirmation → both stored
         assert item1.id != item2.id, "Different SRV → separate items"
 
-        # Both share the EXACT same tokens in _token_index
-        for token in item1.indexed_tokens:
+        # Both share the raw-text tokens in _token_index
+        # (fact-field tokens like val_a/val_b may differ)
+        shared_tokens = set(item1.indexed_tokens) & set(item2.indexed_tokens)
+        assert len(shared_tokens) > 0, "Should share at least raw text tokens"
+        for token in shared_tokens:
             if token in engine._token_index:
                 items_in_index = engine._token_index[token]
                 assert item1 in items_in_index and item2 in items_in_index
@@ -5448,21 +5457,27 @@ class TestPESQD_EdgeCases:
     """Edge case tests for PESQD."""
 
     def test_below_strength_floor_excluded(self):
-        """Memories below STRENGTH_FLOOR are excluded from PESQD."""
+        """Gas-phase items appear in PESQD but score lower (TRR: fresh memories vivid)."""
         engine = PhaseMemoryEngine()
-        item = engine.store(
+        # Store two items: one liquid, one gas
+        liquid_item = engine.store(
             "Jean visited Rome",
             "ns",
             Fact("jean", "visited", "rome", False, "Jean visited Rome"),
         )
-        item.consolidation_strength = 0.0  # Gas phase
+        gas_item = engine.store(
+            "Jean visited Paris",
+            "ns",
+            Fact("jean", "visited", "paris", False, "Jean visited Paris"),
+        )
+        gas_item.consolidation_strength = 0.0  # Gas phase
         from clsplusplus.memory_phase import _tokenize
         pesqd = engine._pesqd_search(
             ["jean"], set(_tokenize("Jean Rome")), "ns", 10,
         )
-        # Should not find the gas-phase item
         found_ids = {item.id for _, item in pesqd}
-        assert item.id not in found_ids
+        # Gas item should be findable (TRR: gas items are searchable)
+        assert gas_item.id in found_ids
 
     def test_namespace_isolation(self):
         """PESQD only returns memories from the queried namespace."""
@@ -15527,15 +15542,15 @@ class TestThermo_FieldRadius:
         assert r_eighth == int(n_tokens * 0.5), \
             f"R(0.125) = {r_eighth}, expected {int(n_tokens * 0.5)}"
 
-    def test_field_radius_zero_below_floor(self):
-        """Items below strength floor have R=0."""
+    def test_field_radius_minimal_below_floor(self):
+        """Items below strength floor have R=1 (TRR: gas still vivid)."""
         engine = _make_crystal_engine()
         fact = Fact("marco", "eats", "pizza restaurant downtown",
                     False, "Marco eats pizza restaurant downtown")
         item = engine.store(fact.raw_text, "fr_zero", fact=fact)
         item.consolidation_strength = 0.01
         engine._update_field_radius(item)
-        assert item._last_field_radius == 0
+        assert item._last_field_radius == 1  # Gas: minimal but present
 
 
 # =============================================================================

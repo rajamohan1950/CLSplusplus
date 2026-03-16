@@ -1,0 +1,36 @@
+{
+  "clspp": {
+    "overall_accuracy": 0.2678,
+    "total_questions": 199,
+    "category_accuracy": {
+      "1": 0.0312,
+      "2": 0.0077,
+      "3": 0.0999,
+      "4": 0.053,
+      "5": 1.0
+    },
+    "category_counts": {
+      "2": 37,
+      "3": 13,
+      "1": 32,
+      "4": 70,
+      "5": 47
+    },
+    "cum_accuracy_by_category": {
+      "2": 0.286,
+      "3": 1.299,
+      "1": 1.0,
+      "4": 3.709,
+      "5": 47.0
+    },
+    "phase_engine": {
+      "total_turns": 419,
+      "facts_extracted": 0,
+      "final_liquid": 0,
+      "final_gas": 0,
+      "condensation_rate": 0.0
+    },
+    "runtime_seconds": 149.9,
+    "mode": "llm"
+  }
+}
