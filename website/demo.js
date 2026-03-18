@@ -4,7 +4,7 @@
  */
 (function () {
   function init() {
-  const API_URL = (typeof window !== 'undefined' && window.CLS_API_URL) || 'https://clsplusplus-api.onrender.com';
+  const API_URL = (typeof window !== 'undefined' && window.CLS_API_URL) || '';
   const NAMESPACE = 'demo-' + Math.random().toString(36).slice(2, 10);
   const FETCH_TIMEOUT_MS = 90000;  // Render cold start can take 60s
 

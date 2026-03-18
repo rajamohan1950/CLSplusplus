@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLS++ UI Tests</title>
+</head>
+<body style="margin:0;background:#0a0a0a;color:#e0e0e0">
+  <div id="cls-test-runner" style="font-family:monospace;padding:20px;font-size:16px">Loading tests...</div>
+  <script>
+    // Always load fresh test script (no browser cache)
+    var s = document.createElement('script');
+    s.src = 'ui_tests.js?_t=' + Date.now();
+    document.body.appendChild(s);
+  </script>
+</body>
+</html>

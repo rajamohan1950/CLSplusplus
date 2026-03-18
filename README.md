@@ -44,57 +44,73 @@ Memory is **external** to the model. **Switch models anytime.** No reset.
 
 ## Quick Start
 
-### 1. Install
+### Option A: SDK Client Only (talk to a running CLS++ server)
 
 ```bash
-pip install clsplusplus
-# or from source: pip install -e .
+pip install clsplusplus          # lightweight: only httpx + pydantic
 ```
 
-### 2. Run locally
+```python
+from clsplusplus import CLS
+
+client = CLS(base_url="http://localhost:8080", api_key="your_api_key")
+client.write("User prefers dark mode", namespace="user-123")
+results = client.read("user preferences", namespace="user-123")
+for item in results.items:
+    print(item.text, item.confidence)
+```
+
+### Option B: Run the Full Server Locally
 
 ```bash
-# Start infrastructure (Redis, PostgreSQL, MinIO)
-docker compose up -d redis postgres minio
+# Clone and install with server dependencies
+git clone https://github.com/rajamohan1950/CLSplusplus.git
+cd CLSplusplus
+pip install -e ".[server]"
 
-# Start the API
+# Start infrastructure (Redis + PostgreSQL)
+docker compose up -d redis postgres
+
+# Start the API server
 uvicorn clsplusplus.api:app --host 0.0.0.0 --port 8080
 ```
 
-### 3. Use the API
+#### Create an API key
+
+```bash
+# Register an integration and get your API key
+curl -X POST http://localhost:8080/v1/integrations \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-app", "namespace": "default"}'
+
+# Response includes your API key (shown only once):
+# {"id": "...", "keys": [{"key": "cls_live_xxxxxxxx", ...}], ...}
+```
+
+#### Write and read memories
 
 ```bash
 # Write a memory
 curl -X POST http://localhost:8080/v1/memory/write \
   -H "Content-Type: application/json" \
-  -d '{"text": "User prefers dark mode", "namespace": "user:123"}'
+  -H "Authorization: Bearer cls_live_xxxxxxxx" \
+  -d '{"text": "User prefers dark mode", "namespace": "user-123"}'
 
 # Read memories
 curl -X POST http://localhost:8080/v1/memory/read \
   -H "Content-Type: application/json" \
-  -d '{"query": "user preferences", "namespace": "user:123"}'
+  -H "Authorization: Bearer cls_live_xxxxxxxx" \
+  -d '{"query": "user preferences", "namespace": "user-123"}'
 ```
 
-### 4. Python SDK (3-line integration)
+#### Python SDK (3-line integration)
 
 ```python
 from clsplusplus import CLS
 
-client = CLS(api_key="cls_live_xxx")
+client = CLS(base_url="http://localhost:8080", api_key="cls_live_xxxxxxxx")
 client.memories.encode(content="User prefers dark mode", agent_id="a1")
 results = client.memories.retrieve(query="user preferences", agent_id="a1")
-```
-
-Or use the full client:
-
-```python
-from clsplusplus import CLSClient
-
-with CLSClient("http://localhost:8080", api_key="cls_live_xxx") as client:
-    client.write("User prefers dark mode", namespace="user:123")
-    results = client.read("user preferences", namespace="user:123")
-    for item in results.items:
-        print(item.text, item.confidence)
 ```
 
 ---

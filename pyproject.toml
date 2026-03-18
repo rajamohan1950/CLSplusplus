@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "Apache-2.0"}
 authors = [{name = "AlphaForge AI Labs", email = "contact@alphaforge.ai"}]
-keywords = ["llm", "memory", "ai", "cls", "continuous-learning"]
+keywords = ["llm", "memory", "ai", "cls", "continuous-learning", "langchain", "persistent-memory", "model-agnostic"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -19,8 +19,20 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
+
+# SDK-only dependencies — lightweight client (~5 MB install)
+# pip install clsplusplus
 dependencies = [
+    "httpx>=0.26.0",
+    "pydantic>=2.5.0",
+]
+
+[project.optional-dependencies]
+# Full server dependencies — pip install clsplusplus[server]
+server = [
     "fastapi>=0.109.0",
     "uvicorn[standard]>=0.27.0",
     "redis>=5.0.0",
@@ -28,15 +40,11 @@ dependencies = [
     "pgvector>=0.2.4",
     "sentence-transformers>=2.2.0",
     "numpy>=1.24.0",
-    "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
     "python-multipart>=0.0.6",
-    "httpx>=0.26.0",
     "structlog>=24.1.0",
     "apscheduler>=3.10.0",
 ]
-
-[project.optional-dependencies]
 dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.23.0",
@@ -48,6 +56,8 @@ dev = [
 Homepage = "https://github.com/rajamohan1950/CLSplusplus"
 Documentation = "https://github.com/rajamohan1950/CLSplusplus/wiki"
 Repository = "https://github.com/rajamohan1950/CLSplusplus"
+"Bug Tracker" = "https://github.com/rajamohan1950/CLSplusplus/issues"
+Changelog = "https://github.com/rajamohan1950/CLSplusplus/releases"
 
 [tool.setuptools.packages.find]
 where = ["src"]

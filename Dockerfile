@@ -11,10 +11,12 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
+COPY website/ ./website/
 
 ENV PYTHONPATH=/app/src
 ENV CLS_HOST=0.0.0.0
 ENV CLS_PORT=8080
+ENV CLS_WEBSITE_DIR=/app/website
 
 # Render / docker-compose inject these at runtime
 

@@ -2,9 +2,13 @@
 
 from typing import Optional
 
+import os
+from pathlib import Path as FilePath
+
 from fastapi import FastAPI, HTTPException, Path, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from clsplusplus.config import Settings
 from clsplusplus.integration_service import IntegrationService
@@ -83,9 +87,20 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     def _ns_query(default: str = "default") -> str:
         return Query(default=default, min_length=1, max_length=64)
 
+    # Detect website directory (in Docker: /app/website, local dev: ../website relative to src)
+    _website_dir = os.environ.get("CLS_WEBSITE_DIR")
+    if not _website_dir:
+        _candidate = FilePath(__file__).resolve().parent.parent.parent / "website"
+        if _candidate.is_dir():
+            _website_dir = str(_candidate)
+
     @app.get("/")
     async def root():
-        """API root - links to docs and health."""
+        """Serve index.html if website is bundled, otherwise API info JSON."""
+        if _website_dir:
+            index = FilePath(_website_dir) / "index.html"
+            if index.exists():
+                return FileResponse(str(index), media_type="text/html")
         return {
             "name": "CLS++ API",
             "version": "0.1.0",
@@ -509,6 +524,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             await integration_service.close()
         except Exception:
             pass
+
+    # Serve website static files if the directory exists
+    if _website_dir and FilePath(_website_dir).is_dir():
+        app.mount("/", StaticFiles(directory=_website_dir, html=True), name="website")
 
     return app
 

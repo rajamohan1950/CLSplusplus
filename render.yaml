@@ -1,18 +1,8 @@
-# CLS++ - Use your EXISTING free Postgres + Redis (Render allows only 1 free each)
+# CLS++ - Single service: API + Website in one container
 # Deploy: https://render.com/deploy?repo=https://github.com/rajamohan1950/CLSplusplus
 # You'll be prompted for CLS_REDIS_URL and CLS_DATABASE_URL - paste from your existing services
 
 services:
-  - type: web
-    name: clsplusplus-website
-    runtime: static
-    buildCommand: "true"
-    staticPublishPath: ./website
-    routes:
-      - type: rewrite
-        source: /
-        destination: /index.html
-
   - type: web
     name: clsplusplus-api
     runtime: docker
@@ -20,6 +10,8 @@ services:
     plan: free
     healthCheckPath: /v1/memory/health
     envVars:
+      - key: CLS_WEBSITE_DIR
+        value: /app/website
       - key: CLS_REDIS_URL
         sync: false  # Paste from Dashboard → your Redis → Connection String
       - key: CLS_DATABASE_URL

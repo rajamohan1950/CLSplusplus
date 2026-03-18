@@ -20,6 +20,7 @@
         <a href="docs.html">Docs</a>
         <a href="integrations.html" style="color: var(--accent);">Integrations</a>
         <a href="chat.html">Chat</a>
+        <a href="benchmark.html">Benchmarks</a>
         <a href="https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener">GitHub</a>
       </div>
       <button class="nav-toggle" aria-label="Menu">&#9776;</button>
@@ -82,10 +83,10 @@ from clsplusplus import CLS
 client = CLS(api_key="<span class="snippet-key"></span>")
 
 # Store a memory
-client.memories.encode("User prefers dark mode")
+client.memories.encode(content="User prefers dark mode", agent_id="a1")
 
 # Retrieve memories
-results = client.memories.retrieve("user preferences")
+results = client.memories.retrieve(query="user preferences", agent_id="a1")
 for item in results.items:
     print(item.text, item.confidence)</code></pre>
 
@@ -204,14 +205,16 @@ curl -X POST https://clsplusplus-api.onrender.com/v1/memories/retrieve \
           <h3>LangChain</h3>
           <p>Use CLS++ as a LangChain memory backend. Persistent context across chains.</p>
           <pre class="int-connector-code"><code>from clsplusplus import CLS
-memory = CLS(api_key="...").as_langchain_memory()</code></pre>
+client = CLS(api_key="cls_live_xxx")
+client.write("User prefers dark mode", namespace="agent-1")</code></pre>
         </div>
         <div class="int-connector-card">
           <div class="int-connector-icon">&#x1f916;</div>
           <h3>CrewAI</h3>
           <p>Shared memory for multi-agent crews. Every agent remembers everything.</p>
           <pre class="int-connector-code"><code>from clsplusplus import CLS
-crew_memory = CLS(api_key="...").for_crew("crew-1")</code></pre>
+crew = CLS(api_key="cls_live_xxx")
+crew.write("Task completed", namespace="crew-1")</code></pre>
         </div>
         <div class="int-connector-card">
           <div class="int-connector-icon">&#x26a1;</div>
@@ -239,7 +242,9 @@ adapter = BedrockCLSAdapter(api_url, api_key)</code></pre>
 
   <script src="script.js"></script>
   <script>
-    if (window.location.search.includes('local=1') || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    // Only use local API when explicitly requested via ?local=1
+    // Default: always hit the Render production API
+    if (window.location.search.includes('local=1')) {
       window.CLS_API_URL = 'http://localhost:8090';
     }
   </script>

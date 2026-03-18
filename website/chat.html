@@ -48,7 +48,7 @@
       <div class="chat-input-area">
         <div class="chat-input-wrap">
           <textarea id="chat-input" class="chat-input" placeholder="Type a message..." rows="1" maxlength="4096"></textarea>
-          <button class="chat-send-btn" id="btn-send">
+          <button class="chat-send-btn" id="btn-send" aria-label="Send">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
         </div>
@@ -74,10 +74,12 @@
   </div>
 
   <script>
-    if (window.location.search.includes('local=1') || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    // Only use local API when explicitly requested via ?local=1
+    // Default: always hit the Render production API
+    if (window.location.search.includes('local=1')) {
       window.CLS_API_URL = 'http://localhost:8090';
     }
   </script>
-  <script src="chat.js"></script>
+  <script src="chat.js?v=3"></script>
 </body>
 </html>

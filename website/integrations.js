@@ -3,7 +3,7 @@
  * Create integrations, get API keys, subscribe to webhooks, run memory cycles.
  */
 (function () {
-  const API_URL = (typeof window !== 'undefined' && window.CLS_API_URL) || 'https://clsplusplus-api.onrender.com';
+  const API_URL = (typeof window !== 'undefined' && window.CLS_API_URL) || '';
 
   let currentIntegrationId = null;
 
