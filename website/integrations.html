@@ -20,6 +20,7 @@
         <a href="docs.html">Docs</a>
         <a href="integrations.html" style="color: var(--accent);">Integrations</a>
         <a href="chat.html">Chat</a>
+        <a href="benchmark.html">Benchmarks</a>
         <a href="https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener">GitHub</a>
       </div>
       <button class="nav-toggle" aria-label="Menu">&#9776;</button>
@@ -241,7 +242,9 @@ adapter = BedrockCLSAdapter(api_url, api_key)</code></pre>
 
   <script src="script.js"></script>
   <script>
-    if (window.location.search.includes('local=1') || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    // Only use local API when explicitly requested via ?local=1
+    // Default: always hit the Render production API
+    if (window.location.search.includes('local=1')) {
       window.CLS_API_URL = 'http://localhost:8090';
     }
   </script>

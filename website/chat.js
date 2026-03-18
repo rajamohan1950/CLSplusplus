@@ -3,7 +3,7 @@
  * User just types. Backend handles everything: memory, LLM selection, failover.
  */
 (function () {
-  const API_URL = (typeof window !== 'undefined' && window.CLS_API_URL) || 'https://clsplusplus-api.onrender.com';
+  const API_URL = (typeof window !== 'undefined' && window.CLS_API_URL) || '';
 
   let activeSessionId = null;
   let sessions = []; // [{session_id, name}]
@@ -167,6 +167,16 @@
       inputEl.focus();
     } catch (e) {
       console.error('Failed to create session:', e);
+      // Show user-visible error so they know the API is down
+      messagesEl.innerHTML = '';
+      var errDiv = document.createElement('div');
+      errDiv.className = 'chat-welcome';
+      errDiv.innerHTML = '<h2>CLS++ Chat</h2>'
+        + '<p style="color:#f44336">Could not connect to the API. The server may be waking up (takes ~60s on free tier).</p>'
+        + '<button class="chat-retry-btn" id="btn-retry" style="margin-top:12px;padding:8px 20px;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:14px">Retry Connection</button>';
+      messagesEl.appendChild(errDiv);
+      var retryBtn = document.getElementById('btn-retry');
+      if (retryBtn) retryBtn.addEventListener('click', createSession);
     }
   }
 
@@ -323,7 +333,13 @@
     if (sending) return;
     var text = inputEl.value.trim();
     if (!text) return;
-    if (!activeSessionId) return;
+    if (!activeSessionId) {
+      // Session wasn't created yet (API was down on load) — try now
+      try {
+        await createSession();
+      } catch (e) { /* createSession shows its own error */ }
+      if (!activeSessionId) return;
+    }
 
     sending = true;
     inputEl.value = '';
@@ -428,6 +444,25 @@
   // =========================================================================
   async function init() {
     loadSessions();
+
+    // Quick connectivity check before validating sessions
+    var apiReachable = true;
+    try {
+      await api('/v1/health', 'GET');
+    } catch (e) {
+      // Health endpoint might not exist — try status
+      try {
+        await api('/v1/demo/status', 'GET');
+      } catch (e2) {
+        apiReachable = false;
+      }
+    }
+
+    if (!apiReachable) {
+      // API is down — show error immediately, don't waste time validating sessions
+      await createSession(); // will fail and show error UI with Retry
+      return;
+    }
 
     // Validate sessions against server — remove stale ones
     var validSessions = [];

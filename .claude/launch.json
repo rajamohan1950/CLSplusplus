@@ -4,7 +4,7 @@
     {
       "name": "api",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd /Users/rjabbala/Projects/CLSplusplus && PYTHONPATH=src python3 -m uvicorn clsplusplus.demo_local:app --reload --port 8090"],
+      "runtimeArgs": ["-c", "cd /Users/rjabbala/Projects/CLSplusplus && PYTHONPATH=src python3 -m uvicorn clsplusplus.api:app --reload --port 8090"],
       "port": 8090
     },
     {
