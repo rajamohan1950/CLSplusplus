@@ -1600,7 +1600,7 @@ class UserEmbeddingOrchestrator:
         user_stats = {
             uid: space.stats()
             for uid, space in self._user_spaces.items()
-        }
+        }  
         total_memory = sum(
             s.memory_size_bytes for s in self._user_spaces.values()
         )

@@ -336,7 +336,31 @@
     showTyping();
 
     try {
-      var data = await api('/v1/chat/sessions/' + activeSessionId + '/message', 'POST', { message: text });
+      var data;
+      try {
+        data = await api('/v1/chat/sessions/' + activeSessionId + '/message', 'POST', { message: text });
+      } catch (e1) {
+        // Session not found on server (stale localStorage) — auto-recover
+        if (e1.message && (e1.message.indexOf('not found') !== -1 || e1.message.indexOf('Session') !== -1)) {
+          // Create a fresh session on the server and retry
+          var fresh = await api('/v1/chat/sessions', 'POST', {});
+          var oldId = activeSessionId;
+          activeSessionId = fresh.session_id;
+          // Update the session entry in our list
+          var idx = sessions.findIndex(function (x) { return x.session_id === oldId; });
+          if (idx !== -1) {
+            sessions[idx].session_id = fresh.session_id;
+          } else {
+            sessions.unshift({ session_id: fresh.session_id, name: fresh.name });
+          }
+          saveSessions();
+          renderSessionList();
+          // Retry the message with the new session
+          data = await api('/v1/chat/sessions/' + activeSessionId + '/message', 'POST', { message: text });
+        } else {
+          throw e1;
+        }
+      }
       hideTyping();
       appendMessage('assistant', data.reply, data.memory_used, data.memory_count);
       scrollToBottom();
@@ -405,8 +429,24 @@
   async function init() {
     loadSessions();
 
+    // Validate sessions against server — remove stale ones
+    var validSessions = [];
+    for (var i = 0; i < sessions.length; i++) {
+      try {
+        await api('/v1/chat/sessions/' + sessions[i].session_id, 'GET');
+        validSessions.push(sessions[i]);
+      } catch (e) {
+        // Stale session — server doesn't know about it
+      }
+    }
+    sessions = validSessions;
+    if (activeSessionId && !sessions.find(function (s) { return s.session_id === activeSessionId; })) {
+      activeSessionId = null;
+    }
+    saveSessions();
+
     if (sessions.length === 0) {
-      // First visit: auto-create a session
+      // First visit or all sessions stale: auto-create a session
       await createSession();
     } else {
       renderSessionList();

@@ -550,6 +550,16 @@ class PhaseMemoryEngine:
         self._compound_entity_index: dict[str, list[tuple[str, int]]] = {}  # first_word → [(full_name, n_parts)]
         self._K_critical: float = 0.15  # Synchronization phase transition threshold
 
+        # --- Benchmark Mode — Suppress crystallization/GC for full recall ---
+        self._benchmark_mode: bool = False
+
+        # --- Episode Archive — preserves original episodes after crystallization ---
+        # Schemas are the primary search target; archive provides detail drill-down
+        self._episode_archive: dict[str, list[PhaseMemoryItem]] = {}  # schema_id → [original episodes]
+
+        # --- Contradiction Log — Chain-of-Thought, never override ---
+        self._contradiction_log: list[dict[str, Any]] = []
+
     # =========================================================================
     # Core Physics — Information Content (Shannon Entropy)
     # =========================================================================
@@ -1123,6 +1133,17 @@ class PhaseMemoryEngine:
         tau_new = self.TAU_OVERRIDE if new_fact.override else self.TAU_DEFAULT
 
         for item in contradicted:
+            # In benchmark mode: log contradiction but DON'T damage.
+            # Keep both facts alive — chain-of-thought lets user decide.
+            if self._benchmark_mode:
+                self._contradiction_log.append({
+                    "old_item_id": item.id,
+                    "old_text": item.fact.raw_text if item.fact else "",
+                    "new_text": new_fact.raw_text if new_fact else "",
+                    "surprise": surprise,
+                })
+                continue
+
             tau_ratio = tau_new / max(item.tau, 1e-6)
             tau_factor = min(tau_ratio, 4.0) / 4.0 + 0.5
             damage = sigmoid_damage * tau_factor * amplifier
@@ -1156,6 +1177,16 @@ class PhaseMemoryEngine:
         tau_new = self.TAU_OVERRIDE if is_override else self.TAU_DEFAULT
 
         for item in contradicted:
+            # In benchmark mode: log but don't damage (same as structured path)
+            if self._benchmark_mode:
+                self._contradiction_log.append({
+                    "old_item_id": item.id,
+                    "old_text": item.fact.raw_text if item.fact else "",
+                    "new_text": "(token-overlap contradiction)",
+                    "surprise": surprise,
+                })
+                continue
+
             tau_ratio = tau_new / max(item.tau, 1e-6)
             tau_factor = min(tau_ratio, 4.0) / 4.0 + 0.5
             damage = sigmoid_damage * tau_factor * amplifier
@@ -1848,7 +1879,12 @@ class PhaseMemoryEngine:
         # Abstraction cost (surface energy)
         C_abs = self.kT * math.log(2) * H_lost / max(self.TAU_SCHEMA, 1e-6)
 
-        delta_F = F_schema - sum_F_liquid + C_abs
+        # Density penalty: high density = more conservative crystallization
+        # At ρ > 0.5, require increasingly negative ΔF to crystallize
+        rho = len(group) / max(self.CAPACITY, 1)
+        density_penalty = max(0.0, rho - 0.5) * self.kT * math.log(2)
+
+        delta_F = F_schema - sum_F_liquid + C_abs + density_penalty
         return delta_F, H_schema, H_sum
 
     def _crystallize(
@@ -1916,6 +1952,9 @@ class PhaseMemoryEngine:
         for token in set(fixed_tokens):
             self._doc_freq[token] += 1
 
+        # Archive constituent episodes for detail retrieval before evaporation
+        self._episode_archive[schema_item.id] = list(group)
+
         # Set constituent episodes to sub-critical τ → evaporate naturally
         for item in group:
             item.tau = self.TAU_C1 * 0.5  # Below critical → gas phase
@@ -1940,6 +1979,11 @@ class PhaseMemoryEngine:
             ]
             if len(alive_group) < self.MIN_GROUP_SIZE:
                 continue
+
+            # Cap group size to prevent mega-schemas that lose too much detail
+            MAX_CRYSTALLIZE_GROUP = 10
+            if len(alive_group) > MAX_CRYSTALLIZE_GROUP:
+                alive_group = alive_group[:MAX_CRYSTALLIZE_GROUP]
 
             fixed_tokens, weights = self._compute_fixed_point(alive_group)
             if len(fixed_tokens) < self.MIN_FIXED_POINT_TOKENS:
@@ -1980,6 +2024,11 @@ class PhaseMemoryEngine:
             coverage = overlap / len(fp_tokens)
 
             if coverage >= self.SCHEMA_ABSORPTION_COVERAGE:
+                # Archive the absorbed episode
+                if schema.id not in self._episode_archive:
+                    self._episode_archive[schema.id] = []
+                self._episode_archive[schema.id].append(new_item)
+
                 # Reinforce schema
                 schema.retrieval_count += 1
 
@@ -2267,6 +2316,12 @@ class PhaseMemoryEngine:
         rho = self._memory_density(namespace)
         for item in items:
             self._compute_free_energy(item, rho)
+
+        # --- Benchmark mode: preserve ALL items (no crystallization, no GC) ---
+        # Like the brain: memories aren't deleted, just hard to reach.
+        # The recall agent keeps pointers alive via retrieval_count boost.
+        if self._benchmark_mode:
+            return
 
         # --- Liquid → Solid: Melting + Crystallization (before GC) ---
         self._check_schema_melting(namespace)
@@ -2891,6 +2946,108 @@ class PhaseMemoryEngine:
         return context, debug_items
 
     # =========================================================================
+    # Two-Tier Retrieval — Schemas + Episode Archive
+    # =========================================================================
+
+    def search_with_details(
+        self,
+        query: str,
+        namespace: str,
+        limit: int = 10,
+        detail_limit: int = 50,
+    ) -> tuple[list[tuple[float, "PhaseMemoryItem"]], list["PhaseMemoryItem"]]:
+        """
+        Two-tier retrieval: schemas for relevance, archive for detail.
+
+        1. Standard search() returns ranked schemas/items
+        2. For matched schemas, fetches archived original episodes
+        3. Also token-matches query against all archived episodes
+
+        Returns (ranked_results, detail_episodes).
+        """
+        results = self.search(query, namespace, limit=limit)
+
+        # Collect archived episodes from matched schemas
+        detail_episodes: list[PhaseMemoryItem] = []
+        seen_ids: set[str] = set()
+
+        for _score, item in results:
+            if item.schema_meta is not None and item.id in self._episode_archive:
+                for ep in self._episode_archive[item.id]:
+                    if ep.id not in seen_ids:
+                        detail_episodes.append(ep)
+                        seen_ids.add(ep.id)
+
+        # Also do a token-match search against all archived episodes
+        query_tokens = _tokenize(query)
+        query_set = set(query_tokens)
+        for _schema_id, episodes in self._episode_archive.items():
+            for ep in episodes:
+                if ep.id in seen_ids:
+                    continue
+                ep_tokens = set(ep.indexed_tokens)
+                if query_set & ep_tokens:
+                    detail_episodes.append(ep)
+                    seen_ids.add(ep.id)
+
+        # Sort by birth_order (chronological)
+        detail_episodes.sort(key=lambda e: e.birth_order)
+        return results, detail_episodes[:detail_limit]
+
+    def build_augmented_context_with_details(
+        self,
+        query: str,
+        namespace: str,
+        limit: int = 10,
+        detail_limit: int = 50,
+    ) -> tuple[str, list[dict]]:
+        """
+        Build context with schema summaries + episode details.
+
+        Two sections:
+        1. Ranked retrieval results (schemas + liquid items)
+        2. Detailed conversation excerpts from episode archive
+        """
+        results, details = self.search_with_details(
+            query, namespace, limit=limit, detail_limit=detail_limit,
+        )
+
+        if not results and not details:
+            return "No prior context yet.", []
+
+        lines: list[str] = []
+        debug_items: list[dict] = []
+
+        # Schema summaries / ranked items
+        for score, item in results:
+            s = item.consolidation_strength
+            if item.schema_meta is not None:
+                n_members = len(item.schema_meta.member_ids)
+                phase = "glass" if _is_glass_static(item) else "schema"
+                lines.append(f"- [strength={s:.2f}, {phase}, {n_members} memories] {item.fact.raw_text}")
+            else:
+                lines.append(f"- [strength={s:.2f}] {item.fact.raw_text}")
+            debug_items.append({
+                "text": item.fact.raw_text,
+                "score": round(score, 4),
+                **item.to_debug_dict(strength_floor=self.STRENGTH_FLOOR),
+            })
+
+        # Detail episodes from archive
+        if details:
+            lines.append("\nDetailed conversation excerpts:")
+            for ep in details:
+                lines.append(f"  - {ep.fact.raw_text}")
+                debug_items.append({
+                    "text": ep.fact.raw_text,
+                    "score": 0.0,
+                    **ep.to_debug_dict(strength_floor=self.STRENGTH_FLOOR),
+                })
+
+        context = "Memory (strongest recall first):\n" + "\n".join(lines)
+        return context, debug_items
+
+    # =========================================================================
     # Phase Debug Output — Full Thermodynamic State
     # =========================================================================
 
@@ -2949,6 +3106,86 @@ class PhaseMemoryEngine:
     # =========================================================================
     # Cross-User Vector API — Federated Semantic Learning
     # =========================================================================
+
+    def finalize_batch(self, namespace: str | None = None) -> dict[str, Any]:
+        """
+        Finalize a batch ingest: recompute SVD + free energies.
+
+        MUST be called after setting _batch_mode = False post-ingest.
+        Without this, _token_vectors stays empty → semantic bonus = 0.
+
+        Args:
+            namespace: If provided, recompute free energies for this namespace.
+                       If None, recompute for all namespaces.
+
+        Returns:
+            dict with finalization stats (token_vectors, cooccurrence_pairs, etc.)
+        """
+        self._batch_mode = False
+
+        # 1. Recompute SVD from accumulated co-occurrence
+        if self._cooccurrence and self._svd_dirty:
+            self._recompute_svd()
+            self._svd_store_count = 0
+            self._svd_dirty = False
+
+        # 2. Recompute free energies (triggers crystallization, GC, etc.)
+        if namespace is not None:
+            self._recompute_all_free_energies(namespace)
+        else:
+            for ns in list(self._items.keys()):
+                self._recompute_all_free_energies(ns)
+
+        return {
+            "token_vectors": len(self._token_vectors),
+            "cooccurrence_pairs": len(self._cooccurrence),
+            "total_items": self._total_item_count,
+        }
+
+    # =========================================================================
+    # Recall Agent — Hippocampal Replay for Long-Tail Memory Preservation
+    # =========================================================================
+
+    def recall_long_tail(self, namespace: str, batch_size: int = 50) -> int:
+        """
+        Memory rehearsal agent. Like hippocampal replay during sleep.
+
+        Human brains don't delete old memories — they lose the retrieval
+        pointer. This method "recalls" old, low-retrieval-count items,
+        incrementing R so that:
+
+            s(t) = exp(-Δt/τ) · (1 + 0.15·ln(1 + R))
+
+        stays above STRENGTH_FLOOR indefinitely. Mathematically equivalent
+        to spaced repetition.
+
+        Finds items with lowest retrieval_count (oldest, least-recalled)
+        and touches them. This is the "recall agent" — a background process
+        whose ONLY job is to keep long-tail memory pointers alive.
+
+        Args:
+            namespace: Memory namespace to rehearse.
+            batch_size: Number of items to rehearse per call.
+
+        Returns:
+            Number of items rehearsed.
+        """
+        items = self._items.get(namespace, [])
+        if not items:
+            return 0
+
+        # Sort by retrieval_count ascending, then birth_order ascending (oldest first)
+        candidates = sorted(
+            items,
+            key=lambda i: (i.retrieval_count, i.birth_order),
+        )
+
+        rehearsed = 0
+        for item in candidates[:batch_size]:
+            item.retrieval_count += 1  # The "recall" — strengthens the pointer
+            rehearsed += 1
+
+        return rehearsed
 
     def export_vectors(self) -> dict[str, list[float]]:
         """

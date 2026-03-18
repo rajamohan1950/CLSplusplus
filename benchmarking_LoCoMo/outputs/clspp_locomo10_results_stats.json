@@ -1,36 +1,36 @@
 {
   "clspp": {
-    "overall_accuracy": 0.2532,
-    "total_questions": 1986,
+    "overall_accuracy": 0.2702,
+    "total_questions": 199,
     "category_accuracy": {
-      "1": 0.0567,
-      "2": 0.0135,
-      "3": 0.0873,
-      "4": 0.0358,
-      "5": 0.9955
+      "1": 0.0217,
+      "2": 0.0504,
+      "3": 0.0052,
+      "4": 0.0591,
+      "5": 1.0
     },
     "category_counts": {
-      "2": 321,
-      "3": 96,
-      "1": 282,
-      "4": 841,
-      "5": 446
+      "2": 37,
+      "3": 13,
+      "1": 32,
+      "4": 70,
+      "5": 47
     },
     "cum_accuracy_by_category": {
-      "2": 4.335,
-      "3": 8.38,
-      "1": 15.993,
-      "4": 30.095,
-      "5": 444.0
+      "2": 1.866,
+      "3": 0.067,
+      "1": 0.694,
+      "4": 4.14,
+      "5": 47.0
     },
     "phase_engine": {
-      "total_turns": 5882,
-      "facts_extracted": 5882,
-      "final_liquid": 5882,
+      "total_turns": 419,
+      "facts_extracted": 838,
+      "final_liquid": 838,
       "final_gas": 0,
-      "condensation_rate": 100.0
+      "condensation_rate": 200.0
     },
-    "runtime_seconds": 4511.3,
+    "runtime_seconds": 58.7,
     "mode": "direct"
   }
 }

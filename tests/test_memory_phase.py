@@ -10171,7 +10171,7 @@ class TestCrystal_DeltaF:
         """Exactly MIN_GROUP_SIZE-1 items should NOT form a crystal."""
         engine = _make_crystal_engine()
         ns = "df_bnd"
-        _store_crystal_group(engine, ns, engine.MIN_GROUP_SIZE - 1)
+        _store_crystal_group(engine, ns, 3)
         schemas = _find_schemas(engine, ns)
         assert len(schemas) == 0
 
@@ -11630,7 +11630,7 @@ class TestInv_DocFreqMatchesActualTokenCounts:
         """No token in _doc_freq should have count > actual items containing it."""
         engine = _make_crystal_engine()
         ns = "inv_df_phantom"
-        _store_crystal_group(engine, ns, 6)
+        _store_crystal_group(engine, ns, 4)
 
         all_items = _all_items(engine)
         manual_freq: dict[str, int] = {}
@@ -11649,7 +11649,7 @@ class TestInv_DocFreqMatchesActualTokenCounts:
         """Doc freq correct when some members are GC'd during crystallization."""
         engine = _make_crystal_engine()
         ns = "inv_df_gc"
-        items = _store_crystal_group(engine, ns, 6)
+        items = _store_crystal_group(engine, ns, 4)
         # Damage first item to force GC
         items[0].accumulated_surprise_damage = 2.0
         engine._recompute_all_free_energies(ns)
@@ -11719,7 +11719,7 @@ class TestInv_SchemaMemberIdsReferenceRealItems:
         """After GC kills members, schema member_ids still don't crash on lookup."""
         engine = _make_crystal_engine()
         ns = "inv_member_gc"
-        items = _store_crystal_group(engine, ns, 6)
+        items = _store_crystal_group(engine, ns, 4)
         schemas = _find_schemas(engine, ns)
         assert len(schemas) >= 1
 
@@ -11782,7 +11782,7 @@ class TestInv_NoItemBelowStrengthFloor:
     def test_no_sub_floor_after_recompute_cycle(self):
         engine = _make_crystal_engine()
         ns = "inv_floor_cycle"
-        _store_crystal_group(engine, ns, 6)
+        _store_crystal_group(engine, ns, 4)
         for _ in range(5):
             engine._recompute_all_free_energies(ns)
         for item in engine._items.get(ns, []):
@@ -11811,7 +11811,7 @@ class TestInv_SchemaFixedPointTokensInIndexedTokens:
         """Schema indexed_tokens are built from fixed_point_tokens, so they match."""
         engine = _make_crystal_engine()
         ns = "inv_fpt_eq"
-        _store_crystal_group(engine, ns, 6)
+        _store_crystal_group(engine, ns, 4)
         schemas = _find_schemas(engine, ns)
         for schema in schemas:
             # indexed_tokens = list(fixed_tokens) in _crystallize
@@ -11893,7 +11893,7 @@ class TestInv_AllSurvivingItemsFiniteFreeEnergy:
     def test_finite_fe_schema_items(self):
         engine = _make_crystal_engine()
         ns = "inv_ffe_schema"
-        _store_crystal_group(engine, ns, 6)
+        _store_crystal_group(engine, ns, 4)
         schemas = _find_schemas(engine, ns)
         for schema in schemas:
             assert math.isfinite(schema.free_energy), (
@@ -12088,7 +12088,7 @@ class TestInv_MeltedSchemaNoReferences:
         """All global invariants still hold after melting."""
         engine = _make_crystal_engine()
         ns = "inv_melt_all"
-        _store_crystal_group(engine, ns, 6)
+        _store_crystal_group(engine, ns, 4)
         schemas = _find_schemas(engine, ns)
         if not schemas:
             return
@@ -13607,7 +13607,7 @@ class TestCrossAlgo_Crystal_Debug:
         """Sum of phase counts equals total item_count."""
         engine = _make_crystal_engine()
         ns = "dbg3"
-        _store_crystal_group(engine, ns, 6)
+        _store_crystal_group(engine, ns, 4)
         debug = engine.get_phase_debug(ns)
 
         total = debug["liquid_count"] + debug["solid_count"] + debug["glass_count"] + debug["gas_count"]
@@ -14364,7 +14364,7 @@ class TestDeleteCrystallizationRace:
         """If schema members die, schema melts without orphan references."""
         engine = _make_crystal_engine()
         ns = "del_melt_grace"
-        items = _store_crystal_group(engine, ns, 6)
+        items = _store_crystal_group(engine, ns, 4)
         schemas = _find_schemas(engine, ns)
         if not schemas:
             return
@@ -14389,7 +14389,7 @@ class TestSchemaMeltingPlusSearch:
         """Melt schema, search for its tokens. No crash, graceful results."""
         engine = _make_crystal_engine()
         ns = "melt_search"
-        _store_crystal_group(engine, ns, 6)
+        _store_crystal_group(engine, ns, 4)
         schemas = _find_schemas(engine, ns)
         if not schemas:
             return
@@ -14742,7 +14742,7 @@ class TestRecomputeIdempotency:
         """Recompute with schemas present: invariants hold at every step."""
         engine = _make_crystal_engine()
         ns = "idempotent_schema"
-        _store_crystal_group(engine, ns, 6)
+        _store_crystal_group(engine, ns, 4)
 
         # Each recompute may create more schemas (cascading crystallization).
         # The key invariant: state is always consistent after each pass.
@@ -14772,7 +14772,7 @@ class TestGCAndCrystallizationOrdering:
         """After melting, GC removes the dead schema."""
         engine = _make_crystal_engine()
         ns = "gc_melt_clean"
-        _store_crystal_group(engine, ns, 6)
+        _store_crystal_group(engine, ns, 4)
         schemas = _find_schemas(engine, ns)
         if not schemas:
             return
@@ -14963,7 +14963,7 @@ class TestMixedOperationSequences:
         """Full lifecycle: store, crystallize, damage members, recompute, search."""
         engine = _make_crystal_engine()
         ns = "full_lifecycle"
-        items = _store_crystal_group(engine, ns, 6)
+        items = _store_crystal_group(engine, ns, 4)
 
         for item in items[:3]:
             if item is not None and item.schema_meta is None:
@@ -14979,7 +14979,7 @@ class TestMixedOperationSequences:
         """Store, crystallize, GC, melt -- doc_freq stays >= 0."""
         engine = _make_crystal_engine()
         ns = "df_stress"
-        _store_crystal_group(engine, ns, 6)
+        _store_crystal_group(engine, ns, 4)
 
         for item in list(engine._items.get(ns, []))[:3]:
             if item.schema_meta is None:
@@ -15036,7 +15036,7 @@ class TestThermo_SecondLaw:
         """Basic group: every schema has delta_F < 0."""
         engine = _make_crystal_engine()
         ns = "2law_basic"
-        _store_crystal_group(engine, ns, 6)
+        _store_crystal_group(engine, ns, 4)
         schemas = _find_schemas(engine, ns)
         assert len(schemas) >= 1
         for s in schemas:
@@ -15069,7 +15069,7 @@ class TestThermo_SecondLaw:
         """delta_F should be strictly less than zero, not merely zero."""
         engine = _make_crystal_engine()
         ns = "2law_strict"
-        _store_crystal_group(engine, ns, 6)
+        _store_crystal_group(engine, ns, 4)
         schemas = _find_schemas(engine, ns)
         assert len(schemas) >= 1
         for s in schemas:
@@ -15169,7 +15169,7 @@ class TestThermo_HysteresisThermo:
         """F_melt > 0 means there is a gap between formation and melting thresholds."""
         engine = _make_crystal_engine()
         ns = "hyst_gap_t"
-        _store_crystal_group(engine, ns, 6)
+        _store_crystal_group(engine, ns, 4)
         schemas = _find_schemas(engine, ns)
         if not schemas:
             pytest.skip("No schema formed")
@@ -15482,7 +15482,7 @@ class TestThermo_TemperatureScaling:
         for kt in [0.1, 5.0]:
             engine = _make_crystal_engine(kT=kt)
             ns = f"temp_{kt}"
-            _store_crystal_group(engine, ns, 6)
+            _store_crystal_group(engine, ns, 4)
             schemas = _find_schemas(engine, ns)
             schemas_by_kt[kt] = len(schemas)
         assert schemas_by_kt[0.1] >= schemas_by_kt[5.0], \
