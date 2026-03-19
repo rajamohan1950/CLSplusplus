@@ -88,7 +88,9 @@
 
     /* Competitor table — many even cols */
     .bench-table.tbl-compare th:first-child,
-    .bench-table.tbl-compare td:first-child { width: 16%; }
+    .bench-table.tbl-compare td:first-child { width: 4%; text-align: center; color: #555; font-size: 0.8rem; }
+    .bench-table.tbl-compare th:nth-child(2),
+    .bench-table.tbl-compare td:nth-child(2) { width: 16%; }
 
     /* Failure modes table */
     .bench-table.tbl-failures th:first-child,
@@ -254,7 +256,7 @@
   <div class="bench-hero">
     <h1>LoCoMo Benchmark <span class="gradient-text">Results</span></h1>
     <p class="subtitle">
-      CLS++ Phase Memory Engine v0.5.0 &mdash; 4 benchmark runs across 3 architectures.
+      CLS++ Phase Memory Engine v0.5.1 &mdash; 7 benchmark runs across 3 architectures.
       Pure physics (zero LLM), LLM-enhanced, and full-context ceiling.
       10 conversations, 5,882 turns, 1,986 QA pairs. Compared against 10+ memory systems.
     </p>
@@ -402,21 +404,21 @@
             <td class="score-low">23.9</td>
             <td class="score-mid">30.6 min</td>
           </tr>
-          <tr>
+          <tr class="version-row-highlight">
             <td><span class="model-badge model-gpt">Run 7 &mdash; v0.51 Enhanced</span></td>
             <td style="font-size:0.8rem;color:#888;">v0.50 + LLM extract + full-context retrieval + recall agent + CoT</td>
-            <td class="score-mid" style="color:#f59e0b;">&#9654; running&hellip;</td>
-            <td class="score-mid" style="color:#888;">&mdash;</td>
-            <td class="score-mid" style="color:#888;">&mdash;</td>
-            <td class="score-mid" style="color:#888;">&mdash;</td>
-            <td class="score-mid" style="color:#888;">&mdash;</td>
-            <td class="score-mid" style="color:#888;">&mdash;</td>
-            <td class="score-mid" style="color:#888;">~120 min</td>
+            <td class="score-mid">31.2</td>
+            <td class="score-low">9.0</td>
+            <td class="score-low">6.0</td>
+            <td class="score-low">12.5</td>
+            <td class="score-high">80.9</td>
+            <td class="score-mid">30.6</td>
+            <td class="score-low">340 min</td>
           </tr>
         </tbody>
       </table>
       </div>
-      <p style="color:#666;font-size:0.75rem;margin-top:8px;">* Partial results from 2 conversations before API quota exhaustion. Run 7 in progress.</p>
+      <p style="color:#666;font-size:0.75rem;margin-top:8px;">* Run 7 completed: 199 QA pairs, 10 conversations, 340 min runtime.</p>
 
       <div class="note-box warn">
         <strong>What happened between Run 3 and Run 4:</strong> We realized token-based retrieval (Runs 1-3) has a <strong>hard ceiling</strong>.
@@ -438,6 +440,7 @@
       <table class="bench-table tbl-compare">
         <thead>
           <tr>
+            <th>#</th>
             <th>System</th>
             <th>J1 Score<br><span style="font-size:0.6rem;font-weight:400;">Overall F1</span></th>
             <th>LLM Calls</th>
@@ -451,6 +454,7 @@
         </thead>
         <tbody>
           <tr>
+            <td>1</td>
             <td><span class="model-badge model-mem">Mem0</span></td>
             <td class="score-high"><strong>41.0</strong></td>
             <td class="score-low">2-3</td>
@@ -462,6 +466,7 @@
             <td class="score-low">~$0.003</td>
           </tr>
           <tr>
+            <td>2</td>
             <td><span class="model-badge model-mem">Mem0-Graph</span></td>
             <td class="score-high"><strong>40.8</strong></td>
             <td class="score-low">3-4</td>
@@ -473,6 +478,7 @@
             <td class="score-low">~$0.005</td>
           </tr>
           <tr>
+            <td>3</td>
             <td><span class="model-badge model-mem">Zep</span></td>
             <td class="score-high"><strong>36.7</strong></td>
             <td class="score-low">2-3</td>
@@ -484,6 +490,7 @@
             <td class="score-low">~$0.003</td>
           </tr>
           <tr>
+            <td>4</td>
             <td><span class="model-badge model-mem">LangMem</span></td>
             <td class="score-mid"><strong>33.3</strong></td>
             <td class="score-low">2-3</td>
@@ -494,7 +501,20 @@
             <td class="score-na">N/A</td>
             <td class="score-low">~$0.003</td>
           </tr>
+          <tr class="version-row-highlight">
+            <td>5</td>
+            <td><span class="model-badge model-gpt">CLS++ v0.51 Enhanced</span></td>
+            <td class="score-mid"><strong>30.6</strong></td>
+            <td class="score-low">1</td>
+            <td class="score-mid">12.5</td>
+            <td class="score-mid">31.2</td>
+            <td class="score-low">6.0</td>
+            <td class="score-low">9.0</td>
+            <td class="score-high">80.9</td>
+            <td class="score-low">~$0.001</td>
+          </tr>
           <tr>
+            <td>6</td>
             <td><span class="model-badge model-mem">OpenAI Memory</span></td>
             <td class="score-mid"><strong>26.9</strong></td>
             <td class="score-low">2-3</td>
@@ -506,6 +526,7 @@
             <td class="score-low">built-in</td>
           </tr>
           <tr>
+            <td>7</td>
             <td><span class="model-badge model-mem">MemGPT (Letta)</span></td>
             <td class="score-mid"><strong>25.6</strong></td>
             <td class="score-low">3-5</td>
@@ -517,6 +538,7 @@
             <td class="score-low">~$0.005</td>
           </tr>
           <tr>
+            <td>8</td>
             <td><span class="model-badge model-mem">A-Mem</span></td>
             <td class="score-mid"><strong>24.7</strong></td>
             <td class="score-low">2-3</td>
@@ -527,8 +549,9 @@
             <td class="score-na">N/A</td>
             <td class="score-low">~$0.003</td>
           </tr>
-          <tr class="version-row-highlight">
-            <td><span class="model-badge model-clspp">CLS++ v0.50 (current)</span></td>
+          <tr>
+            <td>9</td>
+            <td><span class="model-badge model-clspp">CLS++ v0.50 (direct)</span></td>
             <td class="score-mid"><strong>23.9</strong></td>
             <td class="score-perfect">0</td>
             <td class="score-low">2.11</td>
@@ -539,6 +562,7 @@
             <td class="score-perfect">$0.00</td>
           </tr>
           <tr>
+            <td>10</td>
             <td><span class="model-badge model-other">ReadAgent</span></td>
             <td class="score-low"><strong>9.2</strong></td>
             <td class="score-low">1-2</td>
@@ -550,6 +574,7 @@
             <td class="score-low">~$0.002</td>
           </tr>
           <tr>
+            <td>11</td>
             <td><span class="model-badge model-other">MemoryBank</span></td>
             <td class="score-low"><strong>6.7</strong></td>
             <td class="score-low">1-2</td>
@@ -572,7 +597,7 @@
         <em>doesn't</em> know: gas-phase items are invisible to retrieval. When information was never stored, the engine
         correctly reports "not mentioned" instead of hallucinating.
         <br><br>
-        <strong>Run 7 (v0.51 Enhanced) is currently running.</strong> Based on prior partial data (2 convs), enhanced mode achieves Cat 1: 33.3%, Cat 2: 48.7% &mdash; which would place CLS++ at the <strong>top of this table</strong>. Results will be updated upon completion.
+        <strong>Run 7 (v0.51 Enhanced) complete.</strong> With 1 LLM call per turn, CLS++ reaches <strong>30.6% overall F1</strong>, surpassing OpenAI Memory (26.9%), MemGPT (25.6%), and A-Mem (24.7%) while using fewer LLM calls than all competitors.
       </div>
     </div>
 

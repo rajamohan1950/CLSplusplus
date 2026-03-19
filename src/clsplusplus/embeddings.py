@@ -3,7 +3,6 @@
 from typing import Optional
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 from clsplusplus.config import Settings
 from clsplusplus.models import MemoryItem
@@ -14,12 +13,13 @@ class EmbeddingService:
 
     def __init__(self, settings: Optional[Settings] = None):
         self.settings = settings or Settings()
-        self._model: Optional[SentenceTransformer] = None
+        self._model = None
 
     @property
-    def model(self) -> SentenceTransformer:
+    def model(self):
         """Lazy load the embedding model."""
         if self._model is None:
+            from sentence_transformers import SentenceTransformer
             self._model = SentenceTransformer(self.settings.embedding_model)
         return self._model
 

@@ -402,6 +402,16 @@ class PhaseMemoryItem:
     indexed_tokens: list[str] = field(default_factory=list)
     _last_field_radius: int = -1  # Last R(s) for lazy index update
 
+    # --- Dense Semantic Embedding (384-dim, optional — set by MemoryService) ---
+    # PhaseMemoryEngine itself remains zero-dep. MemoryService attaches this
+    # after engine.store() returns, using EmbeddingService (sentence-transformers).
+    # Used for post-TRR 384-dim semantic re-ranking (bridges vocabulary gaps).
+    embedding_dense: list = field(default_factory=list)
+
+    # --- Conversation context (set by benchmark/API callers, optional) ---
+    session_date: str = ""        # Human-readable session date ("8 May 2023")
+    conversation_turn: int = 0    # Turn index within its conversation
+
     # --- Crystallization (Liquid → Solid phase transition) ---
     schema_meta: Optional[SchemaMeta] = None  # Non-None = solid/glass phase
 

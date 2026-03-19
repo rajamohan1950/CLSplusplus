@@ -105,6 +105,12 @@ class WriteRequest(BaseModel):
     predicate: Optional[str] = Field(default=None, max_length=256)
     object: Optional[str] = Field(default=None, max_length=256)
 
+    # When the conversation/event occurred. If provided, relative date references
+    # in `text` ("yesterday", "last week", "in 3 days") are resolved to absolute
+    # dates and appended inline so the memory remains queryable forever.
+    # ISO-8601 string or datetime accepted.  Example: "2024-05-08T14:30:00"
+    conversation_date: Optional[datetime] = Field(default=None)
+
     @field_validator("namespace")
     @classmethod
     def ns_valid(cls, v: str) -> str:
@@ -149,6 +155,7 @@ class ReadResponse(BaseModel):
     items: list[MemoryItem]
     query: str
     namespace: str
+    trace_id: Optional[str] = None
 
 
 class AdjudicateRequest(BaseModel):

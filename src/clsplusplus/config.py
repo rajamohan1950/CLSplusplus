@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     minio_bucket: str = "cls-l3"
 
     # Embeddings (used by L1/L2/L3 tiers, not by phase engine)
+    embedding_model: str = "all-MiniLM-L6-v2"
     embedding_dim: int = 384
 
     # Plasticity coefficients (α, β, γ, λ, δ)

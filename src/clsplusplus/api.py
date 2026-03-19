@@ -1,5 +1,7 @@
 """CLS++ REST API - FastAPI application."""
 
+import asyncio
+import logging
 from typing import Optional
 
 import os
@@ -14,6 +16,7 @@ from clsplusplus.config import Settings
 from clsplusplus.integration_service import IntegrationService
 from clsplusplus.memory_service import MemoryService
 from clsplusplus.middleware import AuthMiddleware, RateLimitMiddleware, RequestIdMiddleware
+from clsplusplus.tracer import tracer
 from clsplusplus.models import (
     AdjudicateRequest,
     ApiKeyCreate,
@@ -36,7 +39,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     """Create FastAPI application."""
     settings = settings or Settings()
     memory_service = MemoryService(settings)
-    sleep_orchestrator = SleepOrchestrator(settings)
+    sleep_orchestrator = SleepOrchestrator(settings, engine=memory_service.engine)
     integration_service = IntegrationService(settings)
 
     app = FastAPI(
@@ -87,6 +90,18 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     def _ns_query(default: str = "default") -> str:
         return Query(default=default, min_length=1, max_length=64)
 
+    def _trace_id(request: Request) -> str:
+        """Return X-Trace-Id header if provided, else use X-Request-Id, else generate."""
+        tid = (
+            request.headers.get("x-trace-id")
+            or request.headers.get("x-request-id")
+            or getattr(request.state, "request_id", None)
+        )
+        if not tid:
+            import uuid as _uuid
+            tid = str(_uuid.uuid4())
+        return tid
+
     # Detect website directory (in Docker: /app/website, local dev: ../website relative to src)
     _website_dir = os.environ.get("CLS_WEBSITE_DIR")
     if not _website_dir:
@@ -127,36 +142,44 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.post("/v1/memory/write")
     async def write_memory(req: WriteRequest, request: Request):
         """Write memory. Flows to L0, promotes to L1 if score warrants."""
-        item = await memory_service.write(req)
+        tid = _trace_id(request)
+        item = await memory_service.write(req, trace_id=tid)
         await _record_usage("write", request)
-        return {"id": item.id, "store_level": item.store_level.value, "text": item.text}
+        return {"id": item.id, "store_level": item.store_level.value, "text": item.text, "trace_id": tid}
 
     @app.post("/v1/memories/encode")
     async def encode_memory(req: WriteRequest, request: Request):
         """Product alias: POST /memories/encode -> write."""
-        item = await memory_service.write(req)
+        tid = _trace_id(request)
+        item = await memory_service.write(req, trace_id=tid)
         await _record_usage("encode", request)
-        return {"id": item.id, "store_level": item.store_level.value, "text": item.text}
+        return {"id": item.id, "store_level": item.store_level.value, "text": item.text, "trace_id": tid}
 
     @app.post("/v1/memory/read", response_model=ReadResponse)
     async def read_memory(req: ReadRequest, request: Request):
         """Read memories by semantic query across all stores."""
-        result = await memory_service.read(req)
+        tid = _trace_id(request)
+        result = await memory_service.read(req, trace_id=tid)
         await _record_usage("read", request)
+        result.trace_id = tid
         return result
 
     @app.post("/v1/memories/retrieve", response_model=ReadResponse)
     async def retrieve_memories(req: ReadRequest, request: Request):
         """Product alias: POST /memories/retrieve -> read."""
-        result = await memory_service.read(req)
+        tid = _trace_id(request)
+        result = await memory_service.read(req, trace_id=tid)
         await _record_usage("retrieve", request)
+        result.trace_id = tid
         return result
 
     @app.post("/v1/memories/search", response_model=ReadResponse)
     async def search_memories(req: ReadRequest, request: Request):
         """Resource-oriented: POST /memories/search -> read."""
-        result = await memory_service.read(req)
+        tid = _trace_id(request)
+        result = await memory_service.read(req, trace_id=tid)
         await _record_usage("retrieve", request)
+        result.trace_id = tid
         return result
 
     @app.get("/v1/memory/item/{item_id}")
@@ -174,6 +197,21 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
         return item.to_dict()
+
+    @app.post("/v1/memories/prewarm")
+    async def prewarm_namespace(namespace: str = _ns_query()):
+        """Pre-load a namespace into memory so the first user request is instant.
+
+        Call this at application startup for active namespaces.  Returns immediately
+        — loading happens in the background.  Idempotent (safe to call repeatedly).
+        """
+        try:
+            validate_namespace(namespace)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        await memory_service.prewarm(namespace)
+        already = namespace in memory_service._loaded_namespaces
+        return {"status": "loaded" if already else "loading", "namespace": namespace}
 
     @app.post("/v1/memory/sleep")
     async def trigger_sleep(namespace: str = _ns_query()):
@@ -214,22 +252,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.post("/v1/memory/adjudicate_conflict")
     async def adjudicate_conflict(req: AdjudicateRequest):
         """Submit conflicting fact + evidence for reconsolidation gate."""
-        from clsplusplus.models import MemoryItem
-
-        new_item = MemoryItem(text=req.new_fact, namespace=req.namespace)
-        new_item = memory_service.embedding_service.embed_item(new_item)
-        old_item = None
-        if req.existing_item_id:
-            old_item = await memory_service.get_item(req.existing_item_id, req.namespace)
-        if old_item and memory_service.reconsolidation.should_overwrite(
-            new_item, old_item, req.evidence
-        ):
-            await memory_service.l1.write(new_item)
-            return {"decision": "overwrite", "new_id": new_item.id}
-        if not old_item:
-            await memory_service.l1.write(new_item)
-            return {"decision": "accepted", "new_id": new_item.id}
-        return {"decision": "reject", "reason": "Insufficient evidence quorum"}
+        result = await memory_service.adjudicate(
+            new_text=req.new_fact,
+            namespace=req.namespace,
+            evidence=req.evidence,
+            existing_item_id=req.existing_item_id,
+        )
+        # If the returned item is the same as the existing one, quorum was not met
+        decision = "rejected" if (req.existing_item_id and result.id == req.existing_item_id) else "accepted"
+        return {"decision": decision, "new_id": result.id}
 
     @app.get("/v1/demo/status")
     async def demo_status():
@@ -511,10 +542,47 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         events = await integration_service.get_events(integration_id, limit)
         return {"events": [e.model_dump(mode="json") for e in events]}
 
+    # =========================================================================
+    # Trace / Call Graph API
+    # =========================================================================
+
+    @app.get("/v1/trace/{trace_id}")
+    async def get_trace(trace_id: str):
+        """Return the full call graph tree for a trace UUID."""
+        trace = tracer.get(trace_id)
+        if not trace:
+            raise HTTPException(status_code=404, detail=f"Trace {trace_id} not found (max {tracer.MAX_TRACES} traces kept in memory)")
+        return trace.to_dict()
+
+    @app.get("/v1/traces")
+    async def list_traces(limit: int = Query(default=50, ge=1, le=200)):
+        """List recent traces (newest first)."""
+        return {"traces": tracer.list_recent(limit)}
+
+    _api_logger = logging.getLogger(__name__)
+
+    @app.on_event("startup")
+    async def startup():
+        """Start background hippocampal replay loop — fires every 5 minutes per active namespace."""
+        async def _periodic_replay():
+            while True:
+                await asyncio.sleep(300)  # 5 minutes
+                for ns in list(memory_service.engine._items.keys()):
+                    try:
+                        rehearsed = memory_service.engine.recall_long_tail(ns, batch_size=50)
+                        if rehearsed:
+                            _api_logger.debug(
+                                "Periodic recall_long_tail ns=%s rehearsed=%d", ns, rehearsed
+                            )
+                    except Exception:
+                        pass
+
+        asyncio.create_task(_periodic_replay())
+
     @app.on_event("shutdown")
     async def shutdown():
         """Cleanly close all connection pools on shutdown."""
-        for store in [memory_service.l0, memory_service.l1, memory_service.l2, memory_service.l3]:
+        for store in [memory_service.l1, memory_service.l2]:
             if hasattr(store, "close"):
                 try:
                     await store.close()
