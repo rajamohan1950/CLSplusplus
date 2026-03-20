@@ -102,6 +102,12 @@ class MemoryService:
         namespace, return immediately — the engine will serve whatever it has
         already loaded.  Only blocks on the very first request if no pre-load
         was started.
+
+        Restores full thermodynamic state from L1:
+          • consolidation_strength  ← confidence
+          • retrieval_count         ← usage_count
+          • surprise_at_birth       ← surprise
+          • embedding_dense         ← embedding  (384-dim; enables semantic re-ranking)
         """
         if namespace in self._loaded_namespaces:
             return
@@ -110,13 +116,27 @@ class MemoryService:
             return
         self._loading_namespaces.add(namespace)
         try:
-            items = await self.l1.list_for_sleep(namespace, limit=20000)
+            # Top 50k by confidence DESC — strongest memories load first so the
+            # engine's 1k hot-item pressure evicts the weakest, not the strongest.
+            items = await self.l1.list_for_sleep(namespace, limit=50000)
             if items:
                 self.engine._batch_mode = True
                 for item in items:
-                    self.engine.store(item.text, item.namespace)
+                    phase_item = self.engine.store(item.text, item.namespace)
+                    if phase_item is not None:
+                        # Restore persisted thermodynamic state so the brain
+                        # wakes up with its memory intact, not tabula rasa.
+                        phase_item.consolidation_strength = float(item.confidence)
+                        phase_item.retrieval_count        = int(item.usage_count)
+                        phase_item.surprise_at_birth      = float(item.surprise or 0.0)
+                        if item.embedding:
+                            phase_item.embedding_dense = list(item.embedding)
                 self.engine.finalize_batch(namespace)
-                logger.info("Loaded %d items from L1 into PhaseMemoryEngine for ns=%s", len(items), namespace)
+                logger.info(
+                    "Loaded %d items from L1 into PhaseMemoryEngine for ns=%s "
+                    "(state fully restored: strength, retrieval_count, embeddings)",
+                    len(items), namespace,
+                )
         except Exception as e:
             logger.warning("Could not load from L1 (continuing with empty brain): %s", e)
         finally:

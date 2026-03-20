@@ -261,43 +261,55 @@ class L1IndexingStore(BaseStore):
         """Re-tune the IVFFlat index lists based on actual row count.
 
         Rule of thumb: lists ≈ sqrt(total_rows).
-          •  <  10k rows  →  lists =  100  (default)
+          •  <  10k rows  →  lists =  100  (default, no rebuild needed)
           •  < 100k rows  →  lists =  316
           •  <   1M rows  →  lists = 1000
           •  >= 1M rows   →  lists = 2000
 
-        This is a CONCURRENT index rebuild so reads/writes are never blocked.
+        CONCURRENTLY index operations must each run on their own connection
+        outside any transaction block — asyncpg autocommit satisfies this as
+        long as we do NOT share a connection across the DROP and CREATE.
         Called once at startup — a no-op when the row count hasn't crossed a
         threshold boundary since last build.
         """
         pool = await self.get_pool()
+
+        # Step 1: count rows (own connection, fast)
         async with pool.acquire() as conn:
             total = await conn.fetchval("SELECT COUNT(*) FROM l1_memories") or 0
-            if total < 1000:
-                return  # Too few rows for IVFFlat to matter
 
-            lists = 100
-            if total >= 1_000_000:
-                lists = 2000
-            elif total >= 100_000:
-                lists = 1000
-            elif total >= 10_000:
-                lists = 316
+        if total < 1000:
+            return  # Too few rows for IVFFlat to matter
 
-            try:
+        lists = 100
+        if total >= 1_000_000:
+            lists = 2000
+        elif total >= 100_000:
+            lists = 1000
+        elif total >= 10_000:
+            lists = 316
+
+        try:
+            # Step 2: DROP CONCURRENTLY — own connection (no shared transaction)
+            async with pool.acquire() as conn:
                 await conn.execute(
-                    f"DROP INDEX CONCURRENTLY IF EXISTS idx_l1_embedding"
+                    "DROP INDEX CONCURRENTLY IF EXISTS idx_l1_embedding"
                 )
+
+            # Step 3: CREATE CONCURRENTLY — own connection (no shared transaction)
+            async with pool.acquire() as conn:
                 await conn.execute(
                     f"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_l1_embedding "
                     f"ON l1_memories USING ivfflat (embedding vector_cosine_ops) "
                     f"WITH (lists = {lists})"
                 )
-                logger.info(
-                    "IVFFlat index rebuilt: total_rows=%d lists=%d", total, lists
-                )
-            except Exception as e:
-                logger.warning("IVFFlat scale rebuild failed (non-fatal): %s", e)
+
+            logger.info(
+                "IVFFlat index rebuilt CONCURRENTLY: total_rows=%d lists=%d",
+                total, lists,
+            )
+        except Exception as e:
+            logger.warning("IVFFlat scale rebuild failed (non-fatal): %s", e)
 
     async def update_scores(self, item_id: str, namespace: str, **kwargs) -> bool:
         """Update plasticity scores. Column names are validated against an allowlist."""
