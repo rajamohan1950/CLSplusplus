@@ -132,6 +132,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         from fastapi.responses import RedirectResponse
         return RedirectResponse(url="/v1/memory/health")
 
+    @app.get("/v1/health")
+    async def v1_health():
+        """Quick liveness probe. chat.js and other clients call this on startup."""
+        return {"status": "ok", "version": getattr(settings, "version", "0.7")}
+
     async def _record_usage(operation: str, request: Request):
         """Fire-and-forget usage tracking. Must never crash a user request."""
         try:

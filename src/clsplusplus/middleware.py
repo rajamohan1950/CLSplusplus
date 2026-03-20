@@ -122,7 +122,7 @@ _TRACE_SKIP_PREFIXES = (
     "/v1/memory/phases",      # phase-bar polling — high frequency, no value in trace list
     "/v1/memory/namespaces",  # namespace chip polling — same reason
 )
-_TRACE_SKIP_EXACT = frozenset({"/", "/health", "/favicon.ico"})
+_TRACE_SKIP_EXACT = frozenset({"/", "/health", "/v1/health", "/favicon.ico"})
 
 # Map path fragments → short operation names shown in the trace list
 _OP_MAP = {
