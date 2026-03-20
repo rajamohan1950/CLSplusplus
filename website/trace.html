@@ -373,87 +373,113 @@
       padding: 28px 24px 36px; min-width: 0;
     }
 
-    /* ── Indented tree call graph ───────────────────────────── */
+    /* ── Left-to-right call graph tree ─────────────────────── */
+    /*
+     * Layout: root on the left, children branch RIGHT.
+     * Each node = [card] ── arm ──┬── elbow ── [child card] ── …
+     *                             ├── elbow ── [child card]
+     *                             └── elbow ── [child card]
+     * Connector lines are pure CSS via ::before / ::after on .lrt-branch.
+     */
 
-    /* Outer scroll wrapper */
-    .cgt-tree {
-      padding: 12px 16px; overflow: auto;
+    /* Scroll container — inline-flex so tree is only as wide as it needs */
+    .lrt-tree {
+      display: inline-flex; min-width: 100%;
+      padding: 20px 24px; overflow: auto;
       font-family: 'JetBrains Mono', monospace;
     }
 
-    /* One item = row + optional I/O + optional children */
-    .cgt-item { position: relative; }
+    /* ── Node: card  +  (arm + col) when it has children ────── */
+    .lrt-node { display: flex; flex-direction: row; align-items: center; }
 
-    /* ── Row (always visible) ──────────────────────────────── */
-    .cgt-row {
-      display: flex; align-items: center; gap: 6px;
-      padding: 5px 8px; border-radius: 6px;
-      cursor: pointer; user-select: none;
-      transition: background .12s;
-      border: 1px solid transparent;
+    /* ── Card ──────────────────────────────────────────────── */
+    .lrt-card {
+      border: 1px solid #1e1e1e; border-radius: 7px;
+      background: #0d0d0d; padding: 7px 11px;
+      min-width: 155px; max-width: 230px;
+      cursor: pointer; user-select: none; flex-shrink: 0;
+      transition: background .12s, border-color .12s;
     }
-    .cgt-row:hover { background: #111; border-color: #222; }
-
-    /* Root row — indigo tint */
-    .cgt-tree > .cgt-item > .cgt-row {
-      background: rgba(99,102,241,.07);
-      border-color: rgba(99,102,241,.22);
+    .lrt-card:hover { background: #111; border-color: #2b2b2b; }
+    .lrt-card.is-root {
+      background: rgba(99,102,241,.08);
+      border-color: rgba(99,102,241,.28);
+      min-width: 180px;
     }
-    .cgt-tree > .cgt-item > .cgt-row:hover { background: rgba(99,102,241,.13); }
+    .lrt-card.is-root:hover { background: rgba(99,102,241,.14); }
 
-    /* Toggle arrow */
-    .cgt-tog {
+    /* Card header row */
+    .lrt-hdr { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .lrt-tog {
       font-size: 0.52rem; flex-shrink: 0; width: 12px; text-align: center;
-      color: #6366f1; line-height: 1; transition: color .1s;
+      color: #6366f1; line-height: 1;
     }
-    .cgt-tog.leaf { color: #2a2a2a; cursor: default; }
-
-    /* Label */
-    .cgt-label {
-      font-size: 0.73rem; color: #c7c7e8;
-      flex: 1; overflow: hidden;
-      text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+    .lrt-tog.leaf { color: #272727; cursor: default; }
+    .lrt-label {
+      font-size: 0.72rem; color: #c7c7e8;
+      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
     }
-
-    /* Duration */
-    .cgt-dur {
-      font-size: 0.62rem; color: #3a4560; flex-shrink: 0; white-space: nowrap;
+    .lrt-dur {
+      font-size: 0.61rem; color: #3a4560; flex-shrink: 0; white-space: nowrap;
+      margin-left: 4px;
     }
 
-    /* ── I/O section — indented under the row ─────────────── */
-    .cgt-io {
-      margin: 2px 0 3px 28px;
-      padding: 4px 8px;
-      border-left: 2px solid #191919;
-      display: flex; flex-direction: column; gap: 3px;
+    /* I/O rows sit inside the card, below the header */
+    .lrt-io {
+      margin-top: 5px; padding-top: 5px;
+      border-top: 1px solid #161616;
+      display: flex; flex-direction: column; gap: 2px;
     }
-    .cgt-io-row {
-      display: flex; gap: 6px; align-items: baseline; min-width: 0;
+    .lrt-io-row { display: flex; gap: 5px; align-items: baseline; min-width: 0; }
+    .lrt-io-dir {
+      font-size: 0.55rem; font-weight: 700; flex-shrink: 0; min-width: 36px;
     }
-    .cgt-io-dir {
-      font-size: 0.57rem; font-weight: 700;
-      flex-shrink: 0; min-width: 38px; padding-top: 1px;
-    }
-    .cgt-io-dir.in  { color: #60a5fa; }
-    .cgt-io-dir.out { color: #4ade80; }
-    .cgt-io-val {
-      font-size: 0.68rem; flex: 1; min-width: 0;
-      white-space: pre-wrap; word-break: break-all;
-      max-height: 72px; overflow: hidden;
-    }
-    .cgt-io-val.in  { color: #5a8ec4; }
-    .cgt-io-val.out { color: #58a870; }
-
-    /* ── Children — indented with left guide line ─────────── */
-    .cgt-kids {
-      margin-left: 18px;
-      padding-left: 10px;
-      border-left: 1px solid #1c1c1c;
+    .lrt-io-dir.in  { color: #60a5fa; }
+    .lrt-io-dir.out { color: #4ade80; }
+    .lrt-io-val {
+      font-size: 0.65rem; flex: 1; min-width: 0;
+      color: #6a7a9a; word-break: break-all; white-space: pre-wrap;
+      max-height: 60px; overflow: hidden;
     }
 
-    /* Collapse: hide I/O and children */
-    .cgt-item.cgt-collapsed > .cgt-io,
-    .cgt-item.cgt-collapsed > .cgt-kids { display: none; }
+    /* ── Arm: horizontal line from parent card to spine ─────── */
+    .lrt-arm { width: 28px; height: 1px; background: #282828; flex-shrink: 0; }
+
+    /* ── Column of child branches ───────────────────────────── */
+    .lrt-col { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+
+    /* ── Branch: L-shaped connector + child node ────────────── */
+    .lrt-branch {
+      display: flex; flex-direction: row; align-items: center;
+      position: relative;
+      padding-left: 28px;   /* = arm width; child node pushed this far right */
+    }
+
+    /* Vertical spine segment through this branch */
+    .lrt-branch::before {
+      content: ''; position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 1px; background: #282828;
+    }
+    /* First child: spine starts at mid-height (nothing above) */
+    .lrt-branch:first-child::before  { top: 50%; }
+    /* Last child: spine ends at mid-height (nothing below) */
+    .lrt-branch:last-child::before   { bottom: 50%; }
+    /* Only child: no spine at all — just a straight arm */
+    .lrt-branch:only-child::before   { display: none; }
+
+    /* Horizontal elbow from spine to child card */
+    .lrt-branch::after {
+      content: ''; position: absolute;
+      left: 0; top: 50%;
+      width: 28px; height: 1px; background: #282828;
+    }
+
+    /* ── Collapse ───────────────────────────────────────────── */
+    /* Collapsed node hides its I/O and its arm+children column */
+    .lrt-node.lrt-collapsed > .lrt-card > .lrt-io { display: none; }
+    .lrt-node.lrt-collapsed > .lrt-arm             { display: none; }
+    .lrt-node.lrt-collapsed > .lrt-col             { display: none; }
   </style>
 </head>
 <body>
@@ -905,11 +931,13 @@
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Call Graph — compact indented tree (top→down, left-guide lines)
-  // Each node: [▼] [badge] label …… dur
-  //              ▶ IN  <input text>
-  //              ◀ OUT <output text>
-  //   └ child nodes indented 18px with left guide line
+  // Call Graph — left-to-right visual tree
+  //
+  //  [root card] ── arm ──┬── elbow ── [child card] ── arm ──┬── [grandchild]
+  //                       ├── elbow ── [child card]           └── [grandchild]
+  //                       └── elbow ── [child card]
+  //
+  // Click any card header to collapse/expand its subtree (hides arm + col + I/O).
   // ─────────────────────────────────────────────────────────────────────────
   function renderCallGraph(trace, containerEl) {
     const root = trace.tree;
@@ -918,12 +946,20 @@
       return;
     }
     const tree = document.createElement('div');
-    tree.className = 'cgt-tree';
+    tree.className = 'lrt-tree';
     buildCGNode(root, tree, true);
     containerEl.appendChild(tree);
   }
 
-  // Appends one .cgt-item (row + I/O + children) into parentEl.
+  // Builds and appends one .lrt-node into parentEl.
+  //   .lrt-node
+  //     .lrt-card[.is-root]
+  //       .lrt-hdr   ← toggle · badge · label · dur   (click → collapse)
+  //       .lrt-io?   ← IN / OUT rows (hidden when collapsed)
+  //     .lrt-arm     ← 28px horizontal line to spine   (hidden when collapsed)
+  //     .lrt-col     ← vertical stack of .lrt-branch   (hidden when collapsed)
+  //       .lrt-branch × N
+  //         [recursive .lrt-node]
   function buildCGNode(node, parentEl, isRoot) {
     const meta      = node.metadata || {};
     const c         = svcColor(node.module);
@@ -933,80 +969,98 @@
     const hasIO     = hasInput || hasOutput;
     const canToggle = hasKids || hasIO;
 
-    const item = document.createElement('div');
-    item.className = 'cgt-item';
+    // ── Outer node wrapper ───────────────────────────────────────
+    const nodeEl = document.createElement('div');
+    nodeEl.className = 'lrt-node';
 
-    // ── Row ──────────────────────────────────────────────────────
-    const row = document.createElement('div');
-    row.className = 'cgt-row';
+    // ── Card ─────────────────────────────────────────────────────
+    const card = document.createElement('div');
+    card.className = 'lrt-card' + (isRoot ? ' is-root' : '');
+
+    // Header
+    const hdr = document.createElement('div');
+    hdr.className = 'lrt-hdr';
 
     const tog = document.createElement('span');
-    tog.className = 'cgt-tog' + (canToggle ? '' : ' leaf');
+    tog.className = 'lrt-tog' + (canToggle ? '' : ' leaf');
     tog.textContent = canToggle ? '▼' : '·';
-    row.appendChild(tog);
+    hdr.appendChild(tog);
 
     const badge = document.createElement('span');
     badge.className = 'svc-badge';
     badge.style.cssText = `background:${c.badge};color:${c.text}`;
     badge.textContent = node.module;
-    row.appendChild(badge);
+    hdr.appendChild(badge);
 
     const lbl = document.createElement('span');
-    lbl.className = 'cgt-label';
+    lbl.className = 'lrt-label';
     lbl.textContent = node.label;
     lbl.title = node.label;
-    row.appendChild(lbl);
+    hdr.appendChild(lbl);
 
     const dur = document.createElement('span');
-    dur.className = 'cgt-dur';
+    dur.className = 'lrt-dur';
     dur.textContent = fmtMs(node.duration_ms);
-    row.appendChild(dur);
+    hdr.appendChild(dur);
 
-    if (canToggle) row.addEventListener('click', () => cgtToggle(item, tog));
-    item.appendChild(row);
+    if (canToggle) hdr.addEventListener('click', () => cgtToggle(nodeEl, tog));
+    card.appendChild(hdr);
 
-    // ── I/O block ────────────────────────────────────────────────
+    // I/O rows
     if (hasIO) {
       const io = document.createElement('div');
-      io.className = 'cgt-io';
+      io.className = 'lrt-io';
 
       if (hasInput) {
-        const r = document.createElement('div'); r.className = 'cgt-io-row';
-        const d = document.createElement('span'); d.className = 'cgt-io-dir in'; d.textContent = '▶ IN';
-        const v = document.createElement('span'); v.className = 'cgt-io-val in';
+        const r = document.createElement('div'); r.className = 'lrt-io-row';
+        const d = document.createElement('span'); d.className = 'lrt-io-dir in'; d.textContent = '▶ IN';
+        const v = document.createElement('span'); v.className = 'lrt-io-val';
         v.textContent = String(meta.input).slice(0, 400);
         r.appendChild(d); r.appendChild(v); io.appendChild(r);
       }
-
       if (hasOutput) {
-        const r = document.createElement('div'); r.className = 'cgt-io-row';
-        const d = document.createElement('span'); d.className = 'cgt-io-dir out'; d.textContent = '◀ OUT';
-        const v = document.createElement('span'); v.className = 'cgt-io-val out';
+        const r = document.createElement('div'); r.className = 'lrt-io-row';
+        const d = document.createElement('span'); d.className = 'lrt-io-dir out'; d.textContent = '◀ OUT';
+        const v = document.createElement('span'); v.className = 'lrt-io-val';
         v.textContent = String(meta.output).slice(0, 400);
         r.appendChild(d); r.appendChild(v); io.appendChild(r);
       }
 
-      item.appendChild(io);
+      card.appendChild(io);
     }
 
-    // ── Children ─────────────────────────────────────────────────
+    nodeEl.appendChild(card);
+
+    // ── Children subtree (arm + column) ─────────────────────────
     if (hasKids) {
-      const kids = document.createElement('div');
-      kids.className = 'cgt-kids';
-      node.children.forEach(child => buildCGNode(child, kids, false));
-      item.appendChild(kids);
+      // Short horizontal connector from parent card to the vertical spine
+      const arm = document.createElement('div');
+      arm.className = 'lrt-arm';
+      nodeEl.appendChild(arm);
+
+      // Column of branches — one per child
+      const col = document.createElement('div');
+      col.className = 'lrt-col';
+      node.children.forEach(child => {
+        const branch = document.createElement('div');
+        branch.className = 'lrt-branch';
+        buildCGNode(child, branch, false);
+        col.appendChild(branch);
+      });
+      nodeEl.appendChild(col);
     }
 
-    parentEl.appendChild(item);
+    parentEl.appendChild(nodeEl);
   }
 
-  function cgtToggle(itemEl, togEl) {
-    const isOpen = !itemEl.classList.contains('cgt-collapsed');
+  // Toggle collapse on the .lrt-node wrapper
+  function cgtToggle(nodeEl, togEl) {
+    const isOpen = !nodeEl.classList.contains('lrt-collapsed');
     if (isOpen) {
-      itemEl.classList.add('cgt-collapsed');
+      nodeEl.classList.add('lrt-collapsed');
       togEl.textContent = '▶';
     } else {
-      itemEl.classList.remove('cgt-collapsed');
+      nodeEl.classList.remove('lrt-collapsed');
       togEl.textContent = '▼';
     }
   }
