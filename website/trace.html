@@ -1142,16 +1142,20 @@
       const ch      = node.children;
       const firstCy = ch[0]._cy;
       const lastCy  = ch[ch.length - 1]._cy;
+      // Rail must span from parent cy all the way to the farthest child cy
+      // so the stem is always physically connected to the bracket.
+      const topY    = Math.min(pCy, firstCy);
+      const botY    = Math.max(pCy, lastCy);
 
-      // 1. Stem: parent → bend column (horizontal)
+      // 1. Stem: parent right-edge → bend column (horizontal)
       _svgPath(svg, `M ${pRx} ${pCy} H ${bendX}`);
 
-      // 2. Vertical rail connecting all children (bracket)
-      if (ch.length > 1) {
-        _svgPath(svg, `M ${bendX} ${firstCy} V ${lastCy}`);
-      }
+      // 2. Full vertical rail: min(pCy,firstCy) → max(pCy,lastCy)
+      //    Covers both the gap between parent and first child AND
+      //    the span across all siblings — fully connected, no floating stem.
+      _svgPath(svg, `M ${bendX} ${topY} V ${botY}`);
 
-      // 3. Branch: bend column → each child (horizontal)
+      // 3. Branch: bend column → each child left-edge (horizontal)
       ch.forEach(child => {
         _svgPath(svg, `M ${bendX} ${child._cy} H ${cLx}`);
         drawLines(child);
