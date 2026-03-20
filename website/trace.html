@@ -11,7 +11,126 @@
     body { background: #090909; color: #e0e0e0; font-family: 'DM Sans', sans-serif; min-height: 100vh; }
 
     /* ── Page shell ─────────────────────────────────────────── */
-    .page-wrap { max-width: 1520px; margin: 0 auto; padding: 72px 16px 80px; }
+    .page-wrap { max-width: 1520px; margin: 0 auto; padding: 72px 16px 260px; }
+
+    /* ═══════════════════════════════════════════════════════════
+       Memory Phase Bar — fixed bottom panel
+    ═══════════════════════════════════════════════════════════ */
+    #phase-bar {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+      background: #060606; border-top: 1px solid #1e1e1e;
+      font-family: 'JetBrains Mono', monospace;
+      transition: height .2s ease;
+    }
+    #phase-bar.collapsed { height: 36px; overflow: hidden; }
+    #phase-bar.expanded  { height: 240px; }
+
+    /* bar top strip */
+    #phase-topbar {
+      display: flex; align-items: center; gap: 10px;
+      padding: 0 16px; height: 36px;
+      border-bottom: 1px solid #161616; cursor: pointer; user-select: none;
+      background: #080808;
+    }
+    #phase-topbar:hover { background: #0d0d0d; }
+    .phase-bar-title {
+      font-size: 0.72rem; font-weight: 600; color: #888; letter-spacing: .04em;
+    }
+    .phase-bar-title span { color: #6366f1; }
+    .phase-bar-ns {
+      font-size: 0.68rem; background: #111; border: 1px solid #222; border-radius: 4px;
+      color: #aaa; padding: 2px 8px; outline: none; width: 130px;
+    }
+    .phase-bar-ns:focus { border-color: #6366f1; }
+    .phase-total { font-size: 0.66rem; color: #444; margin-left: auto; }
+    .phase-toggle {
+      font-size: 0.8rem; color: #555; width: 18px; text-align: center;
+      transition: transform .2s;
+    }
+    #phase-bar.expanded  .phase-toggle { transform: rotate(0deg); }
+    #phase-bar.collapsed .phase-toggle { transform: rotate(180deg); }
+
+    /* 4-column grid */
+    #phase-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 0; height: calc(240px - 36px); overflow: hidden;
+    }
+
+    /* individual phase column */
+    .ph-col {
+      border-right: 1px solid #141414; display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .ph-col:last-child { border-right: none; }
+
+    .ph-head {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 10px; flex-shrink: 0; border-bottom: 1px solid #141414;
+    }
+    .ph-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .ph-name { font-size: 0.65rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+    .ph-badge {
+      font-size: 0.6rem; background: rgba(255,255,255,.06); border-radius: 10px;
+      padding: 1px 6px; color: #888; margin-left: auto;
+    }
+    .ph-symbol { font-size: 0.65rem; color: #444; }
+
+    /* phase colours */
+    .ph-gas    .ph-dot  { background: #6b7280; }
+    .ph-gas    .ph-name { color: #9ca3af; }
+    .ph-gas    .ph-head { background: rgba(107,114,128,.05); }
+    .ph-liquid .ph-dot  { background: #3b82f6; }
+    .ph-liquid .ph-name { color: #60a5fa; }
+    .ph-liquid .ph-head { background: rgba(59,130,246,.06); }
+    .ph-solid  .ph-dot  { background: #10b981; }
+    .ph-solid  .ph-name { color: #34d399; }
+    .ph-solid  .ph-head { background: rgba(16,185,129,.06); }
+    .ph-glass  .ph-dot  { background: #f59e0b; }
+    .ph-glass  .ph-name { color: #fbbf24; }
+    .ph-glass  .ph-head { background: rgba(245,158,11,.06); }
+
+    /* scrollable items list */
+    .ph-list {
+      overflow-y: auto; flex: 1; padding: 4px 0;
+    }
+    .ph-list::-webkit-scrollbar { width: 3px; }
+    .ph-list::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+
+    /* individual memory item */
+    .ph-item {
+      padding: 5px 10px; border-bottom: 1px solid #0f0f0f;
+      cursor: pointer; transition: background .1s;
+    }
+    .ph-item:hover { background: #0f0f0f; }
+    .ph-item.ph-new { border-left: 2px solid #6366f1; padding-left: 8px; }
+
+    .ph-item-text {
+      font-size: 0.67rem; color: #c0c0c0; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px;
+    }
+    .ph-item-srv {
+      font-size: 0.6rem; color: #555; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px;
+    }
+    .ph-item-srv b { color: #6366f1; }
+    .ph-item-stats {
+      display: flex; gap: 6px; flex-wrap: wrap;
+    }
+    .ph-stat {
+      font-size: 0.58rem; color: #555; background: rgba(255,255,255,.03);
+      border-radius: 3px; padding: 1px 4px; white-space: nowrap;
+    }
+    .ph-stat.hi { color: #34d399; }  /* high strength */
+    .ph-stat.lo { color: #f87171; }  /* low strength / high F */
+    .ph-tokens {
+      font-size: 0.58rem; color: #3d4a6b; margin-top: 2px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    .ph-empty {
+      font-size: 0.65rem; color: #333; padding: 12px 10px; text-align: center;
+      font-style: italic;
+    }
 
     /* ── Top bar ─────────────────────────────────────────────── */
     .top-bar {
@@ -715,6 +834,151 @@
   // ─────────────────────────────────────────────────────────────────────────
   loadRecentTraces();
   setInterval(loadRecentTraces, 5000);
+  </script>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       Memory Phase Bar — always-visible bottom panel
+  ═══════════════════════════════════════════════════════════ -->
+  <div id="phase-bar" class="expanded">
+
+    <div id="phase-topbar" onclick="togglePhaseBar()">
+      <span class="phase-bar-title">⚛ <span>Memory Phases</span></span>
+      <input id="phase-ns-input" class="phase-bar-ns" value="default"
+             placeholder="namespace"
+             onclick="event.stopPropagation()"
+             onchange="refreshPhases()"
+             onkeydown="if(event.key==='Enter'){event.stopPropagation();refreshPhases();}">
+      <span id="phase-total" class="phase-total"></span>
+      <span class="phase-toggle">▲</span>
+    </div>
+
+    <div id="phase-grid">
+      <!-- Gas -->
+      <div class="ph-col ph-gas">
+        <div class="ph-head">
+          <div class="ph-dot"></div>
+          <span class="ph-name">Gas</span>
+          <span class="ph-symbol">s → 0  τ ↓</span>
+          <span class="ph-badge" id="ph-cnt-gas">0</span>
+        </div>
+        <div class="ph-list" id="ph-list-gas"></div>
+      </div>
+      <!-- Liquid -->
+      <div class="ph-col ph-liquid">
+        <div class="ph-head">
+          <div class="ph-dot"></div>
+          <span class="ph-name">Liquid</span>
+          <span class="ph-symbol">s → 1  episodic</span>
+          <span class="ph-badge" id="ph-cnt-liquid">0</span>
+        </div>
+        <div class="ph-list" id="ph-list-liquid"></div>
+      </div>
+      <!-- Solid -->
+      <div class="ph-col ph-solid">
+        <div class="ph-head">
+          <div class="ph-dot"></div>
+          <span class="ph-name">Solid</span>
+          <span class="ph-symbol">schema  ΔF &lt; 0</span>
+          <span class="ph-badge" id="ph-cnt-solid">0</span>
+        </div>
+        <div class="ph-list" id="ph-list-solid"></div>
+      </div>
+      <!-- Glass -->
+      <div class="ph-col ph-glass">
+        <div class="ph-head">
+          <div class="ph-dot"></div>
+          <span class="ph-name">Glass</span>
+          <span class="ph-symbol">H converged  rigid</span>
+          <span class="ph-badge" id="ph-cnt-glass">0</span>
+        </div>
+        <div class="ph-list" id="ph-list-glass"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // ─────────────────────────────────────────────────────────────────────────
+  // Memory Phase Bar
+  // ─────────────────────────────────────────────────────────────────────────
+  let _phaseBarExpanded = true;
+
+  function togglePhaseBar() {
+    _phaseBarExpanded = !_phaseBarExpanded;
+    const bar = document.getElementById('phase-bar');
+    bar.className = _phaseBarExpanded ? 'expanded' : 'collapsed';
+    // Adjust page padding so content isn't hidden
+    document.querySelector('.page-wrap').style.paddingBottom =
+      _phaseBarExpanded ? '260px' : '48px';
+  }
+
+  function phaseItemHTML(item, maxBirth) {
+    const isNew = (maxBirth - item.birth_order) < 5;
+    const s = item.consolidation_strength;
+    const sClass = s >= 0.8 ? 'hi' : s < 0.2 ? 'lo' : '';
+    const F = item.free_energy;
+    const FClass = F > 0.1 ? 'lo' : '';
+
+    const srv = [
+      item.fact.subject ? `<b>S</b> ${esc(item.fact.subject)}` : '',
+      item.fact.relation ? `<b>R</b> ${esc(item.fact.relation)}` : '',
+      item.fact.value ? `<b>V</b> ${esc(item.fact.value.slice(0, 30))}` : '',
+    ].filter(Boolean).join('  ');
+
+    const tokens = (item.tokens || []).slice(0, 8).join(' ');
+
+    const stats = [
+      `<span class="ph-stat ${sClass}">s=${s.toFixed(3)}</span>`,
+      `<span class="ph-stat ${FClass}">F=${F.toFixed(3)}</span>`,
+      `<span class="ph-stat">H=${item.information_content_bits.toFixed(2)}b</span>`,
+      `<span class="ph-stat">τ=${item.tau.toFixed(0)}</span>`,
+      item.retrieval_count > 0
+        ? `<span class="ph-stat hi">↑${item.retrieval_count}×</span>` : '',
+      item.absorbed_count > 0
+        ? `<span class="ph-stat hi">⬡${item.absorbed_count} abs</span>` : '',
+    ].filter(Boolean).join('');
+
+    return `<div class="ph-item${isNew ? ' ph-new' : ''}" title="${esc(item.text)}">
+      <div class="ph-item-text">${esc(item.text.slice(0, 72))}</div>
+      ${srv ? `<div class="ph-item-srv">${srv}</div>` : ''}
+      <div class="ph-item-stats">${stats}</div>
+      ${tokens ? `<div class="ph-tokens">⬡ ${esc(tokens)}</div>` : ''}
+    </div>`;
+  }
+
+  function esc(str) {
+    return String(str)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  async function refreshPhases() {
+    const ns = document.getElementById('phase-ns-input').value.trim() || 'default';
+    let data;
+    try {
+      const r = await fetch(`/v1/memory/phases?namespace=${encodeURIComponent(ns)}`);
+      if (!r.ok) return;
+      data = await r.json();
+    } catch { return; }
+
+    const maxBirth = data.max_birth_order || 0;
+    document.getElementById('phase-total').textContent =
+      `${data.total} total items · ns: ${data.namespace}`;
+
+    for (const phase of ['gas', 'liquid', 'solid', 'glass']) {
+      const phData = data.phases[phase];
+      document.getElementById(`ph-cnt-${phase}`).textContent = phData.total;
+      const listEl = document.getElementById(`ph-list-${phase}`);
+      if (phData.items.length === 0) {
+        listEl.innerHTML = `<div class="ph-empty">no items</div>`;
+      } else {
+        listEl.innerHTML = phData.items.map(it => phaseItemHTML(it, maxBirth)).join('');
+      }
+    }
+  }
+
+  // Auto-refresh phases alongside traces
+  refreshPhases();
+  setInterval(refreshPhases, 3000);
   </script>
 </body>
 </html>

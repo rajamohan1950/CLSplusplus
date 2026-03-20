@@ -590,6 +590,44 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         """List recent traces (newest first)."""
         return {"traces": tracer.list_recent(limit)}
 
+    @app.get("/v1/memory/phases")
+    async def memory_phases(namespace: str = Query(default="default")):
+        """Return items grouped by thermodynamic phase (gas/liquid/solid/glass).
+
+        Used by the live Memory Phase visualiser in the Trace UI.
+        Returns the 30 most recent items per phase, sorted by birth_order desc.
+        """
+        validate_namespace(namespace)
+        raw_items = memory_service.engine._items.get(namespace, [])
+        floor = memory_service.engine.STRENGTH_FLOOR
+
+        phases: dict[str, list] = {"gas": [], "liquid": [], "solid": [], "glass": []}
+        for item in raw_items:
+            d = item.to_debug_dict(strength_floor=floor)
+            # Attach indexed tokens (first 12, human-readable)
+            d["tokens"] = item.indexed_tokens[:12]
+            # Attach schema absorption count if solid/glass
+            if item.schema_meta is not None:
+                d["absorbed_count"] = len(item.schema_meta.H_history)
+            else:
+                d["absorbed_count"] = 0
+            phases[d["phase"]].append(d)
+
+        # Sort each phase by birth_order descending (most recent first)
+        max_birth = max((x["birth_order"] for v in phases.values() for x in v), default=0)
+        for phase_items in phases.values():
+            phase_items.sort(key=lambda x: x["birth_order"], reverse=True)
+
+        return {
+            "namespace": namespace,
+            "max_birth_order": max_birth,
+            "total": len(raw_items),
+            "phases": {
+                p: {"items": items[:30], "total": len(items)}
+                for p, items in phases.items()
+            },
+        }
+
     _api_logger = logging.getLogger(__name__)
 
     @app.on_event("startup")
