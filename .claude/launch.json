@@ -2,16 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "api",
+      "name": "clsplusplus",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd /Users/rjabbala/Projects/CLSplusplus && PYTHONPATH=src python3 -m uvicorn clsplusplus.api:app --reload --port 8090"],
+      "runtimeArgs": ["-c", "cd /Users/rjabbala/Projects/CLSplusplus && PYTHONPATH=src .venv/bin/python -m uvicorn clsplusplus.api:app --reload --port 8090"],
       "port": 8090
-    },
-    {
-      "name": "website",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "3000", "--directory", "/Users/rjabbala/Projects/CLSplusplus/website"],
-      "port": 3000
     }
   ]
 }
