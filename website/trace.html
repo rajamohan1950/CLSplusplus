@@ -382,101 +382,95 @@
      * Connector lines are pure CSS via ::before / ::after on .lrt-branch.
      */
 
-    /* Scroll container — inline-flex so tree is only as wide as it needs */
+    /* ── Drag-to-pan wrapper ────────────────────────────────── */
+    .lrt-pan {
+      width: 100%; min-height: 260px; overflow: hidden;
+      cursor: grab; position: relative;
+    }
+    .lrt-pan.panning { cursor: grabbing; }
+
+    /* Tree itself — inline-flex so it sizes to content */
     .lrt-tree {
-      display: inline-flex; min-width: 100%;
-      padding: 20px 24px; overflow: auto;
+      display: inline-flex; padding: 16px 20px;
       font-family: 'JetBrains Mono', monospace;
+      /* translate applied by JS drag */
     }
 
-    /* ── Node: card  +  (arm + col) when it has children ────── */
+    /* ── Node: card + (arm + col) when it has children ──────── */
     .lrt-node { display: flex; flex-direction: row; align-items: center; }
 
     /* ── Card ──────────────────────────────────────────────── */
     .lrt-card {
-      border: 1px solid #1e1e1e; border-radius: 7px;
-      background: #0d0d0d; padding: 7px 11px;
-      min-width: 155px; max-width: 230px;
+      border: 1px solid #1d1d1d; border-radius: 6px;
+      background: #0d0d0d; padding: 5px 9px;
+      min-width: 128px; max-width: 190px;
       cursor: pointer; user-select: none; flex-shrink: 0;
       transition: background .12s, border-color .12s;
     }
-    .lrt-card:hover { background: #111; border-color: #2b2b2b; }
+    .lrt-card:hover { background: #111; border-color: #2a2a2a; }
     .lrt-card.is-root {
       background: rgba(99,102,241,.08);
       border-color: rgba(99,102,241,.28);
-      min-width: 180px;
+      min-width: 160px;
     }
     .lrt-card.is-root:hover { background: rgba(99,102,241,.14); }
 
-    /* Card header row */
-    .lrt-hdr { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    /* Card header */
+    .lrt-hdr { display: flex; align-items: center; gap: 5px; min-width: 0; }
     .lrt-tog {
-      font-size: 0.52rem; flex-shrink: 0; width: 12px; text-align: center;
+      font-size: 0.50rem; flex-shrink: 0; width: 10px; text-align: center;
       color: #6366f1; line-height: 1;
     }
-    .lrt-tog.leaf { color: #272727; cursor: default; }
+    .lrt-tog.leaf { color: #252525; cursor: default; }
     .lrt-label {
-      font-size: 0.72rem; color: #c7c7e8;
+      font-size: 0.70rem; color: #c7c7e8;
       flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
     }
     .lrt-dur {
-      font-size: 0.61rem; color: #3a4560; flex-shrink: 0; white-space: nowrap;
-      margin-left: 4px;
+      font-size: 0.59rem; color: #384158; flex-shrink: 0; white-space: nowrap; margin-left: 3px;
     }
 
-    /* I/O rows sit inside the card, below the header */
+    /* I/O rows inside the card */
     .lrt-io {
-      margin-top: 5px; padding-top: 5px;
-      border-top: 1px solid #161616;
-      display: flex; flex-direction: column; gap: 2px;
+      margin-top: 4px; padding-top: 4px; border-top: 1px solid #151515;
+      display: flex; flex-direction: column; gap: 1px;
     }
-    .lrt-io-row { display: flex; gap: 5px; align-items: baseline; min-width: 0; }
-    .lrt-io-dir {
-      font-size: 0.55rem; font-weight: 700; flex-shrink: 0; min-width: 36px;
-    }
+    .lrt-io-row { display: flex; gap: 4px; align-items: baseline; min-width: 0; }
+    .lrt-io-dir { font-size: 0.53rem; font-weight: 700; flex-shrink: 0; min-width: 34px; }
     .lrt-io-dir.in  { color: #60a5fa; }
     .lrt-io-dir.out { color: #4ade80; }
     .lrt-io-val {
-      font-size: 0.65rem; flex: 1; min-width: 0;
-      color: #6a7a9a; word-break: break-all; white-space: pre-wrap;
-      max-height: 60px; overflow: hidden;
+      font-size: 0.63rem; flex: 1; min-width: 0; color: #627080;
+      word-break: break-all; white-space: pre-wrap; max-height: 52px; overflow: hidden;
     }
 
-    /* ── Arm: horizontal line from parent card to spine ─────── */
-    .lrt-arm { width: 28px; height: 1px; background: #282828; flex-shrink: 0; }
+    /* ── Connector lines (arm + spine + elbow) ──────────────── */
+    /* arm = short horizontal stub from parent card right-edge to spine */
+    .lrt-arm { width: 14px; height: 1px; background: #242424; flex-shrink: 0; }
 
-    /* ── Column of child branches ───────────────────────────── */
-    .lrt-col { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+    /* Column of child branches */
+    .lrt-col { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
 
-    /* ── Branch: L-shaped connector + child node ────────────── */
+    /* Branch = vertical-spine segment + horizontal elbow + child */
     .lrt-branch {
       display: flex; flex-direction: row; align-items: center;
-      position: relative;
-      padding-left: 28px;   /* = arm width; child node pushed this far right */
+      position: relative; padding-left: 14px;  /* must equal .lrt-arm width */
     }
-
-    /* Vertical spine segment through this branch */
+    /* Vertical spine through this branch slot */
     .lrt-branch::before {
       content: ''; position: absolute;
-      left: 0; top: 0; bottom: 0;
-      width: 1px; background: #282828;
+      left: 0; top: 0; bottom: 0; width: 1px; background: #242424;
     }
-    /* First child: spine starts at mid-height (nothing above) */
-    .lrt-branch:first-child::before  { top: 50%; }
-    /* Last child: spine ends at mid-height (nothing below) */
-    .lrt-branch:last-child::before   { bottom: 50%; }
-    /* Only child: no spine at all — just a straight arm */
-    .lrt-branch:only-child::before   { display: none; }
-
-    /* Horizontal elbow from spine to child card */
+    .lrt-branch:first-child::before { top: 50%; }     /* nothing above mid */
+    .lrt-branch:last-child::before  { bottom: 50%; }  /* nothing below mid */
+    .lrt-branch:only-child::before  { display: none; }/* single child: no spine */
+    /* Horizontal elbow from spine to child card left edge */
     .lrt-branch::after {
       content: ''; position: absolute;
-      left: 0; top: 50%;
-      width: 28px; height: 1px; background: #282828;
+      left: 0; top: 50%; width: 14px; height: 1px; background: #242424;
     }
 
     /* ── Collapse ───────────────────────────────────────────── */
-    /* Collapsed node hides its I/O and its arm+children column */
     .lrt-node.lrt-collapsed > .lrt-card > .lrt-io { display: none; }
     .lrt-node.lrt-collapsed > .lrt-arm             { display: none; }
     .lrt-node.lrt-collapsed > .lrt-col             { display: none; }
@@ -945,10 +939,66 @@
       containerEl.innerHTML = '<div class="empty-state">No span data</div>';
       return;
     }
+
+    // ── Build the tree ────────────────────────────────────────
     const tree = document.createElement('div');
     tree.className = 'lrt-tree';
     buildCGNode(root, tree, true);
-    containerEl.appendChild(tree);
+
+    // ── Drag-to-pan wrapper ───────────────────────────────────
+    // The tree is absolutely positioned inside a fixed-size pan div.
+    // Mouse drag translates the tree freely in 2D.
+    const pan = document.createElement('div');
+    pan.className = 'lrt-pan';
+    pan.appendChild(tree);
+    containerEl.appendChild(pan);
+
+    let ox = 0, oy = 0;   // current translate
+    let sx, sy, dragging = false;
+
+    function applyTranslate() {
+      tree.style.transform = `translate(${ox}px,${oy}px)`;
+    }
+
+    pan.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      // Don't start pan when clicking a card header (toggle)
+      if (e.target.closest('.lrt-hdr')) return;
+      dragging = true;
+      sx = e.clientX - ox;
+      sy = e.clientY - oy;
+      pan.classList.add('panning');
+      e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      ox = e.clientX - sx;
+      oy = e.clientY - sy;
+      applyTranslate();
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      pan.classList.remove('panning');
+    });
+
+    // Touch support
+    pan.addEventListener('touchstart', e => {
+      if (e.touches.length !== 1) return;
+      sx = e.touches[0].clientX - ox;
+      sy = e.touches[0].clientY - oy;
+      dragging = true;
+    }, { passive: true });
+    pan.addEventListener('touchmove', e => {
+      if (!dragging || e.touches.length !== 1) return;
+      ox = e.touches[0].clientX - sx;
+      oy = e.touches[0].clientY - sy;
+      applyTranslate();
+      e.preventDefault();
+    }, { passive: false });
+    pan.addEventListener('touchend', () => { dragging = false; });
   }
 
   // Builds and appends one .lrt-node into parentEl.
