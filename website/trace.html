@@ -352,6 +352,88 @@
 
     /* search highlight */
     .search-match { background: rgba(251,191,36,.25); border-radius: 2px; }
+
+    /* ── Tab bar (Gantt / Call Graph) ────────────────────────── */
+    .tp-tabs {
+      display: flex; gap: 0; border-bottom: 1px solid #161616;
+      background: #080808; padding: 0 14px; flex-shrink: 0;
+    }
+    .tp-tab {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; font-weight: 500;
+      padding: 9px 16px; border: none; background: transparent; cursor: pointer;
+      color: #555; border-bottom: 2px solid transparent;
+      transition: color .12s, border-color .12s;
+    }
+    .tp-tab:hover  { color: #aaa; }
+    .tp-tab.active { color: #818cf8; border-bottom-color: #6366f1; }
+
+    /* ── Call Graph pane ─────────────────────────────────────── */
+    .cg-scroll { overflow-x: auto; }
+    .cg-root   { padding: 14px 14px 20px; min-width: 600px; }
+
+    /* individual node */
+    .cg-node { margin-bottom: 3px; }
+
+    /* header row — click to collapse */
+    .cg-hdr {
+      display: flex; align-items: center; gap: 7px;
+      padding: 6px 10px; cursor: pointer; border-radius: 6px;
+      background: #0e0e0e; border: 1px solid #181818;
+      transition: background .1s, border-color .1s;
+      user-select: none;
+    }
+    .cg-hdr:hover  { background: #131313; border-color: #272727; }
+    .cg-root-node > .cg-hdr { background: rgba(99,102,241,.07); border-color: rgba(99,102,241,.2); }
+    .cg-root-node > .cg-hdr:hover { background: rgba(99,102,241,.11); }
+
+    /* toggle arrow */
+    .cg-tog {
+      font-size: 0.58rem; width: 10px; flex-shrink: 0;
+      transition: transform .15s; line-height: 1;
+    }
+    .cg-tog-has  { color: #6366f1; }
+    .cg-tog-leaf { color: #2a2a2a; cursor: default; }
+
+    /* label + duration */
+    .cg-label {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.73rem;
+      color: #c7c7e8; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .cg-dur {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.64rem;
+      color: #3d4a6b; flex-shrink: 0; white-space: nowrap;
+    }
+
+    /* I/O block — sits below the header, indented */
+    .cg-io {
+      margin: 2px 0 3px 27px; padding: 5px 10px 5px 10px;
+      background: #0a0a0a; border-left: 2px solid #1c1c1c; border-radius: 0 4px 4px 0;
+    }
+    .cg-io-row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 3px; }
+    .cg-io-row:last-child { margin-bottom: 0; }
+    .cg-io-dir {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.59rem; font-weight: 700;
+      flex-shrink: 0; padding-top: 2px; min-width: 36px; letter-spacing: .03em;
+    }
+    .cg-io-dir.in  { color: #60a5fa; }
+    .cg-io-dir.out { color: #4ade80; }
+    .cg-io-text {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.69rem; color: #666;
+      word-break: break-word; white-space: pre-wrap; line-height: 1.5;
+    }
+    .cg-io-text.in-text  { color: #6ea8d8; }
+    .cg-io-text.out-text { color: #6abf8a; }
+
+    /* children connector — left border */
+    .cg-children {
+      margin-left: 17px; padding-left: 13px;
+      border-left: 1px solid #1e1e1e;
+      padding-top: 3px; margin-top: 3px;
+    }
+
+    /* collapsed state hides io + children */
+    .cg-node.cg-collapsed > .cg-io       { display: none; }
+    .cg-node.cg-collapsed > .cg-children { display: none; }
   </style>
 </head>
 <body>
@@ -725,9 +807,10 @@
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Toggle accordion open/close — lazy loads the Gantt
+  // Toggle accordion open/close — lazy loads on first expand
   // ─────────────────────────────────────────────────────────────────────────
   const _loadedTraces = new Set();
+  const _traceCache   = {};   // tid → full trace data (for tab switching)
 
   async function toggleTrace(tid) {
     const bodyEl = document.getElementById('tb-' + tid);
@@ -744,7 +827,6 @@
     bodyEl.removeAttribute('hidden');
     if (arrEl) { arrEl.classList.add('open'); arrEl.classList.remove('closed'); }
 
-    // Lazy-load trace data
     if (!_loadedTraces.has(tid)) {
       await loadAndRenderTrace(tid, bodyEl);
     }
@@ -755,10 +837,157 @@
       const r = await fetch(`/v1/trace/${encodeURIComponent(tid)}`);
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const data = await r.json();
+      _traceCache[tid] = data;
       _loadedTraces.add(tid);
-      renderGantt(data, bodyEl);
+      renderTraceBody(data, bodyEl);
     } catch (e) {
       bodyEl.innerHTML = `<div class="empty-state" style="color:#f87171">Failed to load: ${esc(e.message)}</div>`;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Tab shell — wraps Gantt + Call Graph tabs
+  // ─────────────────────────────────────────────────────────────────────────
+  function renderTraceBody(trace, bodyEl) {
+    const tid = trace.trace_id;
+    bodyEl.innerHTML = `
+      <div class="tp-tabs">
+        <button class="tp-tab active" data-trace="${tid}" data-tab="gantt"
+                onclick="switchTab('${tid}','gantt')">Gantt</button>
+        <button class="tp-tab" data-trace="${tid}" data-tab="callgraph"
+                onclick="switchTab('${tid}','callgraph')">Call Graph</button>
+      </div>
+      <div id="pane-gantt-${tid}"     data-trace="${tid}" data-tab="gantt"></div>
+      <div id="pane-callgraph-${tid}" data-trace="${tid}" data-tab="callgraph" hidden></div>`;
+
+    const ganttEl = document.getElementById('pane-gantt-' + tid);
+    renderGantt(trace, ganttEl);
+  }
+
+  function switchTab(tid, tab) {
+    // Toggle tab buttons
+    document.querySelectorAll(`.tp-tab[data-trace="${tid}"]`).forEach(b => {
+      b.classList.toggle('active', b.dataset.tab === tab);
+    });
+    // Toggle pane visibility
+    ['gantt', 'callgraph'].forEach(t => {
+      const el = document.getElementById(`pane-${t}-${tid}`);
+      if (el) el.hidden = (t !== tab);
+    });
+    // Lazy-render call graph on first switch
+    if (tab === 'callgraph') {
+      const cgEl = document.getElementById('pane-callgraph-' + tid);
+      if (cgEl && !cgEl.dataset.rendered) {
+        const trace = _traceCache[tid];
+        if (trace) { renderCallGraph(trace, cgEl); cgEl.dataset.rendered = '1'; }
+      }
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Call Graph — recursive visual tree
+  // ─────────────────────────────────────────────────────────────────────────
+  function renderCallGraph(trace, containerEl) {
+    const root = trace.tree;
+    if (!root) {
+      containerEl.innerHTML = '<div class="empty-state">No span data</div>';
+      return;
+    }
+    containerEl.innerHTML = '<div class="cg-scroll"><div class="cg-root"></div></div>';
+    containerEl.querySelector('.cg-root').appendChild(buildCGNode(root, true));
+  }
+
+  function buildCGNode(node, isRoot) {
+    const meta      = node.metadata || {};
+    const c         = svcColor(node.module);
+    const hasKids   = node.children && node.children.length > 0;
+    const hasInput  = meta.input  !== undefined;
+    const hasOutput = meta.output !== undefined;
+    const hasIO     = hasInput || hasOutput;
+
+    const nodeEl = document.createElement('div');
+    nodeEl.className = 'cg-node' + (isRoot ? ' cg-root-node' : '');
+
+    // ── Header ──────────────────────────────────────────────────
+    const hdr = document.createElement('div');
+    hdr.className = 'cg-hdr';
+    if (hasKids || hasIO) hdr.addEventListener('click', () => cgToggleNode(nodeEl));
+
+    const togSpan = document.createElement('span');
+    togSpan.className = 'cg-tog ' + (hasKids || hasIO ? 'cg-tog-has' : 'cg-tog-leaf');
+    togSpan.textContent = hasKids || hasIO ? '▼' : '·';
+    hdr.appendChild(togSpan);
+
+    const badge = document.createElement('span');
+    badge.className = 'svc-badge';
+    badge.style.cssText = `background:${c.badge};color:${c.text}`;
+    badge.textContent = node.module;
+    hdr.appendChild(badge);
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'cg-label';
+    labelSpan.textContent = node.label;
+    labelSpan.title = node.label;
+    hdr.appendChild(labelSpan);
+
+    const durSpan = document.createElement('span');
+    durSpan.className = 'cg-dur';
+    durSpan.textContent = fmtMs(node.duration_ms);
+    hdr.appendChild(durSpan);
+
+    nodeEl.appendChild(hdr);
+
+    // ── I/O block ────────────────────────────────────────────────
+    if (hasIO) {
+      const ioEl = document.createElement('div');
+      ioEl.className = 'cg-io';
+
+      if (hasInput) {
+        const row = document.createElement('div');
+        row.className = 'cg-io-row';
+        row.innerHTML = `<span class="cg-io-dir in">▶ IN</span>`;
+        const txt = document.createElement('span');
+        txt.className = 'cg-io-text in-text';
+        txt.textContent = String(meta.input);
+        row.appendChild(txt);
+        ioEl.appendChild(row);
+      }
+
+      if (hasOutput) {
+        const row = document.createElement('div');
+        row.className = 'cg-io-row';
+        row.innerHTML = `<span class="cg-io-dir out">◀ OUT</span>`;
+        const txt = document.createElement('span');
+        txt.className = 'cg-io-text out-text';
+        txt.textContent = String(meta.output);
+        row.appendChild(txt);
+        ioEl.appendChild(row);
+      }
+
+      nodeEl.appendChild(ioEl);
+    }
+
+    // ── Children ─────────────────────────────────────────────────
+    if (hasKids) {
+      const childrenEl = document.createElement('div');
+      childrenEl.className = 'cg-children';
+      node.children.forEach(child => childrenEl.appendChild(buildCGNode(child, false)));
+      nodeEl.appendChild(childrenEl);
+    }
+
+    return nodeEl;
+  }
+
+  function cgToggleNode(nodeEl) {
+    const togEl = nodeEl.querySelector(':scope > .cg-hdr .cg-tog-has');
+    if (!togEl) return;
+    const isOpen = !nodeEl.classList.contains('cg-collapsed');
+    if (isOpen) {
+      nodeEl.classList.add('cg-collapsed');
+      togEl.textContent = '▶';
+    } else {
+      nodeEl.classList.remove('cg-collapsed');
+      togEl.textContent = '▼';
     }
   }
 
