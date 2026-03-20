@@ -590,6 +590,31 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         """List recent traces (newest first)."""
         return {"traces": tracer.list_recent(limit)}
 
+    @app.get("/v1/memory/namespaces")
+    async def list_namespaces():
+        """Return all namespaces that have items in the PhaseMemoryEngine."""
+        ns_list = []
+        for ns, items in memory_service.engine._items.items():
+            if not items:
+                continue
+            floor = memory_service.engine.STRENGTH_FLOOR
+            phases = {"gas": 0, "liquid": 0, "solid": 0, "glass": 0}
+            for item in items:
+                d = item.to_debug_dict(strength_floor=floor)
+                phases[d["phase"]] += 1
+            # most-recently written item
+            latest = max(items, key=lambda i: i.birth_order)
+            ns_list.append({
+                "namespace": ns,
+                "total": len(items),
+                "phases": phases,
+                "latest_text": (latest.fact.raw_text or "")[:60],
+                "latest_birth_order": latest.birth_order,
+            })
+        # Sort by most recently active first
+        ns_list.sort(key=lambda x: x["latest_birth_order"], reverse=True)
+        return {"namespaces": ns_list}
+
     @app.get("/v1/memory/phases")
     async def memory_phases(namespace: str = Query(default="default")):
         """Return items grouped by thermodynamic phase (gas/liquid/solid/glass).

@@ -28,24 +28,43 @@
     /* bar top strip */
     #phase-topbar {
       display: flex; align-items: center; gap: 10px;
-      padding: 0 16px; height: 36px;
-      border-bottom: 1px solid #161616; cursor: pointer; user-select: none;
+      padding: 0 12px; height: 36px;
+      border-bottom: 1px solid #161616;
       background: #080808;
     }
-    #phase-topbar:hover { background: #0d0d0d; }
     .phase-bar-title {
       font-size: 0.72rem; font-weight: 600; color: #888; letter-spacing: .04em;
+      flex-shrink: 0; cursor: pointer; user-select: none;
     }
     .phase-bar-title span { color: #6366f1; }
-    .phase-bar-ns {
-      font-size: 0.68rem; background: #111; border: 1px solid #222; border-radius: 4px;
-      color: #aaa; padding: 2px 8px; outline: none; width: 130px;
+
+    /* namespace chip strip */
+    #phase-ns-chips {
+      display: flex; align-items: center; gap: 5px;
+      flex: 1; overflow-x: auto; min-width: 0;
+      scrollbar-width: none;
     }
-    .phase-bar-ns:focus { border-color: #6366f1; }
-    .phase-total { font-size: 0.66rem; color: #444; margin-left: auto; }
+    #phase-ns-chips::-webkit-scrollbar { display: none; }
+
+    .ns-chip {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.62rem;
+      padding: 2px 8px; border-radius: 10px; white-space: nowrap;
+      cursor: pointer; user-select: none; flex-shrink: 0;
+      border: 1px solid #222; color: #666; background: #111;
+      transition: border-color .1s, color .1s, background .1s;
+    }
+    .ns-chip:hover  { border-color: #444; color: #aaa; }
+    .ns-chip.active { border-color: #6366f1; color: #818cf8; background: rgba(99,102,241,.12); }
+
+    .ns-chip-count {
+      font-size: 0.56rem; color: #444; margin-left: 3px;
+    }
+    .ns-chip.active .ns-chip-count { color: #6366f1; }
+
+    .phase-total { font-size: 0.63rem; color: #333; white-space: nowrap; flex-shrink: 0; }
     .phase-toggle {
-      font-size: 0.8rem; color: #555; width: 18px; text-align: center;
-      transition: transform .2s;
+      font-size: 0.8rem; color: #555; width: 18px; text-align: center; flex-shrink: 0;
+      transition: transform .2s; cursor: pointer; user-select: none;
     }
     #phase-bar.expanded  .phase-toggle { transform: rotate(0deg); }
     #phase-bar.collapsed .phase-toggle { transform: rotate(180deg); }
@@ -841,15 +860,11 @@
   ═══════════════════════════════════════════════════════════ -->
   <div id="phase-bar" class="expanded">
 
-    <div id="phase-topbar" onclick="togglePhaseBar()">
-      <span class="phase-bar-title">⚛ <span>Memory Phases</span></span>
-      <input id="phase-ns-input" class="phase-bar-ns" value="default"
-             placeholder="namespace"
-             onclick="event.stopPropagation()"
-             onchange="refreshPhases()"
-             onkeydown="if(event.key==='Enter'){event.stopPropagation();refreshPhases();}">
+    <div id="phase-topbar">
+      <span class="phase-bar-title" onclick="togglePhaseBar()">⚛ <span>Memory Phases</span></span>
+      <div id="phase-ns-chips"><!-- namespace chips injected by JS --></div>
       <span id="phase-total" class="phase-total"></span>
-      <span class="phase-toggle">▲</span>
+      <span class="phase-toggle" onclick="togglePhaseBar()">▲</span>
     </div>
 
     <div id="phase-grid">
@@ -901,14 +916,69 @@
   // Memory Phase Bar
   // ─────────────────────────────────────────────────────────────────────────
   let _phaseBarExpanded = true;
+  let _activeNS = 'default';
 
   function togglePhaseBar() {
     _phaseBarExpanded = !_phaseBarExpanded;
     const bar = document.getElementById('phase-bar');
     bar.className = _phaseBarExpanded ? 'expanded' : 'collapsed';
-    // Adjust page padding so content isn't hidden
     document.querySelector('.page-wrap').style.paddingBottom =
       _phaseBarExpanded ? '260px' : '48px';
+  }
+
+  function selectNS(ns) {
+    _activeNS = ns;
+    document.querySelectorAll('.ns-chip').forEach(c => {
+      c.classList.toggle('active', c.dataset.ns === ns);
+    });
+    refreshPhases();
+  }
+
+  async function refreshNamespaceChips() {
+    let data;
+    try {
+      const r = await fetch('/v1/memory/namespaces');
+      if (!r.ok) return;
+      data = await r.json();
+    } catch { return; }
+
+    const chips = document.getElementById('phase-ns-chips');
+    const namespaces = data.namespaces || [];
+
+    // Build set of existing chip namespaces to avoid full redraw
+    const existing = new Set([...chips.querySelectorAll('.ns-chip')].map(c => c.dataset.ns));
+    const incoming = new Set(namespaces.map(n => n.namespace));
+
+    // Add new chips
+    namespaces.forEach(n => {
+      if (existing.has(n.namespace)) {
+        // Update count on existing chip
+        const chip = chips.querySelector(`.ns-chip[data-ns="${n.namespace}"]`);
+        if (chip) chip.querySelector('.ns-chip-count').textContent = n.total;
+        return;
+      }
+      const chip = document.createElement('span');
+      chip.className = 'ns-chip' + (n.namespace === _activeNS ? ' active' : '');
+      chip.dataset.ns = n.namespace;
+      chip.title = n.latest_text;
+      chip.innerHTML = `${esc(n.namespace)}<span class="ns-chip-count">${n.total}</span>`;
+      chip.addEventListener('click', () => selectNS(n.namespace));
+      chips.appendChild(chip);
+    });
+
+    // If active namespace has no chip yet (e.g. localStorage namespace not yet written to),
+    // add a placeholder chip for it so the user can see it's selected
+    if (!incoming.has(_activeNS)) {
+      if (!chips.querySelector(`.ns-chip[data-ns="${_activeNS}"]`)) {
+        const chip = document.createElement('span');
+        chip.className = 'ns-chip active';
+        chip.dataset.ns = _activeNS;
+        chip.title = 'No items yet';
+        chip.innerHTML = `${esc(_activeNS)}<span class="ns-chip-count">0</span>`;
+        chip.addEventListener('click', () => selectNS(_activeNS));
+        chips.insertBefore(chip, chips.firstChild);
+      }
+    }
   }
 
   function phaseItemHTML(item, maxBirth) {
@@ -952,17 +1022,16 @@
   }
 
   async function refreshPhases() {
-    const ns = document.getElementById('phase-ns-input').value.trim() || 'default';
     let data;
     try {
-      const r = await fetch(`/v1/memory/phases?namespace=${encodeURIComponent(ns)}`);
+      const r = await fetch(`/v1/memory/phases?namespace=${encodeURIComponent(_activeNS)}`);
       if (!r.ok) return;
       data = await r.json();
     } catch { return; }
 
     const maxBirth = data.max_birth_order || 0;
     document.getElementById('phase-total').textContent =
-      `${data.total} total items · ns: ${data.namespace}`;
+      `${data.total} items`;
 
     for (const phase of ['gas', 'liquid', 'solid', 'glass']) {
       const phData = data.phases[phase];
@@ -976,20 +1045,22 @@
     }
   }
 
-  // On load: seed namespace input from the Chat demo's persisted namespace
-  // so the phases bar automatically shows whatever namespace the chat is using.
+  // Seed active namespace from the Chat demo's persisted localStorage namespace
   (function seedNamespace() {
     try {
       const stored = localStorage.getItem('cls_demo_namespace');
-      if (stored) {
-        document.getElementById('phase-ns-input').value = stored;
-      }
+      if (stored) _activeNS = stored;
     } catch(e) {}
   })();
 
-  // Auto-refresh phases alongside traces
-  refreshPhases();
-  setInterval(refreshPhases, 3000);
+  // Poll: chips first (discovers namespaces), then phase items
+  async function pollAll() {
+    await refreshNamespaceChips();
+    await refreshPhases();
+  }
+
+  pollAll();
+  setInterval(pollAll, 3000);
   </script>
 </body>
 </html>

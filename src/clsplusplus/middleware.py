@@ -118,7 +118,8 @@ _TRACE_SKIP_PREFIXES = (
     "/v1/trace",          # trace list / detail endpoints
     "/v1/demo/status",    # warmup ping — not a user action
     "/v1/chat/sess",      # chat session probes
-    "/v1/memory/phases",  # phase-bar polling — high frequency, no value in trace list
+    "/v1/memory/phases",      # phase-bar polling — high frequency, no value in trace list
+    "/v1/memory/namespaces",  # namespace list polling — same reason
 )
 _TRACE_SKIP_EXACT = frozenset({"/", "/health", "/favicon.ico"})
 
