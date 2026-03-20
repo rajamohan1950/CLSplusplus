@@ -88,24 +88,21 @@
       <p class="demo-pitch">Pitch in 10 words: <strong>Your memory lives here. Switch AI anytime. No reset.</strong></p>
       <script>
         (function(){
+          // namespace.js runs before this — window.CLS_USER_NAMESPACE is already set.
           function showNS() {
-            try {
-              var ns = localStorage.getItem('cls_demo_namespace') || '…';
-              document.getElementById('demo-ns-label').textContent = ns;
-            } catch(e){}
+            var ns = (window.CLSNamespace && window.CLSNamespace.get())
+                  || window.CLS_USER_NAMESPACE || '…';
+            document.getElementById('demo-ns-label').textContent = ns;
           }
-          // Run after DOMContentLoaded so demo.js has already set the namespace
           if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', showNS);
           } else {
             showNS();
           }
-          // Also poll once more after 500ms in case demo.js ran slightly late
-          setTimeout(showNS, 500);
 
           document.getElementById('demo-reset-ns').addEventListener('click', function(){
             if (!confirm('Clear all memory and start a fresh session?')) return;
-            try { localStorage.removeItem('cls_demo_namespace'); } catch(e){}
+            if (window.CLSNamespace) { window.CLSNamespace.reset(); }
             location.reload();
           });
         })();
@@ -283,6 +280,8 @@
       window.CLS_API_URL = 'http://localhost:8090';
     }
   </script>
+  <!-- namespace.js must load before demo.js — sets window.CLS_USER_NAMESPACE -->
+  <script src="namespace.js"></script>
   <script src="demo.js"></script>
 </body>
 </html>

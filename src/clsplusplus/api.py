@@ -646,18 +646,33 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "items": item_list[:20],  # top 20 by strength
         }
 
+    class _ChatSessionCreateReq(BaseModel):
+        # namespace = the user's persistent brain.
+        # All sessions for the same user must pass the same namespace so memory
+        # flows across conversations and models.  Defaults to "default" so
+        # direct API callers work without extra plumbing.
+        namespace: str = "default"
+
     class _ChatMsgReq(BaseModel):
         message: str
 
     @app.post("/v1/chat/sessions")
-    async def create_chat_session():
-        """Create a new chat session. Returns session_id + auto-generated name."""
+    async def create_chat_session(req: _ChatSessionCreateReq):
+        """Create a new chat session bound to the caller's persistent namespace.
+
+        The namespace is the user's identity boundary — all sessions for the same
+        user must use the same namespace so memory accumulates across conversations
+        and across LLM models.
+        """
+        try:
+            validate_namespace(req.namespace)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         sid = str(_uuid_mod.uuid4())
         _session_counter[0] += 1
         name = f"Chat {_session_counter[0]}"
-        ns = f"chat-{sid[:12]}"
-        _sessions[sid] = _ChatSession(session_id=sid, name=name, namespace=ns)
-        return {"session_id": sid, "name": name}
+        _sessions[sid] = _ChatSession(session_id=sid, name=name, namespace=req.namespace)
+        return {"session_id": sid, "name": name, "namespace": req.namespace}
 
     @app.get("/v1/chat/sessions/{session_id}")
     async def get_chat_session(session_id: str = Path(..., min_length=1, max_length=64)):
@@ -668,6 +683,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return {
             "session_id": sess.session_id,
             "name": sess.name,
+            "namespace": sess.namespace,
             "messages": [
                 {"role": m.role, "content": m.content,
                  "memory_used": m.memory_used, "memory_count": m.memory_count}

@@ -1318,6 +1318,21 @@ body {
   margin-left: auto;
 }
 
+.chat-ns-badge {
+  font-size: 0.68rem;
+  color: #a5b4fc;
+  background: rgba(99, 102, 241, 0.12);
+  padding: 3px 8px;
+  border-radius: 12px;
+  margin-left: 8px;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+  cursor: default;
+}
+
 /* --- Messages --- */
 .chat-messages {
   flex: 1;

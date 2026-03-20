@@ -6,15 +6,11 @@
   function init() {
   const API_URL = (typeof window !== 'undefined' && window.CLS_API_URL) || '';
 
-  // Persist namespace in localStorage so memory survives page refreshes.
-  // Generate once, reuse forever until the user explicitly clears storage.
-  var _storedNS = null;
-  try { _storedNS = localStorage.getItem('cls_demo_namespace'); } catch(e) {}
-  if (!_storedNS) {
-    _storedNS = 'demo-' + Math.random().toString(36).slice(2, 10);
-    try { localStorage.setItem('cls_demo_namespace', _storedNS); } catch(e) {}
-  }
-  const NAMESPACE = _storedNS;
+  // Single source of truth: namespace.js sets window.CLS_USER_NAMESPACE once
+  // at page load and writes it to localStorage under 'cls_user_namespace'.
+  // All surfaces (demo, chat, trace) share the same namespace = same brain.
+  const NAMESPACE = (typeof window !== 'undefined' && window.CLS_USER_NAMESPACE)
+    || 'user-default';
   const FETCH_TIMEOUT_MS = 90000;  // Render cold start can take 60s
 
   const MODELS = ['claude', 'openai'];

@@ -391,6 +391,8 @@
 
   </div>
 
+  <!-- namespace.js: sets window.CLS_USER_NAMESPACE before trace script runs -->
+  <script src="namespace.js"></script>
   <script>
   // ─────────────────────────────────────────────────────────────────────────
   // Service colour palette
@@ -1045,12 +1047,12 @@
     }
   }
 
-  // Seed active namespace from the Chat demo's persisted localStorage namespace
+  // Seed active namespace from the canonical user namespace (set by namespace.js).
+  // This means the phase bar auto-selects the same brain the user is chatting with.
   (function seedNamespace() {
-    try {
-      const stored = localStorage.getItem('cls_demo_namespace');
-      if (stored) _activeNS = stored;
-    } catch(e) {}
+    const ns = (window.CLSNamespace && window.CLSNamespace.get())
+             || window.CLS_USER_NAMESPACE;
+    if (ns) _activeNS = ns;
   })();
 
   // Poll: chips first (discovers namespaces), then phase items

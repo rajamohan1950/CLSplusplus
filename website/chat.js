@@ -1,9 +1,19 @@
 /**
  * CLS++ Chat — Multi-session chat with persistent memory and automatic LLM routing.
  * User just types. Backend handles everything: memory, LLM selection, failover.
+ *
+ * Namespace design:
+ *   All sessions for this user share ONE persistent namespace (the user's brain).
+ *   namespace.js sets window.CLS_USER_NAMESPACE at page load — same value used
+ *   by the demo page and every other surface so memory flows across models and pages.
+ *   Sessions are conversation history threads; they do NOT create separate memory silos.
  */
 (function () {
   const API_URL = (typeof window !== 'undefined' && window.CLS_API_URL) || '';
+
+  // The user's persistent brain — shared across all sessions and all LLM models.
+  const USER_NAMESPACE = (typeof window !== 'undefined' && window.CLS_USER_NAMESPACE)
+    || 'user-default';
 
   let activeSessionId = null;
   let sessions = []; // [{session_id, name}]
@@ -157,7 +167,7 @@
   // =========================================================================
   async function createSession() {
     try {
-      var data = await api('/v1/chat/sessions', 'POST', {});
+      var data = await api('/v1/chat/sessions', 'POST', { namespace: USER_NAMESPACE });
       sessions.unshift({ session_id: data.session_id, name: data.name });
       activeSessionId = data.session_id;
       saveSessions();
