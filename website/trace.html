@@ -464,29 +464,30 @@
     }
 
     /* ── Connector lines (arm + spine + elbow) ──────────────── */
-    /* arm = short horizontal stub from parent card right-edge to spine */
-    .lrt-arm { width: 14px; height: 1px; background: #242424; flex-shrink: 0; }
+    /* arm = horizontal stub from parent card right-edge to the spine */
+    .lrt-arm { width: 24px; height: 1px; background: #2e2e2e; flex-shrink: 0; }
 
-    /* Column of child branches */
-    .lrt-col { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+    /* Column of child branches — zero gap so siblings touch */
+    .lrt-col { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
 
-    /* Branch = vertical-spine segment + horizontal elbow + child */
+    /* Branch = vertical-spine + elbow + child (padding = arm width) */
     .lrt-branch {
       display: flex; flex-direction: row; align-items: center;
-      position: relative; padding-left: 14px;  /* must equal .lrt-arm width */
+      position: relative; padding-left: 24px;  /* must match .lrt-arm width */
+      padding-top: 2px; padding-bottom: 2px;    /* tiny breathing room between siblings */
     }
     /* Vertical spine through this branch slot */
     .lrt-branch::before {
       content: ''; position: absolute;
-      left: 0; top: 0; bottom: 0; width: 1px; background: #242424;
+      left: 0; top: 0; bottom: 0; width: 1px; background: #2e2e2e;
     }
-    .lrt-branch:first-child::before { top: 50%; }     /* nothing above mid */
-    .lrt-branch:last-child::before  { bottom: 50%; }  /* nothing below mid */
-    .lrt-branch:only-child::before  { display: none; }/* single child: no spine */
-    /* Horizontal elbow from spine to child card left edge */
+    .lrt-branch:first-child::before { top: 50%; }
+    .lrt-branch:last-child::before  { bottom: 50%; }
+    .lrt-branch:only-child::before  { display: none; }
+    /* Horizontal elbow from spine to child */
     .lrt-branch::after {
       content: ''; position: absolute;
-      left: 0; top: 50%; width: 14px; height: 1px; background: #242424;
+      left: 0; top: 50%; width: 24px; height: 1px; background: #2e2e2e;
     }
 
     /* ── Collapse ───────────────────────────────────────────── */
