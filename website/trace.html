@@ -465,18 +465,17 @@
 
     /* ── Connector lines (arm + spine + elbow) ──────────────── */
     /* arm = horizontal stub from parent card right-edge to the spine */
-    .lrt-arm { width: 24px; height: 1px; background: #2e2e2e; flex-shrink: 0; }
+    .lrt-arm { width: 32px; height: 1px; background: #2e2e2e; flex-shrink: 0; }
 
     /* Column of child branches — zero gap so siblings touch */
     .lrt-col { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
 
-    /* Branch = vertical-spine + elbow + child (padding = arm width) */
+    /* Branch = vertical-spine + elbow + child (padding-left = arm width, no vertical padding) */
     .lrt-branch {
       display: flex; flex-direction: row; align-items: center;
-      position: relative; padding-left: 24px;  /* must match .lrt-arm width */
-      padding-top: 2px; padding-bottom: 2px;    /* tiny breathing room between siblings */
+      position: relative; padding-left: 32px;
     }
-    /* Vertical spine through this branch slot */
+    /* Vertical spine — runs full height of the branch slot */
     .lrt-branch::before {
       content: ''; position: absolute;
       left: 0; top: 0; bottom: 0; width: 1px; background: #2e2e2e;
@@ -484,10 +483,10 @@
     .lrt-branch:first-child::before { top: 50%; }
     .lrt-branch:last-child::before  { bottom: 50%; }
     .lrt-branch:only-child::before  { display: none; }
-    /* Horizontal elbow from spine to child */
+    /* Horizontal elbow — matches padding-left */
     .lrt-branch::after {
       content: ''; position: absolute;
-      left: 0; top: 50%; width: 24px; height: 1px; background: #2e2e2e;
+      left: 0; top: 50%; width: 32px; height: 1px; background: #2e2e2e;
     }
 
     /* ── Collapse ───────────────────────────────────────────── */
