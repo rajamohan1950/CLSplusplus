@@ -2,12 +2,16 @@
 
 import asyncio
 import logging
-from typing import Optional
+import time as _time
+import uuid as _uuid_mod
+from dataclasses import dataclass, field
+from typing import Optional, List
 
 import os
 from pathlib import Path as FilePath
 
-from fastapi import FastAPI, HTTPException, Path, Query, Request
+from fastapi import FastAPI, HTTPException, Path, Query, Request, Body
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -572,6 +576,229 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         """Get audit log for an integration."""
         events = await integration_service.get_events(integration_id, limit)
         return {"events": [e.model_dump(mode="json") for e in events]}
+
+    # =========================================================================
+    # Chat Session API — /v1/chat/sessions
+    # =========================================================================
+
+    @dataclass
+    class _ChatMsg:
+        role: str          # "user" | "assistant"
+        content: str
+        memory_used: bool = False
+        memory_count: int = 0
+
+    @dataclass
+    class _ChatSession:
+        session_id: str
+        name: str
+        namespace: str
+        messages: list = field(default_factory=list)
+        created_at: float = field(default_factory=_time.time)
+
+    # In-memory session store — persists until server restart
+    _sessions: dict = {}
+    _session_counter: list = [0]  # mutable counter via list trick
+
+    def _pick_model() -> str:
+        """Return first available LLM model based on configured API keys."""
+        if getattr(settings, "anthropic_api_key", None):
+            return "claude"
+        if getattr(settings, "openai_api_key", None):
+            return "openai"
+        if getattr(settings, "google_api_key", None):
+            return "gemini"
+        return "claude"
+
+    def _phase_dynamics(namespace: str) -> dict:
+        """Build the thermodynamic debug snapshot for a namespace."""
+        raw_items = memory_service.engine._items.get(namespace, [])
+        floor = memory_service.engine.STRENGTH_FLOOR
+        tau_c1 = memory_service.engine.TAU_C1
+        event_counter = memory_service.engine._event_counter
+
+        total_F = 0.0
+        liquid_count = 0
+        gas_count = 0
+        item_list = []
+
+        for item in raw_items:
+            d = item.to_debug_dict(strength_floor=floor)
+            total_F += d["free_energy"]
+            if d["phase"] in ("liquid", "solid", "glass"):
+                liquid_count += 1
+            else:
+                gas_count += 1
+            item_list.append(d)
+
+        # Most relevant first (highest consolidation_strength)
+        item_list.sort(key=lambda x: x["consolidation_strength"], reverse=True)
+        n = len(raw_items)
+        rho = n / max(n + tau_c1, 1e-9)
+
+        return {
+            "memory_density_rho": round(rho, 6),
+            "global_event_counter": event_counter,
+            "total_free_energy": round(total_F, 4),
+            "tau_c1": tau_c1,
+            "liquid_count": liquid_count,
+            "gas_count": gas_count,
+            "items": item_list[:20],  # top 20 by strength
+        }
+
+    class _ChatMsgReq(BaseModel):
+        message: str
+
+    @app.post("/v1/chat/sessions")
+    async def create_chat_session():
+        """Create a new chat session. Returns session_id + auto-generated name."""
+        sid = str(_uuid_mod.uuid4())
+        _session_counter[0] += 1
+        name = f"Chat {_session_counter[0]}"
+        ns = f"chat-{sid[:12]}"
+        _sessions[sid] = _ChatSession(session_id=sid, name=name, namespace=ns)
+        return {"session_id": sid, "name": name}
+
+    @app.get("/v1/chat/sessions/{session_id}")
+    async def get_chat_session(session_id: str = Path(..., min_length=1, max_length=64)):
+        """Return a session with its full message history."""
+        sess = _sessions.get(session_id)
+        if not sess:
+            raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+        return {
+            "session_id": sess.session_id,
+            "name": sess.name,
+            "messages": [
+                {"role": m.role, "content": m.content,
+                 "memory_used": m.memory_used, "memory_count": m.memory_count}
+                for m in sess.messages
+            ],
+        }
+
+    @app.delete("/v1/chat/sessions/{session_id}")
+    async def delete_chat_session(session_id: str = Path(..., min_length=1, max_length=64)):
+        """Delete a session (removes history but not memory)."""
+        if session_id not in _sessions:
+            raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+        del _sessions[session_id]
+        return {"deleted": True, "session_id": session_id}
+
+    @app.post("/v1/chat/sessions/{session_id}/message")
+    async def chat_session_message(
+        req: _ChatMsgReq,
+        request: Request,
+        session_id: str = Path(..., min_length=1, max_length=64),
+    ):
+        """Send a user message. Returns LLM reply + full debug snapshot."""
+        from clsplusplus.demo_llm_calls import call_claude, call_openai, call_gemini
+
+        sess = _sessions.get(session_id)
+        if not sess:
+            raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+
+        tid = _trace_id(request)
+        user_text = req.message.strip()
+        if not user_text:
+            raise HTTPException(status_code=400, detail="message must not be empty")
+
+        ns = sess.namespace
+        model = _pick_model()
+
+        # 1. Store user message to memory (skip pure questions)
+        def _is_question(t: str) -> bool:
+            t = t.strip().lower()
+            return "?" in t or any(t.startswith(w) for w in
+                ("what", "who", "where", "when", "how", "which", "is my", "do you", "can you", "tell me"))
+
+        if not _is_question(user_text):
+            try:
+                from clsplusplus.models import WriteRequest as _WriteReq
+                await memory_service.write(
+                    _WriteReq(text=user_text, namespace=ns, source="user", salience=0.8),
+                    trace_id=tid,
+                )
+            except Exception:
+                pass
+
+        # 2. Search memory for relevant context
+        memory_hits = []
+        try:
+            from clsplusplus.models import ReadRequest as _ReadReq
+            read_resp = await memory_service.read(
+                _ReadReq(query=user_text, namespace=ns, limit=8),
+                trace_id=tid,
+            )
+            memory_hits = [i.text for i in (read_resp.items or [])]
+        except Exception:
+            pass
+
+        memory_used = len(memory_hits) > 0
+        memory_count = len(memory_hits)
+
+        # 3. Build conversation history (last 6 turns)
+        history_lines = []
+        for m in sess.messages[-6:]:
+            prefix = "User" if m.role == "user" else "Assistant"
+            history_lines.append(f"{prefix}: {m.content}")
+        conv_block = "\n".join(history_lines)
+        history_line_count = len(history_lines)
+
+        # 4. Build augmented system prompt
+        mem_block = ("\n".join(f"- {t}" for t in memory_hits)
+                     if memory_hits else "No prior memory context.")
+        augmented_prompt = (
+            "You are a helpful, friendly assistant with persistent memory.\n\n"
+            f"Relevant memory context:\n{mem_block}\n\n"
+            + (f"Conversation so far:\n{conv_block}\n\n" if conv_block else "")
+            + "Answer naturally. Use memory context only when relevant."
+        )
+
+        # 5. Call LLM
+        reply = "No LLM configured."
+        try:
+            if model == "claude":
+                reply = await call_claude(settings, augmented_prompt, user_text)
+            elif model == "openai":
+                reply = await call_openai(settings, augmented_prompt, user_text)
+            elif model == "gemini":
+                reply = await call_gemini(settings, augmented_prompt, user_text)
+        except Exception as exc:
+            reply = f"LLM error: {exc}"
+
+        # 6. Store assistant reply to memory
+        try:
+            from clsplusplus.models import WriteRequest as _WriteReq
+            await memory_service.write(
+                _WriteReq(text=f"Assistant replied: {reply[:400]}",
+                          namespace=ns, source=f"assistant.{model}", salience=0.6),
+                trace_id=tid,
+            )
+        except Exception:
+            pass
+
+        # 7. Persist messages in session
+        sess.messages.append(_ChatMsg(role="user", content=user_text))
+        sess.messages.append(_ChatMsg(
+            role="assistant", content=reply,
+            memory_used=memory_used, memory_count=memory_count,
+        ))
+
+        # 8. Build debug snapshot
+        debug_info = {
+            "model_used": model,
+            "user_message": user_text,
+            "memory_searched": memory_hits,
+            "conversation_history_lines": history_line_count,
+            "augmented_prompt": augmented_prompt,
+            "phase_dynamics": _phase_dynamics(ns),
+        }
+
+        return {
+            "reply": reply,
+            "memory_used": memory_used,
+            "memory_count": memory_count,
+            "debug": debug_info,
+        }
 
     # =========================================================================
     # Trace / Call Graph API

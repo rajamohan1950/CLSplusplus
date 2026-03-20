@@ -110,16 +110,17 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 
 
 # Paths/prefixes that produce too much noise to trace.
-# /v1/trace*      — trace page auto-polls itself every 5s
-# /v1/demo/status — demo.js warmup ping fires 5× on page load, every 30s
-# /v1/chat/sess*  — chat page session probes (405 noise)
+# /v1/trace*          — trace page auto-polls itself every 5s
+# /v1/demo/status     — demo.js warmup ping fires 5× on page load, every 30s
+# /v1/memory/phases   — phase-bar polling (every 3s)
+# /v1/memory/namespaces — namespace chip polling (every 3s)
+# /v1/chat/sessions GET probes are low-value but message POSTs are traced via inner spans
 _TRACE_SKIP_PREFIXES = (
     "/docs", "/redoc", "/openapi", "/_",
-    "/v1/trace",          # trace list / detail endpoints
-    "/v1/demo/status",    # warmup ping — not a user action
-    "/v1/chat/sess",      # chat session probes
+    "/v1/trace",              # trace list / detail endpoints
+    "/v1/demo/status",        # warmup ping — not a user action
     "/v1/memory/phases",      # phase-bar polling — high frequency, no value in trace list
-    "/v1/memory/namespaces",  # namespace list polling — same reason
+    "/v1/memory/namespaces",  # namespace chip polling — same reason
 )
 _TRACE_SKIP_EXACT = frozenset({"/", "/health", "/favicon.ico"})
 
@@ -138,6 +139,7 @@ _OP_MAP = {
     "/demo/chat": "demo.chat",
     "/demo/status": "demo.status",
     "/demo/memory-cycle": "demo.cycle",
+    "/chat/sessions": "chat",
     "/memory/sleep": "sleep",
     "/memories/consolidate": "sleep",
     "/memories/prewarm": "prewarm",
