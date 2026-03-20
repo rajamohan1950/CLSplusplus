@@ -967,54 +967,49 @@
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // ─────────────────────────────────────────────────────────────────────────
-  // Call Graph — leaf-row layout with SVG connectors
+  // Call Graph — depth-column layout (as drawn by user)
   //
-  // Key idea: every LEAF node gets exactly ROW_H pixels of vertical space.
-  // Every non-leaf is centred over its children's rows. This guarantees
-  // ALL siblings are packed together regardless of subtree depth.
-  // Connector lines are drawn as SVG so they never disturb the layout.
+  // Layout rule (matches the hand-drawn diagram):
+  //   • Every depth level is its own vertical column.
+  //   • ALL nodes at depth D are stacked in that column in DFS order,
+  //     touching each other — regardless of which parent they belong to.
+  //   • Each node gets exactly ROW_H px. No gaps anywhere.
+  //   • Connectors are L-shaped SVG paths: parent right-edge →
+  //     bend-point (halfway between columns) → child left-edge.
   // ─────────────────────────────────────────────────────────────────────────
-  const _CG_ROW_H  = 30;   // px — height of each row (one leaf per row)
+  const _CG_ROW_H  = 30;   // px — fixed row height per node
   const _CG_CARD_W = 210;  // px — fixed card width
-  const _CG_ARM_W  = 36;   // px — horizontal arm from card right-edge to spine
+  const _CG_ARM_W  = 40;   // px — gap between columns (arm + elbow space)
 
   function renderCallGraph(trace, containerEl) {
     const root = trace.tree;
-    if (!root) {
-      containerEl.innerHTML = '<div class="empty-state">No span data</div>';
-      return;
-    }
+    if (!root) { containerEl.innerHTML = '<div class="empty-state">No span data</div>'; return; }
 
-    // ── Step 1: assign leaf-row positions (DFS) ───────────────
-    let leafRow = 0;
-    (function assignRows(node) {
-      node._r0 = leafRow;
-      if (!node.children || !node.children.length) { leafRow++; }
-      else { node.children.forEach(c => assignRows(c)); }
-      node._r1 = leafRow;
-      node._cy = (node._r0 + node._r1) / 2 * _CG_ROW_H;  // centre Y in px
-    })(root);
-
-    // ── Step 2: find max depth ────────────────────────────────
-    let maxDepth = 0;
-    (function depth(node, d) {
-      if (d > maxDepth) maxDepth = d;
-      (node.children || []).forEach(c => depth(c, d + 1));
+    // ── Step 1: collect nodes per depth level (DFS order) ────
+    // cols[d] = all nodes at depth d, in DFS traversal order.
+    // Every node at depth d gets row index = its position in cols[d].
+    // → all nodes at any depth are packed together with zero gaps.
+    const cols = [];
+    (function collect(node, d) {
+      if (!cols[d]) cols[d] = [];
+      node._depth = d;
+      node._row   = cols[d].length;
+      node._cy    = (node._row + 0.5) * _CG_ROW_H;   // centre Y in px
+      cols[d].push(node);
+      (node.children || []).forEach(c => collect(c, d + 1));
     })(root, 0);
 
-    const totalH = leafRow * _CG_ROW_H;
-    const totalW = (maxDepth + 1) * (_CG_CARD_W + _CG_ARM_W) + 8;
+    const maxDepth = cols.length - 1;
+    const totalH   = Math.max(...cols.map(c => c.length)) * _CG_ROW_H;
+    const totalW   = (maxDepth + 1) * (_CG_CARD_W + _CG_ARM_W) + 4;
 
-    // ── Step 3: build DOM ─────────────────────────────────────
+    // ── Step 2: canvas + SVG overlay ─────────────────────────
     const canvas = document.createElement('div');
     canvas.className = 'lrt-canvas';
     canvas.style.cssText = `width:${totalW}px;height:${Math.max(totalH,60)}px;`;
 
-    // SVG layer — drawn under nodes
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('width', totalW);
-    svg.setAttribute('height', Math.max(totalH, 60));
+    svg.setAttribute('width', totalW); svg.setAttribute('height', Math.max(totalH, 60));
     svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;overflow:visible;';
     canvas.appendChild(svg);
 
@@ -1022,123 +1017,114 @@
     const ioPop = document.createElement('div');
     ioPop.className = 'lrt-io-pop';
     canvas.appendChild(ioPop);
-    let _activeCard = null;
-
-    function closePopover() {
+    let _active = null;
+    const closePop = () => {
       ioPop.style.display = 'none';
-      if (_activeCard) { _activeCard.querySelector('.lrt-tog').textContent = '▶'; _activeCard = null; }
-    }
-    canvas.addEventListener('click', e => { if (!e.target.closest('.lrt-node') && !e.target.closest('.lrt-io-pop')) closePopover(); });
+      if (_active) { _active.tog.textContent = '▶'; _active = null; }
+    };
+    canvas.addEventListener('click', e => {
+      if (!e.target.closest('.lrt-node') && !e.target.closest('.lrt-io-pop')) closePop();
+    });
 
-    // ── Step 4: place each node absolutely ───────────────────
-    (function place(node, depth) {
-      const x  = depth * (_CG_CARD_W + _CG_ARM_W);
-      const cy = node._cy;                       // centre Y
-      const y  = cy - _CG_ROW_H / 2;            // top Y of card
+    // ── Step 3: place cards ───────────────────────────────────
+    cols.forEach((nodes, depth) => {
+      const x = depth * (_CG_CARD_W + _CG_ARM_W);
+      nodes.forEach(node => {
+        const y      = node._cy - _CG_ROW_H / 2;
+        const meta   = node.metadata || {};
+        const c      = svcColor(node.module);
+        const hasIn  = meta.input  !== undefined;
+        const hasOut = meta.output !== undefined;
+        const hasIO  = hasIn || hasOut;
+        const dot    = node.label.indexOf('.');
+        const dlbl   = dot !== -1 ? node.label.slice(dot + 1) : node.label;
+        const ghHref = _ghUrl(node.module, dlbl);
 
-      const meta     = node.metadata || {};
-      const c        = svcColor(node.module);
-      const hasInput = meta.input  !== undefined;
-      const hasOutput= meta.output !== undefined;
-      const hasIO    = hasInput || hasOutput;
-      const dotIdx   = node.label.indexOf('.');
-      const dispLabel= dotIdx !== -1 ? node.label.slice(dotIdx + 1) : node.label;
-      const ghHref   = _ghUrl(node.module, dispLabel);
+        const nodeEl = document.createElement('div');
+        nodeEl.className = 'lrt-node' + (depth === 0 ? ' is-root' : '');
+        nodeEl.style.cssText = `left:${x}px;top:${y}px;width:${_CG_CARD_W}px;height:${_CG_ROW_H}px;`;
 
-      // Card element
-      const nodeEl = document.createElement('div');
-      nodeEl.className = 'lrt-node' + (depth === 0 ? ' is-root' : '');
-      nodeEl.style.cssText = `left:${x}px;top:${y}px;width:${_CG_CARD_W}px;height:${_CG_ROW_H}px;`;
+        const card = document.createElement('div');
+        card.className = 'lrt-card' + (depth === 0 ? ' is-root' : '');
 
-      const card = document.createElement('div');
-      card.className = 'lrt-card' + (depth === 0 ? ' is-root' : '');
+        const hdr = document.createElement('div'); hdr.className = 'lrt-hdr';
 
-      const hdr = document.createElement('div');
-      hdr.className = 'lrt-hdr';
+        const tog = document.createElement('span');
+        tog.className = 'lrt-tog' + (hasIO ? '' : ' leaf');
+        tog.textContent = hasIO ? '▶' : '·';
+        hdr.appendChild(tog);
 
-      const tog = document.createElement('span');
-      tog.className = 'lrt-tog' + (hasIO ? '' : ' leaf');
-      tog.textContent = hasIO ? '▶' : '·';
-      hdr.appendChild(tog);
+        const badge = document.createElement('span');
+        badge.className = 'svc-badge';
+        badge.style.cssText = `background:${c.badge};color:${c.text}`;
+        badge.textContent = _MOD_SHORT[node.module] || node.module;
+        badge.title = node.module;
+        hdr.appendChild(badge);
 
-      const badge = document.createElement('span');
-      badge.className = 'svc-badge';
-      badge.style.cssText = `background:${c.badge};color:${c.text}`;
-      badge.textContent = _MOD_SHORT[node.module] || node.module;
-      badge.title = node.module;
-      hdr.appendChild(badge);
+        const lbl = document.createElement('span');
+        lbl.className = 'lrt-label'; lbl.textContent = dlbl; lbl.title = node.label;
+        hdr.appendChild(lbl);
 
-      const lbl = document.createElement('span');
-      lbl.className = 'lrt-label';
-      lbl.textContent = dispLabel;
-      lbl.title = node.label;
-      hdr.appendChild(lbl);
+        const dur = document.createElement('span');
+        dur.className = 'lrt-dur'; dur.textContent = fmtMs(node.duration_ms);
+        hdr.appendChild(dur);
 
-      const dur = document.createElement('span');
-      dur.className = 'lrt-dur';
-      dur.textContent = fmtMs(node.duration_ms);
-      hdr.appendChild(dur);
+        if (ghHref) {
+          const gh = document.createElement('a');
+          gh.className = 'lrt-gh'; gh.href = ghHref; gh.target = '_blank';
+          gh.rel = 'noopener'; gh.title = 'Open in GitHub'; gh.textContent = '↗';
+          gh.addEventListener('click', e => e.stopPropagation());
+          hdr.appendChild(gh);
+        }
 
-      if (ghHref) {
-        const gh = document.createElement('a');
-        gh.className = 'lrt-gh';
-        gh.href = ghHref; gh.target = '_blank'; gh.rel = 'noopener';
-        gh.title = 'Open in GitHub'; gh.textContent = '↗';
-        gh.addEventListener('click', e => e.stopPropagation());
-        hdr.appendChild(gh);
-      }
+        if (hasIO) {
+          hdr.addEventListener('click', () => {
+            if (_active && _active.nodeEl === nodeEl) { closePop(); return; }
+            closePop();
+            _active = { nodeEl, tog };
+            tog.textContent = '▼';
+            ioPop.innerHTML = '';
+            if (hasIn) {
+              const r = document.createElement('div'); r.className = 'lrt-io-row';
+              const d = document.createElement('span'); d.className = 'lrt-io-dir in'; d.textContent = '▶ IN';
+              const v = document.createElement('span'); v.className = 'lrt-io-val'; v.textContent = String(meta.input).slice(0, 500);
+              r.appendChild(d); r.appendChild(v); ioPop.appendChild(r);
+            }
+            if (hasOut) {
+              const r = document.createElement('div'); r.className = 'lrt-io-row';
+              const d = document.createElement('span'); d.className = 'lrt-io-dir out'; d.textContent = '◀ OUT';
+              const v = document.createElement('span'); v.className = 'lrt-io-val'; v.textContent = String(meta.output).slice(0, 500);
+              r.appendChild(d); r.appendChild(v); ioPop.appendChild(r);
+            }
+            ioPop.style.cssText = `display:flex;left:${x}px;top:${y + _CG_ROW_H + 4}px;`;
+          });
+        }
 
-      // I/O toggle — shows popover below the card
-      if (hasIO) {
-        hdr.addEventListener('click', () => {
-          if (_activeCard === nodeEl) { closePopover(); return; }
-          closePopover();
-          _activeCard = nodeEl;
-          tog.textContent = '▼';
-          ioPop.innerHTML = '';
-          if (hasInput) {
-            const r = document.createElement('div'); r.className = 'lrt-io-row';
-            const d = document.createElement('span'); d.className = 'lrt-io-dir in'; d.textContent = '▶ IN';
-            const v = document.createElement('span'); v.className = 'lrt-io-val'; v.textContent = String(meta.input).slice(0, 500);
-            r.appendChild(d); r.appendChild(v); ioPop.appendChild(r);
-          }
-          if (hasOutput) {
-            const r = document.createElement('div'); r.className = 'lrt-io-row';
-            const d = document.createElement('span'); d.className = 'lrt-io-dir out'; d.textContent = '◀ OUT';
-            const v = document.createElement('span'); v.className = 'lrt-io-val'; v.textContent = String(meta.output).slice(0, 500);
-            r.appendChild(d); r.appendChild(v); ioPop.appendChild(r);
-          }
-          // Position below card; shift left if near right edge
-          ioPop.style.cssText = `display:flex;left:${x}px;top:${y + _CG_ROW_H + 4}px;`;
-        });
-      }
+        card.appendChild(hdr);
+        nodeEl.appendChild(card);
+        canvas.appendChild(nodeEl);
+      });
+    });
 
-      card.appendChild(hdr);
-      nodeEl.appendChild(card);
-      canvas.appendChild(nodeEl);
+    // ── Step 4: draw L-shaped SVG connectors ─────────────────
+    // Each connector: parent right-edge → bend X (halfway) → child left-edge
+    // The bend creates a clean L-shape/S-shape regardless of Y offset.
+    (function drawLines(node) {
+      if (!node.children || !node.children.length) return;
+      const d    = node._depth;
+      const pRx  = d * (_CG_CARD_W + _CG_ARM_W) + _CG_CARD_W;  // parent right X
+      const cLx  = (d + 1) * (_CG_CARD_W + _CG_ARM_W);          // child left X
+      const bendX= pRx + _CG_ARM_W / 2;                          // bend midpoint
+      const pCy  = node._cy;
 
-      // ── SVG connectors to children ──────────────────────────
-      if (node.children && node.children.length) {
-        const px  = x + _CG_CARD_W;          // parent right edge X
-        const spX = px + _CG_ARM_W / 2;      // spine X (midpoint of arm)
-        const chX = x + _CG_CARD_W + _CG_ARM_W; // children left X
+      node.children.forEach(child => {
+        // L-shaped path: right from parent → bend → down/up → right to child
+        _svgPath(svg, `M ${pRx} ${pCy} H ${bendX} V ${child._cy} H ${cLx}`);
+        drawLines(child);
+      });
+    })(root);
 
-        // Horizontal arm: parent → spine
-        _svgLine(svg, px, cy, spX, cy);
-
-        // Vertical spine: first child centre → last child centre
-        const fc = node.children[0], lc = node.children[node.children.length - 1];
-        if (node.children.length > 1) _svgLine(svg, spX, fc._cy, spX, lc._cy);
-
-        node.children.forEach(child => {
-          // Horizontal elbow: spine → child left edge
-          _svgLine(svg, spX, child._cy, chX, child._cy);
-          place(child, depth + 1);
-        });
-      }
-    })(root, 0);
-
-    // ── Pan wrapper ───────────────────────────────────────────
+    // ── Pan wrapper (drag to move canvas freely) ──────────────
     const pan = document.createElement('div');
     pan.className = 'lrt-pan';
     pan.appendChild(canvas);
@@ -1146,7 +1132,6 @@
 
     let ox = 0, oy = 0, dragging = false, sx, sy;
     const applyT = () => canvas.style.transform = `translate(${ox}px,${oy}px)`;
-
     pan.addEventListener('mousedown', e => {
       if (e.button !== 0 || e.target.closest('.lrt-hdr') || e.target.closest('.lrt-io-pop')) return;
       dragging = true; sx = e.clientX - ox; sy = e.clientY - oy;
@@ -1159,15 +1144,14 @@
     pan.addEventListener('touchend',   () => { dragging = false; });
   }
 
-  function _svgLine(svg, x1, y1, x2, y2) {
-    const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    l.setAttribute('x1', x1); l.setAttribute('y1', y1);
-    l.setAttribute('x2', x2); l.setAttribute('y2', y2);
-    l.setAttribute('stroke', '#303030'); l.setAttribute('stroke-width', '1');
-    svg.appendChild(l);
+  function _svgPath(svg, d) {
+    const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p.setAttribute('d', d); p.setAttribute('stroke', '#333');
+    p.setAttribute('fill', 'none'); p.setAttribute('stroke-width', '1');
+    svg.appendChild(p);
   }
 
-  // buildCGNode and cgtToggle replaced by inline logic in renderCallGraph above
+  // (buildCGNode + cgtToggle fully inlined above)
 
   // ─────────────────────────────────────────────────────────────────────────
   // Load recent traces + render accordion list
