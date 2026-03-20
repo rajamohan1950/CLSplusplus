@@ -981,7 +981,7 @@
   const _CG_CARD_W   = 210;  // px — fixed card width
   const _CG_ARM_W    = 40;   // px — gap between columns (arm + elbow space)
   const _CG_SIB_GAP  = 5;    // px — gap between every sibling pair (same parent)
-  const _CG_GRP_GAP  = 18;   // px — larger gap between children of different parents
+  const _CG_GRP_GAP  = 30;   // px — gap between children of different parents
 
   function renderCallGraph(trace, containerEl) {
     const root = trace.tree;
@@ -1125,20 +1125,35 @@
       });
     });
 
-    // ── Step 4: draw L-shaped SVG connectors ─────────────────
-    // Each connector: parent right-edge → bend X (halfway) → child left-edge
-    // The bend creates a clean L-shape/S-shape regardless of Y offset.
+    // ── Step 4: bracket SVG connectors ───────────────────────
+    // Per parent with children:
+    //   1. Horizontal stem  : parent right-edge → bendX
+    //   2. Vertical rail    : first child cy → last child cy  (bracket)
+    //   3. Horizontal branch: bendX → each child left-edge
+    // The rail spans ONLY the parent's own children, so rails of different
+    // parents never overlap — disjoint by construction.
     (function drawLines(node) {
       if (!node.children || !node.children.length) return;
-      const d    = node._depth;
-      const pRx  = d * (_CG_CARD_W + _CG_ARM_W) + _CG_CARD_W;  // parent right X
-      const cLx  = (d + 1) * (_CG_CARD_W + _CG_ARM_W);          // child left X
-      const bendX= pRx + _CG_ARM_W / 2;                          // bend midpoint
-      const pCy  = node._cy;
+      const d       = node._depth;
+      const pRx     = d * (_CG_CARD_W + _CG_ARM_W) + _CG_CARD_W;
+      const cLx     = (d + 1) * (_CG_CARD_W + _CG_ARM_W);
+      const bendX   = pRx + _CG_ARM_W / 2;
+      const pCy     = node._cy;
+      const ch      = node.children;
+      const firstCy = ch[0]._cy;
+      const lastCy  = ch[ch.length - 1]._cy;
 
-      node.children.forEach(child => {
-        // L-shaped path: right from parent → bend → down/up → right to child
-        _svgPath(svg, `M ${pRx} ${pCy} H ${bendX} V ${child._cy} H ${cLx}`);
+      // 1. Stem: parent → bend column (horizontal)
+      _svgPath(svg, `M ${pRx} ${pCy} H ${bendX}`);
+
+      // 2. Vertical rail connecting all children (bracket)
+      if (ch.length > 1) {
+        _svgPath(svg, `M ${bendX} ${firstCy} V ${lastCy}`);
+      }
+
+      // 3. Branch: bend column → each child (horizontal)
+      ch.forEach(child => {
+        _svgPath(svg, `M ${bendX} ${child._cy} H ${cLx}`);
         drawLines(child);
       });
     })(root);
