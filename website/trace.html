@@ -463,36 +463,25 @@
       word-break: break-all; white-space: pre-wrap; max-height: 52px; overflow: hidden;
     }
 
-    /* ── Connector lines (arm + spine + elbow) ──────────────── */
-    /* arm = horizontal stub from parent card right-edge to the spine */
-    .lrt-arm { width: 32px; height: 1px; background: #2e2e2e; flex-shrink: 0; }
+    /* ── Absolutely-positioned canvas (sized by JS) ─────────── */
+    .lrt-canvas { position: relative; }
 
-    /* Column of child branches — zero gap so siblings touch */
-    .lrt-col { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
-
-    /* Branch = vertical-spine + elbow + child (padding-left = arm width, no vertical padding) */
-    .lrt-branch {
-      display: flex; flex-direction: row; align-items: center;
-      position: relative; padding-left: 32px;
-    }
-    /* Vertical spine — runs full height of the branch slot */
-    .lrt-branch::before {
-      content: ''; position: absolute;
-      left: 0; top: 0; bottom: 0; width: 1px; background: #2e2e2e;
-    }
-    .lrt-branch:first-child::before { top: 50%; }
-    .lrt-branch:last-child::before  { bottom: 50%; }
-    .lrt-branch:only-child::before  { display: none; }
-    /* Horizontal elbow — matches padding-left */
-    .lrt-branch::after {
-      content: ''; position: absolute;
-      left: 0; top: 50%; width: 32px; height: 1px; background: #2e2e2e;
+    /* Cards are placed by JS via inline left/top/width/height */
+    .lrt-node {
+      position: absolute;
+      display: flex; align-items: center;
+      box-sizing: border-box;
     }
 
-    /* ── Collapse ───────────────────────────────────────────── */
-    .lrt-node.lrt-collapsed > .lrt-card > .lrt-io { display: none; }
-    .lrt-node.lrt-collapsed > .lrt-arm             { display: none; }
-    .lrt-node.lrt-collapsed > .lrt-col             { display: none; }
+    /* I/O popover — overlaid, not in flow */
+    .lrt-io-pop {
+      position: absolute; z-index: 10;
+      background: #0a0a0a; border: 1px solid #222;
+      border-radius: 6px; padding: 5px 8px;
+      min-width: 220px; max-width: 360px;
+      display: none; flex-direction: column; gap: 3px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.6);
+    }
   </style>
 </head>
 <body>
@@ -978,14 +967,18 @@
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Call Graph — left-to-right visual tree
-  //
-  //  [root card] ── arm ──┬── elbow ── [child card] ── arm ──┬── [grandchild]
-  //                       ├── elbow ── [child card]           └── [grandchild]
-  //                       └── elbow ── [child card]
-  //
-  // Click any card header to collapse/expand its subtree (hides arm + col + I/O).
   // ─────────────────────────────────────────────────────────────────────────
+  // Call Graph — leaf-row layout with SVG connectors
+  //
+  // Key idea: every LEAF node gets exactly ROW_H pixels of vertical space.
+  // Every non-leaf is centred over its children's rows. This guarantees
+  // ALL siblings are packed together regardless of subtree depth.
+  // Connector lines are drawn as SVG so they never disturb the layout.
+  // ─────────────────────────────────────────────────────────────────────────
+  const _CG_ROW_H  = 30;   // px — height of each row (one leaf per row)
+  const _CG_CARD_W = 210;  // px — fixed card width
+  const _CG_ARM_W  = 36;   // px — horizontal arm from card right-edge to spine
+
   function renderCallGraph(trace, containerEl) {
     const root = trace.tree;
     if (!root) {
@@ -993,199 +986,188 @@
       return;
     }
 
-    // ── Build the tree ────────────────────────────────────────
-    const tree = document.createElement('div');
-    tree.className = 'lrt-tree';
-    buildCGNode(root, tree, true);
+    // ── Step 1: assign leaf-row positions (DFS) ───────────────
+    let leafRow = 0;
+    (function assignRows(node) {
+      node._r0 = leafRow;
+      if (!node.children || !node.children.length) { leafRow++; }
+      else { node.children.forEach(c => assignRows(c)); }
+      node._r1 = leafRow;
+      node._cy = (node._r0 + node._r1) / 2 * _CG_ROW_H;  // centre Y in px
+    })(root);
 
-    // ── Drag-to-pan wrapper ───────────────────────────────────
-    // The tree is absolutely positioned inside a fixed-size pan div.
-    // Mouse drag translates the tree freely in 2D.
+    // ── Step 2: find max depth ────────────────────────────────
+    let maxDepth = 0;
+    (function depth(node, d) {
+      if (d > maxDepth) maxDepth = d;
+      (node.children || []).forEach(c => depth(c, d + 1));
+    })(root, 0);
+
+    const totalH = leafRow * _CG_ROW_H;
+    const totalW = (maxDepth + 1) * (_CG_CARD_W + _CG_ARM_W) + 8;
+
+    // ── Step 3: build DOM ─────────────────────────────────────
+    const canvas = document.createElement('div');
+    canvas.className = 'lrt-canvas';
+    canvas.style.cssText = `width:${totalW}px;height:${Math.max(totalH,60)}px;`;
+
+    // SVG layer — drawn under nodes
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', totalW);
+    svg.setAttribute('height', Math.max(totalH, 60));
+    svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;overflow:visible;';
+    canvas.appendChild(svg);
+
+    // Shared I/O popover
+    const ioPop = document.createElement('div');
+    ioPop.className = 'lrt-io-pop';
+    canvas.appendChild(ioPop);
+    let _activeCard = null;
+
+    function closePopover() {
+      ioPop.style.display = 'none';
+      if (_activeCard) { _activeCard.querySelector('.lrt-tog').textContent = '▶'; _activeCard = null; }
+    }
+    canvas.addEventListener('click', e => { if (!e.target.closest('.lrt-node') && !e.target.closest('.lrt-io-pop')) closePopover(); });
+
+    // ── Step 4: place each node absolutely ───────────────────
+    (function place(node, depth) {
+      const x  = depth * (_CG_CARD_W + _CG_ARM_W);
+      const cy = node._cy;                       // centre Y
+      const y  = cy - _CG_ROW_H / 2;            // top Y of card
+
+      const meta     = node.metadata || {};
+      const c        = svcColor(node.module);
+      const hasInput = meta.input  !== undefined;
+      const hasOutput= meta.output !== undefined;
+      const hasIO    = hasInput || hasOutput;
+      const dotIdx   = node.label.indexOf('.');
+      const dispLabel= dotIdx !== -1 ? node.label.slice(dotIdx + 1) : node.label;
+      const ghHref   = _ghUrl(node.module, dispLabel);
+
+      // Card element
+      const nodeEl = document.createElement('div');
+      nodeEl.className = 'lrt-node' + (depth === 0 ? ' is-root' : '');
+      nodeEl.style.cssText = `left:${x}px;top:${y}px;width:${_CG_CARD_W}px;height:${_CG_ROW_H}px;`;
+
+      const card = document.createElement('div');
+      card.className = 'lrt-card' + (depth === 0 ? ' is-root' : '');
+
+      const hdr = document.createElement('div');
+      hdr.className = 'lrt-hdr';
+
+      const tog = document.createElement('span');
+      tog.className = 'lrt-tog' + (hasIO ? '' : ' leaf');
+      tog.textContent = hasIO ? '▶' : '·';
+      hdr.appendChild(tog);
+
+      const badge = document.createElement('span');
+      badge.className = 'svc-badge';
+      badge.style.cssText = `background:${c.badge};color:${c.text}`;
+      badge.textContent = _MOD_SHORT[node.module] || node.module;
+      badge.title = node.module;
+      hdr.appendChild(badge);
+
+      const lbl = document.createElement('span');
+      lbl.className = 'lrt-label';
+      lbl.textContent = dispLabel;
+      lbl.title = node.label;
+      hdr.appendChild(lbl);
+
+      const dur = document.createElement('span');
+      dur.className = 'lrt-dur';
+      dur.textContent = fmtMs(node.duration_ms);
+      hdr.appendChild(dur);
+
+      if (ghHref) {
+        const gh = document.createElement('a');
+        gh.className = 'lrt-gh';
+        gh.href = ghHref; gh.target = '_blank'; gh.rel = 'noopener';
+        gh.title = 'Open in GitHub'; gh.textContent = '↗';
+        gh.addEventListener('click', e => e.stopPropagation());
+        hdr.appendChild(gh);
+      }
+
+      // I/O toggle — shows popover below the card
+      if (hasIO) {
+        hdr.addEventListener('click', () => {
+          if (_activeCard === nodeEl) { closePopover(); return; }
+          closePopover();
+          _activeCard = nodeEl;
+          tog.textContent = '▼';
+          ioPop.innerHTML = '';
+          if (hasInput) {
+            const r = document.createElement('div'); r.className = 'lrt-io-row';
+            const d = document.createElement('span'); d.className = 'lrt-io-dir in'; d.textContent = '▶ IN';
+            const v = document.createElement('span'); v.className = 'lrt-io-val'; v.textContent = String(meta.input).slice(0, 500);
+            r.appendChild(d); r.appendChild(v); ioPop.appendChild(r);
+          }
+          if (hasOutput) {
+            const r = document.createElement('div'); r.className = 'lrt-io-row';
+            const d = document.createElement('span'); d.className = 'lrt-io-dir out'; d.textContent = '◀ OUT';
+            const v = document.createElement('span'); v.className = 'lrt-io-val'; v.textContent = String(meta.output).slice(0, 500);
+            r.appendChild(d); r.appendChild(v); ioPop.appendChild(r);
+          }
+          // Position below card; shift left if near right edge
+          ioPop.style.cssText = `display:flex;left:${x}px;top:${y + _CG_ROW_H + 4}px;`;
+        });
+      }
+
+      card.appendChild(hdr);
+      nodeEl.appendChild(card);
+      canvas.appendChild(nodeEl);
+
+      // ── SVG connectors to children ──────────────────────────
+      if (node.children && node.children.length) {
+        const px  = x + _CG_CARD_W;          // parent right edge X
+        const spX = px + _CG_ARM_W / 2;      // spine X (midpoint of arm)
+        const chX = x + _CG_CARD_W + _CG_ARM_W; // children left X
+
+        // Horizontal arm: parent → spine
+        _svgLine(svg, px, cy, spX, cy);
+
+        // Vertical spine: first child centre → last child centre
+        const fc = node.children[0], lc = node.children[node.children.length - 1];
+        if (node.children.length > 1) _svgLine(svg, spX, fc._cy, spX, lc._cy);
+
+        node.children.forEach(child => {
+          // Horizontal elbow: spine → child left edge
+          _svgLine(svg, spX, child._cy, chX, child._cy);
+          place(child, depth + 1);
+        });
+      }
+    })(root, 0);
+
+    // ── Pan wrapper ───────────────────────────────────────────
     const pan = document.createElement('div');
     pan.className = 'lrt-pan';
-    pan.appendChild(tree);
+    pan.appendChild(canvas);
     containerEl.appendChild(pan);
 
-    let ox = 0, oy = 0;   // current translate
-    let sx, sy, dragging = false;
-
-    function applyTranslate() {
-      tree.style.transform = `translate(${ox}px,${oy}px)`;
-    }
+    let ox = 0, oy = 0, dragging = false, sx, sy;
+    const applyT = () => canvas.style.transform = `translate(${ox}px,${oy}px)`;
 
     pan.addEventListener('mousedown', e => {
-      if (e.button !== 0) return;
-      // Don't start pan when clicking a card header (toggle)
-      if (e.target.closest('.lrt-hdr')) return;
-      dragging = true;
-      sx = e.clientX - ox;
-      sy = e.clientY - oy;
-      pan.classList.add('panning');
-      e.preventDefault();
+      if (e.button !== 0 || e.target.closest('.lrt-hdr') || e.target.closest('.lrt-io-pop')) return;
+      dragging = true; sx = e.clientX - ox; sy = e.clientY - oy;
+      pan.classList.add('panning'); e.preventDefault();
     });
-
-    window.addEventListener('mousemove', e => {
-      if (!dragging) return;
-      ox = e.clientX - sx;
-      oy = e.clientY - sy;
-      applyTranslate();
-    });
-
-    window.addEventListener('mouseup', () => {
-      if (!dragging) return;
-      dragging = false;
-      pan.classList.remove('panning');
-    });
-
-    // Touch support
-    pan.addEventListener('touchstart', e => {
-      if (e.touches.length !== 1) return;
-      sx = e.touches[0].clientX - ox;
-      sy = e.touches[0].clientY - oy;
-      dragging = true;
-    }, { passive: true });
-    pan.addEventListener('touchmove', e => {
-      if (!dragging || e.touches.length !== 1) return;
-      ox = e.touches[0].clientX - sx;
-      oy = e.touches[0].clientY - sy;
-      applyTranslate();
-      e.preventDefault();
-    }, { passive: false });
-    pan.addEventListener('touchend', () => { dragging = false; });
+    window.addEventListener('mousemove', e => { if (!dragging) return; ox = e.clientX - sx; oy = e.clientY - sy; applyT(); });
+    window.addEventListener('mouseup',   () => { dragging = false; pan.classList.remove('panning'); });
+    pan.addEventListener('touchstart', e => { if (e.touches.length !== 1) return; sx = e.touches[0].clientX - ox; sy = e.touches[0].clientY - oy; dragging = true; }, { passive: true });
+    pan.addEventListener('touchmove',  e => { if (!dragging || e.touches.length !== 1) return; ox = e.touches[0].clientX - sx; oy = e.touches[0].clientY - sy; applyT(); e.preventDefault(); }, { passive: false });
+    pan.addEventListener('touchend',   () => { dragging = false; });
   }
 
-  // Builds and appends one .lrt-node into parentEl.
-  //   .lrt-node
-  //     .lrt-card[.is-root]
-  //       .lrt-hdr   ← toggle · badge · label · dur   (click → collapse)
-  //       .lrt-io?   ← IN / OUT rows (hidden when collapsed)
-  //     .lrt-arm     ← 28px horizontal line to spine   (hidden when collapsed)
-  //     .lrt-col     ← vertical stack of .lrt-branch   (hidden when collapsed)
-  //       .lrt-branch × N
-  //         [recursive .lrt-node]
-  function buildCGNode(node, parentEl, isRoot) {
-    const meta      = node.metadata || {};
-    const c         = svcColor(node.module);
-    const hasKids   = node.children && node.children.length > 0;
-    const hasInput  = meta.input  !== undefined;
-    const hasOutput = meta.output !== undefined;
-    const hasIO     = hasInput || hasOutput;
-    const canToggle = hasIO;   // toggle reveals I/O details; children always visible
-
-    // ── Outer node wrapper ───────────────────────────────────────
-    const nodeEl = document.createElement('div');
-    nodeEl.className = 'lrt-node';
-
-    // ── Card ─────────────────────────────────────────────────────
-    const card = document.createElement('div');
-    card.className = 'lrt-card' + (isRoot ? ' is-root' : '');
-
-    // Header
-    const hdr = document.createElement('div');
-    hdr.className = 'lrt-hdr';
-
-    const tog = document.createElement('span');
-    tog.className = 'lrt-tog' + (canToggle ? '' : ' leaf');
-    tog.textContent = canToggle ? '▶' : '·';  /* ▶ = details collapsed by default */
-    hdr.appendChild(tog);
-
-    const badge = document.createElement('span');
-    badge.className = 'svc-badge';
-    badge.style.cssText = `background:${c.badge};color:${c.text}`;
-    // Use short abbreviation so the badge doesn't eat the label space
-    badge.textContent = _MOD_SHORT[node.module] || node.module;
-    badge.title = node.module;   // full name on hover
-    hdr.appendChild(badge);
-
-    const lbl = document.createElement('span');
-    lbl.className = 'lrt-label';
-    // Strip "module." prefix — badge already shows the module
-    const dotIdx = node.label.indexOf('.');
-    const displayLabel = dotIdx !== -1 ? node.label.slice(dotIdx + 1) : node.label;
-    lbl.textContent = displayLabel;
-    lbl.title = node.label;   // full original on hover
-    hdr.appendChild(lbl);
-
-    const dur = document.createElement('span');
-    dur.className = 'lrt-dur';
-    dur.textContent = fmtMs(node.duration_ms);
-    hdr.appendChild(dur);
-
-    // GitHub source link — opens the file at the function definition
-    const ghHref = _ghUrl(node.module, displayLabel);
-    if (ghHref) {
-      const gh = document.createElement('a');
-      gh.className = 'lrt-gh';
-      gh.href = ghHref;
-      gh.target = '_blank';
-      gh.rel = 'noopener';
-      gh.title = 'Open in GitHub';
-      gh.textContent = '↗';
-      gh.addEventListener('click', e => e.stopPropagation()); // don't trigger toggle
-      hdr.appendChild(gh);
-    }
-
-    if (canToggle) hdr.addEventListener('click', () => cgtToggle(nodeEl, tog));
-    card.appendChild(hdr);
-
-    // I/O rows
-    if (hasIO) {
-      const io = document.createElement('div');
-      io.className = 'lrt-io';
-
-      if (hasInput) {
-        const r = document.createElement('div'); r.className = 'lrt-io-row';
-        const d = document.createElement('span'); d.className = 'lrt-io-dir in'; d.textContent = '▶ IN';
-        const v = document.createElement('span'); v.className = 'lrt-io-val';
-        v.textContent = String(meta.input).slice(0, 400);
-        r.appendChild(d); r.appendChild(v); io.appendChild(r);
-      }
-      if (hasOutput) {
-        const r = document.createElement('div'); r.className = 'lrt-io-row';
-        const d = document.createElement('span'); d.className = 'lrt-io-dir out'; d.textContent = '◀ OUT';
-        const v = document.createElement('span'); v.className = 'lrt-io-val';
-        v.textContent = String(meta.output).slice(0, 400);
-        r.appendChild(d); r.appendChild(v); io.appendChild(r);
-      }
-
-      card.appendChild(io);
-    }
-
-    nodeEl.appendChild(card);
-
-    // ── Children subtree (arm + column) ─────────────────────────
-    if (hasKids) {
-      // Short horizontal connector from parent card to the vertical spine
-      const arm = document.createElement('div');
-      arm.className = 'lrt-arm';
-      nodeEl.appendChild(arm);
-
-      // Column of branches — one per child
-      const col = document.createElement('div');
-      col.className = 'lrt-col';
-      node.children.forEach(child => {
-        const branch = document.createElement('div');
-        branch.className = 'lrt-branch';
-        buildCGNode(child, branch, false);
-        col.appendChild(branch);
-      });
-      nodeEl.appendChild(col);
-    }
-
-    parentEl.appendChild(nodeEl);
+  function _svgLine(svg, x1, y1, x2, y2) {
+    const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    l.setAttribute('x1', x1); l.setAttribute('y1', y1);
+    l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+    l.setAttribute('stroke', '#303030'); l.setAttribute('stroke-width', '1');
+    svg.appendChild(l);
   }
 
-  // Toggle I/O details on a node — children subtree is always visible
-  function cgtToggle(nodeEl, togEl) {
-    const isOpen = nodeEl.classList.contains('lrt-io-open');
-    if (isOpen) {
-      nodeEl.classList.remove('lrt-io-open');
-      togEl.textContent = '▶';
-    } else {
-      nodeEl.classList.add('lrt-io-open');
-      togEl.textContent = '▼';
-    }
-  }
+  // buildCGNode and cgtToggle replaced by inline logic in renderCallGraph above
 
   // ─────────────────────────────────────────────────────────────────────────
   // Load recent traces + render accordion list
