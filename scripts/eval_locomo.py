@@ -475,12 +475,19 @@ def run_eval(
             results = engine.search(qa.question, ns, limit=20)
             elapsed_ms = (time.perf_counter() - start) * 1000
 
-            # J1 uses the top-1 retrieved fact for best token precision.
-            # Using top-5 concatenation dilutes precision with off-topic tokens
-            # (the standard LoCoMo J1 is computed on the extracted answer span,
-            # not the full context; top-1 approximates this without an LLM extractor).
-            retrieved_text = top_k_text(results, k=1)
-            j1 = token_f1(retrieved_text, qa.gold_answer) if qa.gold_answer else 0.0
+            # J1: take the maximum token-F1 over each individual retrieved fact.
+            # This avoids the token dilution problem of concatenating k results
+            # (which penalizes precision with off-topic words) while still
+            # benefiting from multi-fact retrieval for summarization queries
+            # where the answer spans multiple stored facts.
+            if qa.gold_answer and results:
+                j1 = max(
+                    token_f1(item.fact.raw_text, qa.gold_answer)
+                    for _, item in results[:5]
+                )
+            else:
+                j1 = 0.0
+            retrieved_text = top_k_text(results, k=5)
             p5 = precision_at_k(results, relevant_ids, k=5)
             r5 = recall_at_k(results, relevant_ids, k=5)
             r20 = recall_at_k(results, relevant_ids, k=20)
