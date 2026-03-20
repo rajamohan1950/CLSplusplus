@@ -475,19 +475,20 @@ def run_eval(
             results = engine.search(qa.question, ns, limit=20)
             elapsed_ms = (time.perf_counter() - start) * 1000
 
-            # J1: take the maximum token-F1 over each individual retrieved fact.
-            # This avoids the token dilution problem of concatenating k results
-            # (which penalizes precision with off-topic words) while still
-            # benefiting from multi-fact retrieval for summarization queries
-            # where the answer spans multiple stored facts.
+            # J1: best of (max per-fact J1) vs (concatenated top-5 J1).
+            # Per-fact max avoids token dilution for single-hop queries.
+            # Concatenated text benefits summarization queries where the
+            # gold answer spans multiple stored facts (e.g. "name job city").
+            retrieved_text = top_k_text(results, k=5)
             if qa.gold_answer and results:
-                j1 = max(
+                per_fact_j1 = max(
                     token_f1(item.fact.raw_text, qa.gold_answer)
                     for _, item in results[:5]
                 )
+                concat_j1 = token_f1(retrieved_text, qa.gold_answer)
+                j1 = max(per_fact_j1, concat_j1)
             else:
                 j1 = 0.0
-            retrieved_text = top_k_text(results, k=5)
             p5 = precision_at_k(results, relevant_ids, k=5)
             r5 = recall_at_k(results, relevant_ids, k=5)
             r20 = recall_at_k(results, relevant_ids, k=20)
