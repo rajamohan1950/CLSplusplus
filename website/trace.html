@@ -1045,8 +1045,11 @@
 
     const lbl = document.createElement('span');
     lbl.className = 'lrt-label';
-    lbl.textContent = node.label;
-    lbl.title = node.label;
+    // Strip "module." prefix from label — badge already shows the module
+    const dotIdx = node.label.indexOf('.');
+    const displayLabel = dotIdx !== -1 ? node.label.slice(dotIdx + 1) : node.label;
+    lbl.textContent = displayLabel;
+    lbl.title = node.label;  // full name on hover
     hdr.appendChild(lbl);
 
     const dur = document.createElement('span');
