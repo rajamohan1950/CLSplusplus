@@ -402,8 +402,8 @@
     /* ── Card ──────────────────────────────────────────────── */
     .lrt-card {
       border: 1px solid #1d1d1d; border-radius: 6px;
-      background: #0d0d0d; padding: 5px 9px;
-      min-width: 128px; max-width: 190px;
+      background: #0d0d0d; padding: 6px 10px;
+      min-width: 180px; max-width: 260px;
       cursor: pointer; user-select: none; flex-shrink: 0;
       transition: background .12s, border-color .12s;
     }
@@ -411,24 +411,42 @@
     .lrt-card.is-root {
       background: rgba(99,102,241,.08);
       border-color: rgba(99,102,241,.28);
-      min-width: 160px;
+      min-width: 200px;
     }
     .lrt-card.is-root:hover { background: rgba(99,102,241,.14); }
 
     /* Card header */
-    .lrt-hdr { display: flex; align-items: center; gap: 5px; min-width: 0; }
+    .lrt-hdr { display: flex; align-items: baseline; gap: 5px; min-width: 0; flex-wrap: wrap; }
     .lrt-tog {
       font-size: 0.50rem; flex-shrink: 0; width: 10px; text-align: center;
-      color: #6366f1; line-height: 1;
+      color: #6366f1; line-height: 1; align-self: center;
     }
     .lrt-tog.leaf { color: #252525; cursor: default; }
+
+    /* Badge — abbreviated, fixed narrow width */
+    .svc-badge {
+      font-size: 0.60rem !important; padding: 1px 5px !important;
+      flex-shrink: 0; white-space: nowrap;
+    }
+
+    /* Label — full text, wraps freely */
     .lrt-label {
-      font-size: 0.70rem; color: #c7c7e8;
-      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+      font-size: 0.75rem; color: #d4d4f0; font-weight: 500;
+      flex: 1; min-width: 0;
+      white-space: normal; word-break: break-word; line-height: 1.3;
     }
     .lrt-dur {
-      font-size: 0.59rem; color: #384158; flex-shrink: 0; white-space: nowrap; margin-left: 3px;
+      font-size: 0.60rem; color: #3d4f6a; flex-shrink: 0;
+      white-space: nowrap; align-self: center;
     }
+
+    /* GitHub source link icon */
+    .lrt-gh {
+      font-size: 0.62rem; color: #2e3d55; flex-shrink: 0;
+      text-decoration: none; align-self: center; line-height: 1;
+      transition: color .15s;
+    }
+    .lrt-gh:hover { color: #6366f1; }
 
     /* I/O rows inside the card — hidden by default, revealed on expand */
     .lrt-io {
@@ -926,6 +944,40 @@
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  // Module → abbreviated badge label
+  const _MOD_SHORT = {
+    'phase_engine':       'phase',
+    'memory_service':     'memory',
+    'embedding_service':  'embed',
+    'webhook_dispatcher': 'webhook',
+    'stores.l1':          'l1',
+    'stores.l2':          'l2',
+    'stores.l3':          'l3',
+  };
+
+  // Module → GitHub source file path (relative to repo root)
+  const _GH_BASE = 'https://github.com/rajamohan1950/CLSplusplus/blob/main/';
+  const _MOD_FILE = {
+    'api':                'src/clsplusplus/api.py',
+    'http':               'src/clsplusplus/middleware.py',
+    'memory_service':     'src/clsplusplus/memory_service.py',
+    'phase_engine':       'src/clsplusplus/memory_phase.py',
+    'embedding_service':  'src/clsplusplus/embeddings.py',
+    'stores.l1':          'src/clsplusplus/stores/l1_indexing_store.py',
+    'stores.l2':          'src/clsplusplus/stores/l2_schema_graph.py',
+    'stores.l3':          'src/clsplusplus/stores/l3_postgres.py',
+    'webhook_dispatcher': 'src/clsplusplus/webhook_dispatcher.py',
+    'postgres':           'src/clsplusplus/stores/l3_postgres.py',
+  };
+
+  function _ghUrl(module, fnName) {
+    const file = _MOD_FILE[module];
+    if (!file) return null;
+    // Link to file; #:~:text= scrolls browser to the function definition
+    return `${_GH_BASE}${file}#:~:text=${encodeURIComponent('def ' + fnName)}`;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Call Graph — left-to-right visual tree
   //
   //  [root card] ── arm ──┬── elbow ── [child card] ── arm ──┬── [grandchild]
@@ -1040,22 +1092,38 @@
     const badge = document.createElement('span');
     badge.className = 'svc-badge';
     badge.style.cssText = `background:${c.badge};color:${c.text}`;
-    badge.textContent = node.module;
+    // Use short abbreviation so the badge doesn't eat the label space
+    badge.textContent = _MOD_SHORT[node.module] || node.module;
+    badge.title = node.module;   // full name on hover
     hdr.appendChild(badge);
 
     const lbl = document.createElement('span');
     lbl.className = 'lrt-label';
-    // Strip "module." prefix from label — badge already shows the module
+    // Strip "module." prefix — badge already shows the module
     const dotIdx = node.label.indexOf('.');
     const displayLabel = dotIdx !== -1 ? node.label.slice(dotIdx + 1) : node.label;
     lbl.textContent = displayLabel;
-    lbl.title = node.label;  // full name on hover
+    lbl.title = node.label;   // full original on hover
     hdr.appendChild(lbl);
 
     const dur = document.createElement('span');
     dur.className = 'lrt-dur';
     dur.textContent = fmtMs(node.duration_ms);
     hdr.appendChild(dur);
+
+    // GitHub source link — opens the file at the function definition
+    const ghHref = _ghUrl(node.module, displayLabel);
+    if (ghHref) {
+      const gh = document.createElement('a');
+      gh.className = 'lrt-gh';
+      gh.href = ghHref;
+      gh.target = '_blank';
+      gh.rel = 'noopener';
+      gh.title = 'Open in GitHub';
+      gh.textContent = '↗';
+      gh.addEventListener('click', e => e.stopPropagation()); // don't trigger toggle
+      hdr.appendChild(gh);
+    }
 
     if (canToggle) hdr.addEventListener('click', () => cgtToggle(nodeEl, tog));
     card.appendChild(hdr);
