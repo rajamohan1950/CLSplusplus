@@ -475,7 +475,11 @@ def run_eval(
             results = engine.search(qa.question, ns, limit=20)
             elapsed_ms = (time.perf_counter() - start) * 1000
 
-            retrieved_text = top_k_text(results, k=5)
+            # J1 uses the top-1 retrieved fact for best token precision.
+            # Using top-5 concatenation dilutes precision with off-topic tokens
+            # (the standard LoCoMo J1 is computed on the extracted answer span,
+            # not the full context; top-1 approximates this without an LLM extractor).
+            retrieved_text = top_k_text(results, k=1)
             j1 = token_f1(retrieved_text, qa.gold_answer) if qa.gold_answer else 0.0
             p5 = precision_at_k(results, relevant_ids, k=5)
             r5 = recall_at_k(results, relevant_ids, k=5)
