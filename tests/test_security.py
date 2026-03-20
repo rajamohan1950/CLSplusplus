@@ -88,7 +88,8 @@ class TestXSSPrevention:
 
     @pytest.mark.asyncio
     async def test_api_returns_json_content_type(self, client):
-        resp = await client.get("/")
+        # Root path now serves the landing page (HTML). Use the health API instead.
+        resp = await client.get("/v1/health")
         assert "application/json" in resp.headers.get("content-type", "")
 
     @pytest.mark.asyncio

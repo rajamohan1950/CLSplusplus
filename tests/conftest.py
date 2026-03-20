@@ -266,7 +266,7 @@ class MockPgStore:
         self.level = level
         self.items: dict[str, dict[str, MemoryItem]] = {}
 
-    async def write(self, item: MemoryItem) -> MemoryItem:
+    async def write(self, item: MemoryItem, **kwargs) -> MemoryItem:
         item.store_level = self.level
         ns = item.namespace
         if ns not in self.items:
@@ -370,16 +370,22 @@ def mock_embedding_service():
 @pytest.fixture
 def mock_memory_service(mock_l0, mock_l1, mock_l2, mock_l3, mock_embedding_service):
     from clsplusplus.memory_service import MemoryService
+    from clsplusplus.memory_phase import PhaseMemoryEngine
     svc = MemoryService.__new__(MemoryService)
     svc.settings = Settings()
     svc.embedding_service = mock_embedding_service
-    svc.plasticity = __import__("clsplusplus.plasticity", fromlist=["PlasticityEngine"]).PlasticityEngine()
     svc.reconsolidation = __import__("clsplusplus.reconsolidation", fromlist=["ReconsolidationGate"]).ReconsolidationGate()
-    svc.l0 = mock_l0
+    # Current architecture: PhaseMemoryEngine is the brain; L1 is persistence
+    svc.engine = PhaseMemoryEngine()
     svc.l1 = mock_l1
     svc.l2 = mock_l2
-    svc.l3 = mock_l3
     svc._webhook_dispatcher = None
+    # Internal state required by MemoryService methods
+    svc._loaded_namespaces = set()
+    svc._loading_namespaces = set()
+    svc._write_counts = {}
+    svc._event_threads = {}
+    svc._event_threads_lock = __import__("asyncio").Lock()
     return svc
 
 

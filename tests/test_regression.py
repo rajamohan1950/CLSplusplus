@@ -279,11 +279,11 @@ class TestHealthRegression:
 
     @pytest.mark.asyncio
     async def test_health_returns_all_stores(self, mock_memory_service):
+        # Current architecture: engine (PhaseMemoryEngine) + L1 + L2 (no L0/L3)
         health = await mock_memory_service.health()
-        assert "L0" in health["stores"]
+        assert "engine" in health["stores"]
         assert "L1" in health["stores"]
         assert "L2" in health["stores"]
-        assert "L3" in health["stores"]
 
     @pytest.mark.asyncio
     async def test_health_status_field(self, mock_memory_service):
@@ -299,7 +299,10 @@ class TestAPIRegression:
 
     @pytest.mark.asyncio
     async def test_root_returns_version(self, client):
-        resp = await client.get("/")
+        # Root path now returns the CLS++ landing page (HTML).
+        # Use /v1/health for version checks.
+        resp = await client.get("/v1/health")
+        assert resp.status_code == 200
         assert "version" in resp.json()
 
     @pytest.mark.asyncio
