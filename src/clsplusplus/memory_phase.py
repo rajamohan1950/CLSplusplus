@@ -539,6 +539,10 @@ class PhaseMemoryEngine:
         self.TAU_DEFAULT: float = tau_default
         self.TAU_OVERRIDE: float = tau_override
         self.STRENGTH_FLOOR: float = strength_floor
+        # INTENTIONAL DESIGN: in-memory cap is 1,000 hot items per namespace.
+        # The thermodynamic pressure model (density ρ = active/capacity) is
+        # calibrated for this ceiling. Items beyond 1,000 are served via L1
+        # kNN vector search (PostgreSQL + IVFFlat) — do NOT raise this limit.
         self.CAPACITY: int = capacity
         self.BETA_RETRIEVAL: float = beta_retrieval
 
