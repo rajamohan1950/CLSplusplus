@@ -977,9 +977,10 @@
   //   • Connectors are L-shaped SVG paths: parent right-edge →
   //     bend-point (halfway between columns) → child left-edge.
   // ─────────────────────────────────────────────────────────────────────────
-  const _CG_ROW_H  = 30;   // px — fixed row height per node
-  const _CG_CARD_W = 210;  // px — fixed card width
-  const _CG_ARM_W  = 40;   // px — gap between columns (arm + elbow space)
+  const _CG_ROW_H    = 30;   // px — fixed row height per node
+  const _CG_CARD_W   = 210;  // px — fixed card width
+  const _CG_ARM_W    = 40;   // px — gap between columns (arm + elbow space)
+  const _CG_GRP_GAP  = 8;    // px — extra space between children of different parents
 
   function renderCallGraph(trace, containerEl) {
     const root = trace.tree;
@@ -987,20 +988,32 @@
 
     // ── Step 1: collect nodes per depth level (DFS order) ────
     // cols[d] = all nodes at depth d, in DFS traversal order.
-    // Every node at depth d gets row index = its position in cols[d].
-    // → all nodes at any depth are packed together with zero gaps.
+    // Within each column, nodes are packed tightly. A small gap (_CG_GRP_GAP)
+    // is inserted before the first child of a new parent so groups are visible.
     const cols = [];
-    (function collect(node, d) {
+    (function collect(node, d, parent) {
       if (!cols[d]) cols[d] = [];
-      node._depth = d;
-      node._row   = cols[d].length;
-      node._cy    = (node._row + 0.5) * _CG_ROW_H;   // centre Y in px
+      node._depth  = d;
+      node._parent = parent || null;
       cols[d].push(node);
-      (node.children || []).forEach(c => collect(c, d + 1));
-    })(root, 0);
+      (node.children || []).forEach(c => collect(c, d + 1, node));
+    })(root, 0, null);
+
+    // Assign _cy with inter-group gaps
+    cols.forEach(nodes => {
+      let offset = 0;
+      nodes.forEach((node, i) => {
+        if (i > 0 && nodes[i - 1]._parent !== node._parent) offset += _CG_GRP_GAP;
+        node._cy = (i + 0.5) * _CG_ROW_H + offset;
+      });
+    });
 
     const maxDepth = cols.length - 1;
-    const totalH   = Math.max(...cols.map(c => c.length)) * _CG_ROW_H;
+    const totalH   = Math.max(...cols.map(nodes => {
+      if (!nodes.length) return 0;
+      const last = nodes[nodes.length - 1];
+      return last._cy + _CG_ROW_H / 2;
+    }));
     const totalW   = (maxDepth + 1) * (_CG_CARD_W + _CG_ARM_W) + 4;
 
     // ── Step 2: canvas + SVG overlay ─────────────────────────
