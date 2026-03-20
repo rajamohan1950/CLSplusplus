@@ -811,6 +811,120 @@ class MemoryService:
         return await self.write(req)
 
     # =========================================================================
+    # Multi-hop read (Issue #36)
+    # =========================================================================
+
+    async def read_multihop(
+        self,
+        req: ReadRequest,
+        trace_id: Optional[str] = None,
+    ) -> ReadResponse:
+        """Issue #36: 2-pass multi-hop retrieval for chained-entity questions.
+
+        Pass 1: Standard retrieval for req.query.
+        Pass 2: Extract key entities from top pass-1 results, re-search with
+                augmented query (original question + extracted entities).
+
+        This chains through entity references that the original question doesn't
+        mention explicitly — e.g. "What does Bob the doctor's employer do?" first
+        retrieves Bob's employer (Stanford Medical), then uses that to retrieve
+        facts about Stanford Medical.
+
+        Returns deduplicated combined results, pass-1 first.
+        """
+        trace_id = tracer.ensure_trace(trace_id or tracer.new_trace("read_multihop"), "read_multihop")
+
+        with tracer.span(trace_id, "memory_service.read_multihop", "memory_service",
+                         input=req.query[:200], namespace=req.namespace) as ms_hop:
+
+            # Ensure namespace loaded
+            await self.ensure_loaded(req.namespace)
+
+            # Pass 1: standard retrieval
+            with tracer.span(trace_id, "engine.search.pass1", "phase_engine",
+                             input=req.query[:200], namespace=req.namespace):
+                results1 = self.engine.search(req.query, req.namespace, limit=req.limit * 2)
+
+            # Extract key entities from top-3 pass-1 results
+            top_texts = [item.fact.raw_text for _, item in results1[:3] if item.fact.raw_text]
+            entities = self._extract_multihop_entities(" ".join(top_texts))
+
+            pass2_count = 0
+            if entities:
+                # Pass 2: augmented query with extracted entities
+                augmented = f"{req.query} {entities}"
+                with tracer.span(trace_id, "engine.search.pass2", "phase_engine",
+                                 input=augmented[:200], namespace=req.namespace):
+                    results2 = self.engine.search(augmented, req.namespace, limit=req.limit * 2)
+
+                # Merge: pass-1 first, then unique pass-2 results
+                seen_ids = {item.id for _, item in results1}
+                combined = list(results1)
+                for score, item in results2:
+                    if item.id not in seen_ids:
+                        combined.append((score * 0.9, item))
+                        seen_ids.add(item.id)
+                        pass2_count += 1
+                combined.sort(key=lambda x: x[0], reverse=True)
+                results_final = combined[: req.limit]
+            else:
+                results_final = results1[: req.limit]
+
+            tracer.add_metadata(trace_id, ms_hop,
+                                output=f"pass1={len(results1)} pass2_added={pass2_count} total={len(results_final)}",
+                                entities=entities[:100] if entities else "")
+
+            # Semantic re-rank
+            if len(results_final) > 1:
+                try:
+                    query_emb = self.embedding_service.embed(req.query)
+                    results_final = self._semantic_rerank(results_final, query_emb, alpha=0.4)
+                except Exception:
+                    pass
+
+            # Convert to MemoryItems
+            items = []
+            for _score, phase_item in results_final:
+                mem_item = self._phase_to_item(phase_item)
+                if mem_item.confidence >= req.min_confidence:
+                    items.append(mem_item)
+
+        return ReadResponse(
+            items=items,
+            query=req.query,
+            namespace=req.namespace,
+            trace_id=trace_id,
+        )
+
+    # Common stopwords for entity extraction
+    _MH_STOPWORDS = frozenset({
+        "i", "me", "my", "we", "our", "you", "your", "he", "she", "it",
+        "they", "them", "a", "an", "the", "is", "was", "are", "were",
+        "be", "been", "have", "has", "had", "do", "did", "will", "would",
+        "could", "should", "may", "might", "to", "of", "in", "on", "at",
+        "by", "for", "with", "and", "or", "but", "so", "yet", "if",
+        "this", "that", "these", "those", "there", "here", "what", "when",
+        "where", "who", "how", "why", "which", "go", "went", "get", "got",
+        "s", "t", "re", "ll", "ve", "d", "work", "works", "live", "lives",
+        "name", "called", "known",
+    })
+
+    def _extract_multihop_entities(self, text: str) -> str:
+        """Extract key entities from retrieved text for multi-hop pass-2.
+
+        Extracts proper nouns (capitalized mid-sentence tokens) and meaningful
+        nouns/verbs (≥4 chars, non-stopword), then returns up to 8 space-joined.
+        """
+        # Proper nouns: capitalized words not at start of sentence
+        proper = _re.findall(r'(?<=[.!?]\s)[A-Z][a-z]{2,}|(?<= )[A-Z][a-z]{2,}', text)
+        # Meaningful tokens (≥4 chars, non-stopword)
+        tokens = _re.findall(r'\b[a-zA-Z]{4,}\b', text.lower())
+        meaningful = [t for t in tokens if t not in self._MH_STOPWORDS]
+        # Combine, deduplicate, limit
+        entities = list(dict.fromkeys([p.lower() for p in proper] + meaningful))[:8]
+        return " ".join(entities)
+
+    # =========================================================================
     # Health
     # =========================================================================
 
