@@ -373,109 +373,87 @@
       padding: 28px 24px 36px; min-width: 0;
     }
 
-    /* Root column — card + connector + children row */
-    .cgt-root {
-      display: flex; flex-direction: column; align-items: center;
+    /* ── Indented tree call graph ───────────────────────────── */
+
+    /* Outer scroll wrapper */
+    .cgt-tree {
+      padding: 12px 16px; overflow: auto;
+      font-family: 'JetBrains Mono', monospace;
     }
 
-    /* Vertical line going DOWN from any node to its children */
-    .cgt-v-down {
-      width: 1px; height: 22px; background: #252525; flex-shrink: 0;
-    }
+    /* One item = row + optional I/O + optional children */
+    .cgt-item { position: relative; }
 
-    /* Horizontal row of children at one level */
-    .cgt-kids {
-      display: flex; flex-direction: row;
-      justify-content: center; align-items: flex-start;
+    /* ── Row (always visible) ──────────────────────────────── */
+    .cgt-row {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 8px; border-radius: 6px;
+      cursor: pointer; user-select: none;
+      transition: background .12s;
+      border: 1px solid transparent;
     }
+    .cgt-row:hover { background: #111; border-color: #222; }
 
-    /* One branch — contains vertical stem (via ::before/::after) + card + optional subtree */
-    .cgt-branch {
-      display: flex; flex-direction: column; align-items: center;
-      position: relative;
-      padding: 22px 10px 0;   /* top padding = stem height */
-      min-width: 0;
+    /* Root row — indigo tint */
+    .cgt-tree > .cgt-item > .cgt-row {
+      background: rgba(99,102,241,.07);
+      border-color: rgba(99,102,241,.22);
     }
+    .cgt-tree > .cgt-item > .cgt-row:hover { background: rgba(99,102,241,.13); }
 
-    /* Horizontal bar segment contributed by each branch */
-    .cgt-branch::before {
-      content: ''; position: absolute; top: 0;
-      height: 1px; background: #252525;
-      left: 0; right: 0;
-    }
-    .cgt-branch:first-child:not(:only-child)::before { left: 50%; }
-    .cgt-branch:last-child:not(:only-child)::before  { right: 50%; }
-    .cgt-branch:only-child::before { display: none; }
-
-    /* Vertical stem from horizontal bar down to the card */
-    .cgt-branch::after {
-      content: ''; position: absolute;
-      top: 0; left: 50%; transform: translateX(-50%);
-      width: 1px; height: 22px; background: #252525;
-    }
-
-    /* ── Node card ─────────────────────────────────────────── */
-    .cgt-card {
-      border: 1px solid #1e1e1e; border-radius: 8px;
-      background: #0d0d0d; padding: 8px 12px;
-      min-width: 160px; max-width: 230px;
-      cursor: pointer; user-select: none; flex-shrink: 0;
-      transition: border-color .1s, background .1s;
-    }
-    .cgt-card:hover { background: #131313; border-color: #2d2d2d; }
-
-    /* Root card — indigo tint */
-    .cgt-root > .cgt-card {
-      background: rgba(99,102,241,.07); border-color: rgba(99,102,241,.22);
-      min-width: 240px;
-    }
-    .cgt-root > .cgt-card:hover { background: rgba(99,102,241,.12); }
-
-    /* Card header: toggle + badge + label + duration */
-    .cgt-hdr {
-      display: flex; align-items: center; gap: 6px; min-width: 0;
-    }
+    /* Toggle arrow */
     .cgt-tog {
-      font-size: 0.55rem; flex-shrink: 0; width: 10px;
-      color: #6366f1; line-height: 1;
+      font-size: 0.52rem; flex-shrink: 0; width: 12px; text-align: center;
+      color: #6366f1; line-height: 1; transition: color .1s;
     }
-    .cgt-tog.leaf { color: #282828; cursor: default; }
+    .cgt-tog.leaf { color: #2a2a2a; cursor: default; }
+
+    /* Label */
     .cgt-label {
-      font-family: 'JetBrains Mono', monospace; font-size: 0.7rem;
-      color: #c7c7e8; flex: 1; overflow: hidden;
+      font-size: 0.73rem; color: #c7c7e8;
+      flex: 1; overflow: hidden;
       text-overflow: ellipsis; white-space: nowrap; min-width: 0;
     }
+
+    /* Duration */
     .cgt-dur {
-      font-family: 'JetBrains Mono', monospace; font-size: 0.61rem;
-      color: #3a4560; flex-shrink: 0; white-space: nowrap;
+      font-size: 0.62rem; color: #3a4560; flex-shrink: 0; white-space: nowrap;
     }
 
-    /* I/O rows inside card */
+    /* ── I/O section — indented under the row ─────────────── */
     .cgt-io {
-      margin-top: 6px; padding-top: 5px;
-      border-top: 1px solid #161616;
-      display: flex; flex-direction: column; gap: 2px;
+      margin: 2px 0 3px 28px;
+      padding: 4px 8px;
+      border-left: 2px solid #191919;
+      display: flex; flex-direction: column; gap: 3px;
     }
     .cgt-io-row {
-      display: flex; gap: 5px; align-items: flex-start; min-width: 0;
+      display: flex; gap: 6px; align-items: baseline; min-width: 0;
     }
     .cgt-io-dir {
-      font-family: 'JetBrains Mono', monospace; font-size: 0.57rem;
-      font-weight: 700; flex-shrink: 0; min-width: 34px; padding-top: 1px;
+      font-size: 0.57rem; font-weight: 700;
+      flex-shrink: 0; min-width: 38px; padding-top: 1px;
     }
     .cgt-io-dir.in  { color: #60a5fa; }
     .cgt-io-dir.out { color: #4ade80; }
     .cgt-io-val {
-      font-family: 'JetBrains Mono', monospace; font-size: 0.66rem;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      flex: 1; min-width: 0;
+      font-size: 0.68rem; flex: 1; min-width: 0;
+      white-space: pre-wrap; word-break: break-all;
+      max-height: 72px; overflow: hidden;
     }
     .cgt-io-val.in  { color: #5a8ec4; }
     .cgt-io-val.out { color: #58a870; }
 
-    /* Collapsed — hide everything below the card */
-    .cgt-collapsed > .cgt-v-down,
-    .cgt-collapsed > .cgt-kids { display: none; }
+    /* ── Children — indented with left guide line ─────────── */
+    .cgt-kids {
+      margin-left: 18px;
+      padding-left: 10px;
+      border-left: 1px solid #1c1c1c;
+    }
+
+    /* Collapse: hide I/O and children */
+    .cgt-item.cgt-collapsed > .cgt-io,
+    .cgt-item.cgt-collapsed > .cgt-kids { display: none; }
   </style>
 </head>
 <body>
@@ -927,7 +905,11 @@
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Call Graph — org-chart top-down tree
+  // Call Graph — compact indented tree (top→down, left-guide lines)
+  // Each node: [▼] [badge] label …… dur
+  //              ▶ IN  <input text>
+  //              ◀ OUT <output text>
+  //   └ child nodes indented 18px with left guide line
   // ─────────────────────────────────────────────────────────────────────────
   function renderCallGraph(trace, containerEl) {
     const root = trace.tree;
@@ -935,24 +917,14 @@
       containerEl.innerHTML = '<div class="empty-state">No span data</div>';
       return;
     }
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'padding:24px 32px;overflow-x:auto;';
-    const rootDiv = document.createElement('div');
-    rootDiv.className = 'cgt-root';
-    buildCGNode(root, rootDiv, true);
-    wrap.appendChild(rootDiv);
-    containerEl.appendChild(wrap);
+    const tree = document.createElement('div');
+    tree.className = 'cgt-tree';
+    buildCGNode(root, tree, true);
+    containerEl.appendChild(tree);
   }
 
-  // Build one node into wrapperEl (.cgt-root for root, .cgt-branch for others).
-  // Structure per node:
-  //   wrapperEl
-  //     .cgt-card          ← node box (header + optional I/O)
-  //       .cgt-hdr         ← toggle · badge · label · duration
-  //       .cgt-io?         ← IN / OUT rows
-  //     .cgt-v-down        ← vertical line down to kids (if any)
-  //     .cgt-kids          ← flex row of .cgt-branch children (if any)
-  function buildCGNode(node, wrapperEl, isRoot) {
+  // Appends one .cgt-item (row + I/O + children) into parentEl.
+  function buildCGNode(node, parentEl, isRoot) {
     const meta      = node.metadata || {};
     const c         = svcColor(node.module);
     const hasKids   = node.children && node.children.length > 0;
@@ -961,103 +933,80 @@
     const hasIO     = hasInput || hasOutput;
     const canToggle = hasKids || hasIO;
 
-    // ── Card ────────────────────────────────────────────────────
-    const card = document.createElement('div');
-    card.className = 'cgt-card';
+    const item = document.createElement('div');
+    item.className = 'cgt-item';
 
-    const hdr = document.createElement('div');
-    hdr.className = 'cgt-hdr';
-    if (canToggle) hdr.style.cursor = 'pointer';
+    // ── Row ──────────────────────────────────────────────────────
+    const row = document.createElement('div');
+    row.className = 'cgt-row';
 
     const tog = document.createElement('span');
     tog.className = 'cgt-tog' + (canToggle ? '' : ' leaf');
     tog.textContent = canToggle ? '▼' : '·';
-    hdr.appendChild(tog);
+    row.appendChild(tog);
 
     const badge = document.createElement('span');
     badge.className = 'svc-badge';
     badge.style.cssText = `background:${c.badge};color:${c.text}`;
     badge.textContent = node.module;
-    hdr.appendChild(badge);
+    row.appendChild(badge);
 
     const lbl = document.createElement('span');
     lbl.className = 'cgt-label';
     lbl.textContent = node.label;
     lbl.title = node.label;
-    hdr.appendChild(lbl);
+    row.appendChild(lbl);
 
     const dur = document.createElement('span');
     dur.className = 'cgt-dur';
     dur.textContent = fmtMs(node.duration_ms);
-    hdr.appendChild(dur);
+    row.appendChild(dur);
 
-    card.appendChild(hdr);
+    if (canToggle) row.addEventListener('click', () => cgtToggle(item, tog));
+    item.appendChild(row);
 
-    // ── I/O section ─────────────────────────────────────────────
+    // ── I/O block ────────────────────────────────────────────────
     if (hasIO) {
       const io = document.createElement('div');
       io.className = 'cgt-io';
 
       if (hasInput) {
-        const row = document.createElement('div');
-        row.className = 'cgt-io-row';
-        const dir = document.createElement('span');
-        dir.className = 'cgt-io-dir in';
-        dir.textContent = '▶ IN';
-        const val = document.createElement('span');
-        val.className = 'cgt-io-val in';
-        val.textContent = String(meta.input).slice(0, 300);
-        row.appendChild(dir);
-        row.appendChild(val);
-        io.appendChild(row);
+        const r = document.createElement('div'); r.className = 'cgt-io-row';
+        const d = document.createElement('span'); d.className = 'cgt-io-dir in'; d.textContent = '▶ IN';
+        const v = document.createElement('span'); v.className = 'cgt-io-val in';
+        v.textContent = String(meta.input).slice(0, 400);
+        r.appendChild(d); r.appendChild(v); io.appendChild(r);
       }
 
       if (hasOutput) {
-        const row = document.createElement('div');
-        row.className = 'cgt-io-row';
-        const dir = document.createElement('span');
-        dir.className = 'cgt-io-dir out';
-        dir.textContent = '◀ OUT';
-        const val = document.createElement('span');
-        val.className = 'cgt-io-val out';
-        val.textContent = String(meta.output).slice(0, 300);
-        row.appendChild(dir);
-        row.appendChild(val);
-        io.appendChild(row);
+        const r = document.createElement('div'); r.className = 'cgt-io-row';
+        const d = document.createElement('span'); d.className = 'cgt-io-dir out'; d.textContent = '◀ OUT';
+        const v = document.createElement('span'); v.className = 'cgt-io-val out';
+        v.textContent = String(meta.output).slice(0, 400);
+        r.appendChild(d); r.appendChild(v); io.appendChild(r);
       }
 
-      card.appendChild(io);
+      item.appendChild(io);
     }
-
-    if (canToggle) hdr.addEventListener('click', () => cgtToggle(wrapperEl, tog));
-
-    wrapperEl.appendChild(card);
 
     // ── Children ─────────────────────────────────────────────────
     if (hasKids) {
-      const vdown = document.createElement('div');
-      vdown.className = 'cgt-v-down';
-      wrapperEl.appendChild(vdown);
-
       const kids = document.createElement('div');
       kids.className = 'cgt-kids';
-      node.children.forEach(child => {
-        const branch = document.createElement('div');
-        branch.className = 'cgt-branch';
-        buildCGNode(child, branch, false);
-        kids.appendChild(branch);
-      });
-      wrapperEl.appendChild(kids);
+      node.children.forEach(child => buildCGNode(child, kids, false));
+      item.appendChild(kids);
     }
+
+    parentEl.appendChild(item);
   }
 
-  function cgtToggle(wrapperEl, togEl) {
-    const isOpen = !wrapperEl.classList.contains('cgt-collapsed');
+  function cgtToggle(itemEl, togEl) {
+    const isOpen = !itemEl.classList.contains('cgt-collapsed');
     if (isOpen) {
-      wrapperEl.classList.add('cgt-collapsed');
+      itemEl.classList.add('cgt-collapsed');
       togEl.textContent = '▶';
     } else {
-      wrapperEl.classList.remove('cgt-collapsed');
+      itemEl.classList.remove('cgt-collapsed');
       togEl.textContent = '▼';
     }
   }
