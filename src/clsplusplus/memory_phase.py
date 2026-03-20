@@ -143,19 +143,25 @@ def _strip_punctuation(token: str) -> str:
 
 def _normalize_token(token: str) -> str:
     """
-    Minimal token normalization: strip trailing 'ing' and 's'.
+    Minimal token normalization: strip possessives, trailing 'ing' and 's'.
 
-    NOT a stemmer. Two rules with minimum result length guard.
+    NOT a stemmer. Rules with minimum result length guard.
     The engine indexes BOTH raw and normalized forms, so imperfect
     normalization is acceptable — raw form provides exact match fallback.
 
     Result must be >= 4 chars after -ing stripping to prevent destructive
     normalization ("string" → "str" is BLOCKED, "visiting" → "visit" is OK).
 
+    Possessives: "alice's" → "alice", "dogs'" → "dog" (stripped then -s rule)
     'visiting' → 'visit', 'eats' → 'eat', 'bananas' → 'banana',
     'running' → 'runn', 'string' → 'string' (preserved — "str" too short)
     """
     t = token.lower()
+    # Possessive stripping: "alice's" → "alice", "dogs'" → "dogs" (then -s rule)
+    if t.endswith("'s") and len(t) > 3:
+        t = t[:-2]
+    elif t.endswith("'") and len(t) > 3:
+        t = t[:-1]
     if len(t) > 4 and t.endswith("ing"):
         candidate = t[:-3]
         if len(candidate) >= 4:
