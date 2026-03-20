@@ -987,10 +987,8 @@
     const root = trace.tree;
     if (!root) { containerEl.innerHTML = '<div class="empty-state">No span data</div>'; return; }
 
-    // ── Step 1: collect nodes per depth level (DFS order) ────
-    // cols[d] = all nodes at depth d, in DFS traversal order.
-    // Between every sibling pair: _CG_SIB_GAP.
-    // Between children of different parents: _CG_GRP_GAP (much larger).
+    // ── Step 1: collect nodes per depth level (DFS) — for X layout ──
+    // cols[d] lists every node at depth d (DFS order) for card placement.
     const cols = [];
     (function collect(node, d, parent) {
       if (!cols[d]) cols[d] = [];
@@ -1000,27 +998,45 @@
       (node.children || []).forEach(c => collect(c, d + 1, node));
     })(root, 0, null);
 
-    // Assign _cy: sibling gap between every consecutive pair,
-    // parent-group gap when the parent changes.
-    cols.forEach(nodes => {
-      let offset = 0;
-      nodes.forEach((node, i) => {
-        if (i > 0) {
-          offset += nodes[i - 1]._parent !== node._parent
-            ? _CG_GRP_GAP   // different parent → big separator
-            : _CG_SIB_GAP;  // same parent     → small breathing room
-        }
-        node._cy = (i + 0.5) * _CG_ROW_H + offset;
-      });
-    });
+    // ── Step 2a: LEAF-PASS — pack every leaf node in DFS order ───
+    // All leaf nodes (no children) get a tight Y position.
+    // Same immediate parent  → _CG_SIB_GAP between them.
+    // Different parent       → _CG_GRP_GAP  (visible group separator).
+    // This is the ground-truth Y for the whole tree.
+    let _lOff = 0, _lIdx = 0, _lPrev = null;
+    (function leafPass(node) {
+      const ch = node.children || [];
+      if (ch.length === 0) {
+        if (_lIdx > 0)
+          _lOff += (node._parent !== _lPrev) ? _CG_GRP_GAP : _CG_SIB_GAP;
+        node._cy  = (_lIdx + 0.5) * _CG_ROW_H + _lOff;
+        _lPrev = node._parent;
+        _lIdx++;
+      } else {
+        ch.forEach(c => leafPass(c));
+      }
+    })(root);
 
+    // ── Step 2b: INTERNAL-PASS — center each parent on its children ──
+    // Post-order: every internal node gets _cy = midpoint of its first
+    // and last child's _cy.  Exactly matches the hand-drawn diagram where
+    // P1 sits midway between C1 and C2, P2 sits midway between C3 and C5.
+    (function internalPass(node) {
+      const ch = node.children || [];
+      if (ch.length > 0) {
+        ch.forEach(c => internalPass(c));
+        node._cy = (ch[0]._cy + ch[ch.length - 1]._cy) / 2;
+      }
+    })(root);
+
+    // ── Canvas dimensions ─────────────────────────────────────────
     const maxDepth = cols.length - 1;
-    const totalH   = Math.max(...cols.map(nodes => {
-      if (!nodes.length) return 0;
-      const last = nodes[nodes.length - 1];
-      return last._cy + _CG_ROW_H / 2;
-    }));
-    const totalW   = (maxDepth + 1) * (_CG_CARD_W + _CG_ARM_W) + 4;
+    let   totalH   = 0;
+    (function maxY(node) {
+      totalH = Math.max(totalH, node._cy + _CG_ROW_H / 2);
+      (node.children || []).forEach(c => maxY(c));
+    })(root);
+    const totalW = (maxDepth + 1) * (_CG_CARD_W + _CG_ARM_W) + 4;
 
     // ── Step 2: canvas + SVG overlay ─────────────────────────
     const canvas = document.createElement('div');
