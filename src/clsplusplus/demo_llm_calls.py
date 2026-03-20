@@ -40,7 +40,10 @@ async def call_claude(settings: Settings, system: str, user: str) -> str:
         return await asyncio.to_thread(_sync)
     except Exception as e:
         logger.error("Claude call failed: %s", e)
-        return "Claude: An error occurred processing your request. Check server logs."
+        err = str(e).lower()
+        if "credit balance" in err or "billing" in err or "quota" in err:
+            return "Claude: API credits exhausted — add billing at console.anthropic.com."
+        return "Claude: API error — check server logs."
 
 
 async def call_openai(settings: Settings, system: str, user: str) -> str:
@@ -64,7 +67,10 @@ async def call_openai(settings: Settings, system: str, user: str) -> str:
         return await asyncio.to_thread(_sync)
     except Exception as e:
         logger.error("OpenAI call failed: %s", e)
-        return "OpenAI: An error occurred processing your request. Check server logs."
+        err = str(e).lower()
+        if "insufficient_quota" in err or "billing" in err or "credit" in err:
+            return "OpenAI: API quota exceeded — add billing at platform.openai.com."
+        return "OpenAI: API error — check server logs."
 
 
 async def call_gemini(settings: Settings, system: str, user: str) -> str:
@@ -88,4 +94,7 @@ async def call_gemini(settings: Settings, system: str, user: str) -> str:
         return await asyncio.to_thread(_sync)
     except Exception as e:
         logger.error("Gemini call failed: %s", e)
-        return "Gemini: An error occurred processing your request. Check server logs."
+        err = str(e).lower()
+        if "quota" in err or "billing" in err or "resource exhausted" in err:
+            return "Gemini: API quota exceeded — check billing at console.cloud.google.com."
+        return "Gemini: API error — check server logs."

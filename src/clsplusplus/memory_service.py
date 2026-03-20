@@ -57,6 +57,7 @@ class MemoryService:
         # ns → {event_key → sorted list[str]} — one date-list per recurring event type
         # Managed entirely outside the PhaseMemoryEngine to avoid crystallization interference.
         self._event_threads: dict[str, dict[str, list[str]]] = {}
+        self._event_threads_lock = asyncio.Lock()
 
     # =========================================================================
     # Conversion — PhaseMemoryItem ↔ MemoryItem
@@ -226,13 +227,13 @@ class MemoryService:
         best_overlap = 0
         for key, _ in self._event_threads.get(ns, {}).items():
             key_tokens = self._meaningful_tokens(key)
-            overlap = len(event_tokens & key_tokens)  # exact intersection (write-side)
+            overlap = self._fuzzy_token_overlap(event_tokens, key_tokens)
             if overlap > best_overlap:
                 best_overlap = overlap
                 best_key = key
         return best_key if best_overlap > 0 else None  # any shared meaningful token
 
-    def _update_event_thread(self, req: WriteRequest, original_text: str, event_date: str) -> None:
+    async def _update_event_thread(self, req: WriteRequest, original_text: str, event_date: str) -> None:
         """Maintain one ordered date-list per recurring episodic event type.
 
         Threads live entirely in self._event_threads (a plain dict) — never in
@@ -269,9 +270,15 @@ class MemoryService:
 
         # Step 2: No matching thread — search engine for prior occurrences of this event
         # to confirm it is genuinely recurring before creating a thread.
+        # Filter results to items that share at least one meaningful token with the
+        # event, to avoid harvesting dates from unrelated items that matched on
+        # incidental tokens like "went" or "the".
         results = self.engine.search(original_text, ns, limit=20)
         episode_dates: list[str] = []
         for _score, item in results:
+            item_tokens = self._meaningful_tokens(item.fact.raw_text or "")
+            if self._fuzzy_token_overlap(event_tokens, item_tokens) == 0:
+                continue  # unrelated item — skip its dates
             for d in self._DATE_PAT.findall(item.fact.raw_text or ""):
                 if d not in episode_dates:
                     episode_dates.append(d)
@@ -403,11 +410,16 @@ class MemoryService:
     # Persistence helpers — fire-and-forget so failures never block reads/writes
     # =========================================================================
 
-    async def _persist_to_l1(self, item: MemoryItem) -> None:
+    async def _persist_to_l1(
+        self,
+        item: MemoryItem,
+        trace_id: Optional[str] = None,
+        parent_hop_id: Optional[str] = None,
+    ) -> None:
         """Write to L1 PostgreSQL. Called as background task — never blocks."""
         try:
             item = self.embedding_service.embed_item(item)
-            await self.l1.write(item)
+            await self.l1.write(item, trace_id=trace_id, parent_hop_id=parent_hop_id)
         except Exception as e:
             logger.warning("L1 persist failed (data safe in PhaseMemoryEngine): %s", e)
 
@@ -436,13 +448,11 @@ class MemoryService:
 
     async def write(self, req: WriteRequest, trace_id: Optional[str] = None) -> MemoryItem:
         """Write memory: PhaseMemoryEngine (brain) + L1 (persistence)."""
-        if trace_id is None:
-            trace_id = tracer.new_trace("write")
-        else:
-            tracer.new_trace("write", trace_id=trace_id)
+        trace_id = tracer.ensure_trace(trace_id or tracer.new_trace("write"), "write")
 
         with tracer.span(trace_id, "memory_service.write", "memory_service",
-                         namespace=req.namespace, text_len=len(req.text)):
+                         input=req.text[:200],
+                         namespace=req.namespace, source=req.source, text_len=len(req.text)) as ms_write_hop:
 
             # 1. Ensure namespace data is loaded into PhaseMemoryEngine
             with tracer.span(trace_id, "ensure_loaded", "memory_service",
@@ -481,15 +491,20 @@ class MemoryService:
                 )
 
             with tracer.span(trace_id, "engine.store", "phase_engine",
+                             input=store_text[:200],
                              namespace=req.namespace) as store_hop:
-                phase_item = self.engine.store(store_text, req.namespace, fact=display_fact)
+                phase_item = self.engine.store(store_text, req.namespace, fact=display_fact, trace_id=trace_id)
                 if phase_item is None:
                     # Safety fallback: shouldn't happen but handle gracefully
                     results = self.engine.search(req.text, req.namespace, limit=1)
                     phase_item = results[0][1] if results else None
-                tracer.add_metadata(trace_id, store_hop,
-                                    phase=str(phase_item.schema_meta is not None) if phase_item else "none",
-                                    strength=round(phase_item.consolidation_strength, 3) if phase_item else 0)
+                if phase_item:
+                    tracer.add_metadata(trace_id, store_hop,
+                                        output=f"item_id={str(phase_item.id)[:8]}…  phase={'crystallized' if phase_item.schema_meta else 'liquid'}  strength={round(phase_item.consolidation_strength, 3)}",
+                                        phase=str(phase_item.schema_meta is not None),
+                                        strength=round(phase_item.consolidation_strength, 3))
+                else:
+                    tracer.add_metadata(trace_id, store_hop, output="none", phase="none", strength=0)
 
             # Populate session_date so temporal context travels with the item
             # Also maintain a temporal event thread for recurring episodic events
@@ -503,17 +518,26 @@ class MemoryService:
                     # not from conversation_date — those can differ by a day.
                     _event_dates = self._DATE_PAT.findall(store_text)
                     if _event_dates:
-                        self._update_event_thread(req, req.text, _event_dates[0])
+                        await self._update_event_thread(req, req.text, _event_dates[0])
 
             # 2b. Attach 384-dim dense embedding to PhaseMemoryItem (fire-and-forget on item)
             # PhaseMemoryEngine stays zero-dep; we attach post-store so TRR is unaffected.
             with tracer.span(trace_id, "embed_dense", "embedding_service",
-                             namespace=req.namespace):
+                             input=req.text[:120],
+                             model=self.settings.embedding_model,
+                             namespace=req.namespace) as emb_hop:
                 try:
                     if phase_item and not phase_item.embedding_dense:
-                        phase_item.embedding_dense = self.embedding_service.embed(req.text)
+                        emb = self.embedding_service.embed(req.text)
+                        phase_item.embedding_dense = emb
+                        tracer.add_metadata(trace_id, emb_hop,
+                                            output=f"{len(emb)}-dim vector")
+                    elif phase_item and phase_item.embedding_dense:
+                        tracer.add_metadata(trace_id, emb_hop,
+                                            output=f"{len(phase_item.embedding_dense)}-dim (cached)")
                 except Exception as _emb_err:
                     logger.debug("Dense embed failed (non-fatal): %s", _emb_err)
+                    tracer.add_metadata(trace_id, emb_hop, output=f"failed: {_emb_err}")
 
             # 2c. Auto hippocampal replay — every REPLAY_EVERY_N_WRITES writes per namespace
             ns = req.namespace
@@ -529,13 +553,18 @@ class MemoryService:
                 raise RuntimeError("PhaseMemoryEngine.store() returned None with no candidates")
 
             # 3. Convert to MemoryItem for API response
-            with tracer.span(trace_id, "convert_item", "memory_service"):
+            with tracer.span(trace_id, "convert_item", "memory_service",
+                             input=f"phase_item {str(phase_item.id)[:8]}…") as conv_hop:
                 item = self._phase_to_item(phase_item, req)
+                tracer.add_metadata(trace_id, conv_hop,
+                                    output=f"level={item.store_level.value}  confidence={round(item.confidence, 3)}")
+            tracer.add_metadata(trace_id, ms_write_hop,
+                                output=f"item_id={str(item.id)[:8]}…  level={item.store_level.value}  strength={round(phase_item.consolidation_strength, 3)}")
 
             # 4. Persist to L1 PostgreSQL (fire-and-forget — never blocks)
             with tracer.span(trace_id, "l1.persist", "stores.l1",
-                             item_id=item.id, namespace=req.namespace):
-                asyncio.create_task(self._persist_to_l1(item))
+                             item_id=item.id, namespace=req.namespace) as l1_hop:
+                asyncio.create_task(self._persist_to_l1(item, trace_id=trace_id, parent_hop_id=l1_hop))
 
             # 5. Webhook (fire-and-forget)
             with tracer.span(trace_id, "webhook.dispatch", "webhook_dispatcher",
@@ -550,13 +579,11 @@ class MemoryService:
 
     async def read(self, req: ReadRequest, trace_id: Optional[str] = None) -> ReadResponse:
         """Read from PhaseMemoryEngine — full thermodynamic retrieval."""
-        if trace_id is None:
-            trace_id = tracer.new_trace("read")
-        else:
-            tracer.new_trace("read", trace_id=trace_id)
+        trace_id = tracer.ensure_trace(trace_id or tracer.new_trace("read"), "read")
 
         with tracer.span(trace_id, "memory_service.read", "memory_service",
-                         namespace=req.namespace, query=req.query[:120], limit=req.limit):
+                         input=req.query[:200],
+                         namespace=req.namespace, limit=req.limit) as ms_read_hop:
 
             # 1. Ensure namespace data is loaded
             with tracer.span(trace_id, "ensure_loaded", "memory_service",
@@ -571,49 +598,58 @@ class MemoryService:
             ns_size = len(self.engine._items.get(req.namespace, []))
             fetch_limit = max(req.limit * 2, req.limit + 20, min(500, ns_size))
             with tracer.span(trace_id, "engine.search", "phase_engine",
-                             namespace=req.namespace) as search_hop:
-                results = self.engine.search(req.query, req.namespace, limit=fetch_limit)
-                tracer.add_metadata(trace_id, search_hop, results=len(results))
+                             input=req.query[:200],
+                             namespace=req.namespace, fetch_limit=fetch_limit) as search_hop:
+                results = self.engine.search(req.query, req.namespace, limit=fetch_limit, trace_id=trace_id)
+                if results:
+                    top_text = (results[0][1].fact.raw_text or "")[:80]
+                    tracer.add_metadata(trace_id, search_hop,
+                                        output=f"{len(results)} results  top: {top_text}",
+                                        results=len(results))
+                else:
+                    tracer.add_metadata(trace_id, search_hop, output="0 results", results=0)
 
             # 2b. 384-dim semantic re-ranking (post-TRR layer)
-            # Bridges vocabulary gaps ("relocated" ↔ "moved") that morphological kernel misses.
-            # Alpha selection:
-            #   default 0.4 — TRR is trusted when it has query token overlap
-            #   boosted 0.85 — when TRR winner shares NO meaningful tokens with query,
-            #                   ranking is consolidation-strength-dominated (not relevance),
-            #                   so semantics must override it (e.g. "hobbies" → "hiking")
             if len(results) > 1:
                 with tracer.span(trace_id, "semantic_rerank", "embedding_service",
-                                 candidates=len(results)):
+                                 input=req.query[:120],
+                                 candidates=len(results)) as rerank_hop:
                     try:
                         query_emb = self.embedding_service.embed(req.query)
-                        # Detect strength-dominated TRR: top item has no query token overlap.
-                        # Use meaningful_tokens() to strip stopwords — raw len>3 passes "what",
-                        # "when", "does", etc. which can falsely suppress the alpha boost.
                         query_meaningful = self._meaningful_tokens(req.query)
                         top_text_tokens = set(_re.findall(r'\w+', (results[0][1].fact.raw_text or "").lower()))
                         ttr_is_relevant = bool(query_meaningful & top_text_tokens)
                         alpha = 0.4 if ttr_is_relevant else 0.85
                         results = self._semantic_rerank(results, query_emb, alpha=alpha)
+                        top_text = (results[0][1].fact.raw_text or "")[:80] if results else ""
+                        tracer.add_metadata(trace_id, rerank_hop,
+                                            output=f"alpha={alpha}  top: {top_text}",
+                                            alpha=alpha, ttr_relevant=ttr_is_relevant)
                     except Exception as _rr_err:
                         logger.debug("Semantic re-rank failed (falling back to TRR order): %s", _rr_err)
+                        tracer.add_metadata(trace_id, rerank_hop, output=f"failed: {_rr_err}")
             results = results[:req.limit]
 
             # 3. Convert PhaseMemoryItems to MemoryItems
             with tracer.span(trace_id, "convert_results", "memory_service",
-                             count=len(results)):
+                             input=f"{len(results)} candidates  min_confidence={req.min_confidence}") as conv_hop:
                 items = []
                 for score, phase_item in results:
                     mem_item = self._phase_to_item(phase_item)
                     if mem_item.confidence >= req.min_confidence:
                         items.append(mem_item)
+                preview = " | ".join(i.text[:60] for i in items[:2]) if items else "no results"
+                tracer.add_metadata(trace_id, conv_hop,
+                                    output=f"{len(items)} items: {preview}")
 
             # 3b. Inject matching temporal event threads at the top of results.
-            # Threads are managed outside PhaseMemoryEngine (immune to crystallisation)
-            # and represent the most authoritative temporal timeline for recurring events.
             thread_items = self._matching_threads(req.query, req.namespace)
             if thread_items:
                 items = thread_items + items
+
+            preview = " | ".join(i.text[:70] for i in items[:3]) if items else "no results"
+            tracer.add_metadata(trace_id, ms_read_hop,
+                                output=f"{len(items)} items returned: {preview}")
 
         return ReadResponse(
             items=items,
@@ -639,10 +675,7 @@ class MemoryService:
 
     async def delete(self, item_id: str, namespace: str, trace_id: Optional[str] = None) -> bool:
         """Delete from PhaseMemoryEngine + L1 persistence."""
-        if trace_id is None:
-            trace_id = tracer.new_trace("delete")
-        else:
-            tracer.new_trace("delete", trace_id=trace_id)
+        trace_id = tracer.ensure_trace(trace_id or tracer.new_trace("delete"), "delete")
 
         deleted = False
         with tracer.span(trace_id, "memory_service.delete", "memory_service",

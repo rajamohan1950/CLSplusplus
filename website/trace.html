@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLS++ | Request Trace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { background: #090909; color: #e0e0e0; font-family: 'DM Sans', sans-serif; min-height: 100vh; }
+
+    /* ── Page shell ─────────────────────────────────────────── */
+    .page-wrap { max-width: 1520px; margin: 0 auto; padding: 72px 16px 80px; }
+
+    /* ── Top bar ─────────────────────────────────────────────── */
+    .top-bar {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;
+    }
+    .top-bar h1 { font-size: 1.4rem; margin: 0; flex-shrink: 0; }
+    .top-bar h1 span { color: #6366f1; }
+    .search-box {
+      flex: 1; min-width: 260px; background: #111; border: 1px solid #222;
+      border-radius: 8px; color: #e0e0e0; font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem; padding: 8px 12px; outline: none;
+    }
+    .search-box:focus { border-color: #6366f1; }
+    .search-box::placeholder { color: #444; }
+    .refresh-pill {
+      font-size: 0.72rem; color: #555; background: #111; border: 1px solid #1c1c1c;
+      border-radius: 20px; padding: 4px 10px; white-space: nowrap;
+    }
+    .refresh-pill.live { color: #22c55e; border-color: rgba(34,197,94,.3); }
+
+    /* ── Trace accordion list ───────────────────────────────── */
+    .trace-list { display: flex; flex-direction: column; gap: 6px; }
+
+    .tp {
+      border: 1px solid #1c1c1c; border-radius: 10px; overflow: hidden;
+      transition: border-color .15s;
+    }
+    .tp:has(.tp-body:not([hidden])) { border-color: #333; }
+    .tp.has-error { border-color: rgba(239,68,68,.35); }
+
+    /* accordion header */
+    .tp-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 14px; cursor: pointer;
+      background: #0e0e0e; user-select: none;
+      transition: background .1s;
+    }
+    .tp-header:hover { background: #121212; }
+    .tp-arrow {
+      font-size: 0.7rem; color: #555; width: 12px; flex-shrink: 0;
+      transition: transform .15s;
+    }
+    .tp-arrow.open { transform: rotate(0deg); color: #6366f1; }
+    .tp-arrow.closed { transform: rotate(-90deg); }
+
+    .tp-op {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; font-weight: 700;
+      padding: 2px 7px; border-radius: 4px; white-space: nowrap; flex-shrink: 0;
+      background: rgba(99,102,241,.2); color: #818cf8;
+    }
+    .tp-op.op-read   { background: rgba(34,197,94,.15);  color: #22c55e; }
+    .tp-op.op-delete { background: rgba(239,68,68,.15);  color: #f87171; }
+    .tp-op.op-demo   { background: rgba(251,191,36,.15); color: #fbbf24; }
+    .tp-op.op-health { background: rgba(14,165,233,.15); color: #38bdf8; }
+
+    .tp-label { font-size: 0.85rem; font-weight: 600; color: #ccc; flex-shrink: 0; }
+    .tp-uuid  { font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: #444; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tp-ms   { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: #888; white-space: nowrap; }
+    .tp-spans { font-size: 0.68rem; color: #555; white-space: nowrap; background: #1a1a1a; border-radius: 10px; padding: 2px 7px; }
+    .tp-time { font-size: 0.68rem; color: #444; white-space: nowrap; }
+    .tp-status { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; font-weight: 600; white-space: nowrap; }
+    .tp-status.ok  { color: #22c55e; }
+    .tp-status.err { color: #f87171; }
+
+    /* accordion body */
+    .tp-body { background: #080808; border-top: 1px solid #1a1a1a; }
+    .tp-body[hidden] { display: none; }
+
+    /* compact meta strip inside accordion */
+    .tp-meta {
+      display: flex; flex-wrap: wrap; gap: 16px; align-items: center;
+      padding: 8px 14px; border-bottom: 1px solid #131313;
+      font-size: 0.72rem;
+    }
+    .tp-meta-item { display: flex; gap: 6px; align-items: baseline; }
+    .tp-meta-k { color: #444; text-transform: uppercase; letter-spacing: .4px; font-size: 0.62rem; }
+    .tp-meta-v { font-family: 'JetBrains Mono', monospace; color: #999; }
+
+    /* legend inside accordion */
+    .tp-legend { display: flex; flex-wrap: wrap; gap: 10px; padding: 6px 14px 6px; border-bottom: 1px solid #131313; }
+    .legend-item { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+    .legend-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .legend-name { font-size: 0.68rem; color: #666; }
+    .legend-name:hover { color: #999; }
+
+    /* ── Gantt inside accordion ───────────────────────────────── */
+    .gantt-wrap { overflow-x: auto; }
+    .gantt-inner { min-width: 800px; }
+
+    /* Column layout */
+    .gantt-row {
+      display: flex; align-items: stretch; border-bottom: 1px solid #101010;
+      transition: background .08s;
+    }
+    .gantt-row:last-child { border-bottom: none; }
+    .gantt-row:hover { background: rgba(255,255,255,.018); }
+    .gantt-row.dimmed { opacity: .2; }
+    .gantt-row.highlighted { background: rgba(251,191,36,.05); }
+    .gantt-row.has-error { background: rgba(239,68,68,.04); border-left: 2px solid #ef4444; }
+    .gantt-row.selected { background: rgba(99,102,241,.09) !important; }
+
+    /* I/O sub-rows */
+    .gantt-row.io-row { min-height: 0; cursor: default; }
+    .gantt-row.io-row:hover { background: inherit; }
+    .gantt-row.io-in  { background: rgba(96,165,250,.04); }
+    .gantt-row.io-out { background: rgba(74,222,128,.04); }
+
+    /* Left: service + operation */
+    .op-col {
+      width: 340px; min-width: 340px; flex-shrink: 0;
+      display: flex; align-items: center; gap: 5px;
+      padding: 5px 10px; border-right: 1px solid #131313;
+      overflow: hidden; cursor: pointer;
+    }
+    .io-row .op-col { cursor: default; padding: 3px 10px; }
+    .op-indent { flex-shrink: 0; color: #1e1e2e; user-select: none; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; white-space: pre; }
+    .svc-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .svc-badge {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; font-weight: 600;
+      padding: 1px 5px; border-radius: 3px; white-space: nowrap; flex-shrink: 0;
+    }
+    .op-label {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.73rem;
+      color: #c7c7e8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .op-label.has-error { color: #f87171; }
+    .err-icon { font-size: 0.65rem; flex-shrink: 0; }
+
+    /* HTTP span inline status / client */
+    .log-status { font-family:'JetBrains Mono',monospace; font-size:.62rem; font-weight:700;
+                  padding:1px 5px; border-radius:3px; flex-shrink:0; }
+    .log-status.ok  { background:rgba(34,197,94,.15); color:#22c55e; }
+    .log-status.err { background:rgba(239,68,68,.15); color:#f87171; }
+    .log-client { font-family:'JetBrains Mono',monospace; font-size:.62rem; color:#444; flex-shrink:0; }
+
+    /* I/O icon + text */
+    .io-icon { font-family:'JetBrains Mono',monospace; font-size:.68rem; font-weight:700; white-space:nowrap; flex-shrink:0; }
+    .io-text { font-family:'JetBrains Mono',monospace; font-size:.7rem; color:#777; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:default; }
+
+    /* Right: timeline bar */
+    .timeline-col {
+      flex: 1; position: relative; min-height: 26px;
+      display: flex; align-items: center; min-width: 0;
+    }
+    .io-row .timeline-col { min-height: 16px; }
+    .bar {
+      position: absolute; height: 14px; border-radius: 3px;
+      display: flex; align-items: center; overflow: visible;
+      min-width: 3px; transition: opacity .1s;
+    }
+    .bar.error-bar { background: #ef4444 !important; }
+    .bar-label {
+      position: absolute; left: calc(100% + 4px);
+      font-family: 'JetBrains Mono', monospace; font-size: 0.62rem;
+      color: #555; white-space: nowrap;
+    }
+    .bar-label.inside { left: 5px; color: rgba(255,255,255,.75); font-size:.6rem; }
+
+    /* Ruler row */
+    .ruler-row {
+      display: flex; align-items: stretch;
+      background: #0c0c0c; border-bottom: 1px solid #1a1a1a;
+      position: sticky; top: 0; z-index: 10;
+    }
+    .ruler-op-col {
+      width: 340px; min-width: 340px; flex-shrink: 0;
+      border-right: 1px solid #1a1a1a; padding: 5px 10px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .ruler-op-col span { color: #444; font-size: 0.65rem; }
+    .ruler-timeline { flex: 1; position: relative; height: 24px; }
+    .ruler-tick {
+      position: absolute; top: 0; bottom: 0;
+      border-left: 1px solid #1a1a1a;
+      display: flex; align-items: flex-end; padding-bottom: 3px;
+    }
+    .ruler-tick span { font-family:'JetBrains Mono',monospace; font-size:0.58rem; color:#383838; padding-left:3px; white-space:nowrap; }
+
+    /* ── Detail panel ────────────────────────────────────────── */
+    .tp-detail {
+      margin: 10px 14px 14px; background: #0c0c0c; border: 1px solid #222;
+      border-radius: 8px; padding: 14px 16px;
+    }
+    .tp-detail h3 { font-size: 0.75rem; color: #888; font-weight: 600; text-transform: uppercase; letter-spacing:.5px; margin: 0 0 10px; }
+    .detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap: 8px 20px; }
+    .detail-kv { display: flex; flex-direction: column; gap: 2px; }
+    .detail-k { color: #444; font-size: 0.62rem; text-transform: uppercase; letter-spacing:.4px; }
+    .detail-v { font-family:'JetBrains Mono',monospace; font-size:.75rem; color:#c7c7e8; word-break:break-all; }
+    .detail-v.err { color: #f87171; }
+    /* I/O values get special full-width treatment */
+    .detail-io { grid-column: 1/-1; }
+    .detail-io .detail-v { color: #a5b4fc; white-space: pre-wrap; word-break: break-word; }
+    .detail-io.out .detail-v { color: #86efac; }
+
+    /* ── Empty / loading ─────────────────────────────────────── */
+    .empty-state { color: #444; font-size: 0.85rem; text-align: center; padding: 40px 0; }
+    .err-banner { color: #f87171; font-size: 0.82rem; padding: 10px 14px;
+      background: rgba(239,68,68,.08); border-radius: 8px; border: 1px solid rgba(239,68,68,.2);
+      margin-bottom: 14px; }
+
+    /* search highlight */
+    .search-match { background: rgba(251,191,36,.25); border-radius: 2px; }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="docs.html">Docs</a>
+        <a href="integrations.html">Integrations</a>
+        <a href="chat.html">Chat</a>
+        <a href="benchmark.html">Benchmarks</a>
+        <a href="tests.html">Tests</a>
+        <a href="trace.html" style="color: var(--accent);">Traces</a>
+        <a href="/docs" target="_blank" rel="noopener">API</a>
+        <a href="https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener">GitHub</a>
+      </div>
+      <button class="nav-toggle" aria-label="Menu">☰</button>
+    </div>
+  </nav>
+
+  <div class="page-wrap">
+
+    <div class="top-bar">
+      <h1>Request <span>Trace</span></h1>
+      <input id="search-input" class="search-box" type="text"
+             placeholder="🔍  Search spans, services, input, output, errors…"
+             oninput="applySearch()">
+      <span id="refresh-pill" class="refresh-pill live">● live</span>
+    </div>
+
+    <div id="err-banner" class="err-banner" style="display:none;"></div>
+
+    <!-- Accordion trace list -->
+    <div id="trace-list" class="trace-list">
+      <div class="empty-state">Loading traces…</div>
+    </div>
+
+  </div>
+
+  <script>
+  // ─────────────────────────────────────────────────────────────────────────
+  // Service colour palette
+  // ─────────────────────────────────────────────────────────────────────────
+  const SVC_COLORS = {
+    'http':               { bg: '#0ea5e9', badge: 'rgba(14,165,233,.18)',  text: '#38bdf8' },
+    'api':                { bg: '#f97316', badge: 'rgba(249,115,22,.18)',  text: '#fb923c' },
+    'memory_service':     { bg: '#6366f1', badge: 'rgba(99,102,241,.18)', text: '#818cf8' },
+    'embedding_service':  { bg: '#a855f7', badge: 'rgba(168,85,247,.18)', text: '#c084fc' },
+    'stores.l1':          { bg: '#f59e0b', badge: 'rgba(245,158,11,.18)', text: '#fbbf24' },
+    'postgres':           { bg: '#f59e0b', badge: 'rgba(245,158,11,.18)', text: '#fbbf24' },
+    'llm':                { bg: '#22c55e', badge: 'rgba(34,197,94,.18)',  text: '#4ade80' },
+    'phase_engine':       { bg: '#3b82f6', badge: 'rgba(59,130,246,.18)', text: '#60a5fa' },
+    'webhook_dispatcher': { bg: '#ec4899', badge: 'rgba(236,72,153,.18)', text: '#f472b6' },
+    'stores.l2':          { bg: '#14b8a6', badge: 'rgba(20,184,166,.18)', text: '#2dd4bf' },
+  };
+  function svcColor(module) {
+    if (SVC_COLORS[module]) return SVC_COLORS[module];
+    let h = 0;
+    for (let i = 0; i < module.length; i++) h = (h * 31 + module.charCodeAt(i)) & 0xffff;
+    const hue = h % 360;
+    return { bg:`hsl(${hue},55%,52%)`, badge:`hsla(${hue},55%,52%,.15)`, text:`hsl(${hue},55%,68%)` };
+  }
+
+  function esc(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  function timeAgo(ms) {
+    const s = Math.floor((Date.now() - ms) / 1000);
+    if (s < 5)   return 'just now';
+    if (s < 60)  return s + 's ago';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    return Math.floor(s / 3600) + 'h ago';
+  }
+  function fmtMs(ms) {
+    if (ms == null) return '—';
+    if (ms >= 1000) return (ms / 1000).toFixed(2) + 's';
+    if (ms >= 1)    return ms.toFixed(2) + 'ms';
+    return (ms * 1000).toFixed(0) + 'μs';
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Tree utilities
+  // ─────────────────────────────────────────────────────────────────────────
+  function collectServices(node, set = new Set()) {
+    set.add(node.module);
+    (node.children || []).forEach(c => collectServices(c, set));
+    return set;
+  }
+  function hasAnyError(node) {
+    if (node.metadata && node.metadata.error) return true;
+    return (node.children || []).some(hasAnyError);
+  }
+  function countSpans(node) {
+    return 1 + (node.children || []).reduce((s, c) => s + countSpans(c), 0);
+  }
+
+  // Flatten tree → flat array of rows (span rows + I/O sub-rows)
+  function flattenTree(node, depth, isLast, openAncestors) {
+    const rows = [];
+    rows.push({ type: 'span', node, depth, isLast, openAncestors: [...openAncestors] });
+
+    // Inject I/O sub-rows directly under this span (before children)
+    const meta = node.metadata || {};
+    if (meta.input !== undefined) {
+      rows.push({ type: 'io', dir: 'in',  value: String(meta.input),  depth, isLast, openAncestors: [...openAncestors] });
+    }
+    if (meta.output !== undefined) {
+      rows.push({ type: 'io', dir: 'out', value: String(meta.output), depth, isLast, openAncestors: [...openAncestors] });
+    }
+
+    // Children — always expanded
+    const kids = node.children || [];
+    kids.forEach((child, idx) => {
+      const childIsLast = idx === kids.length - 1;
+      const childOpen = [...openAncestors, !isLast];
+      rows.push(...flattenTree(child, depth + 1, childIsLast, childOpen));
+    });
+    return rows;
+  }
+
+  // Build tree prefix for a span at given depth
+  function buildPrefix(depth, isLast, openAncestors) {
+    if (depth === 0) return '';
+    let pre = '';
+    for (let i = 0; i < depth - 1; i++) pre += openAncestors[i + 1] ? '│  ' : '   ';
+    pre += isLast ? '└─ ' : '├─ ';
+    return pre;
+  }
+
+  // Build prefix for I/O rows (continuation lines under the parent span)
+  function buildIOPrefix(depth, spanIsLast, openAncestors) {
+    let pre = '';
+    for (let i = 0; i < depth - 1; i++) pre += openAncestors[i + 1] ? '│  ' : '   ';
+    if (depth > 0) pre += spanIsLast ? '   ' : '│  ';
+    return pre;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Build individual Gantt row elements
+  // ─────────────────────────────────────────────────────────────────────────
+  const HTTP_INLINE_KEYS = new Set(['status', 'client']);
+
+  function buildSpanRow(r, rootStart, totalMs, traceId) {
+    const { node, depth, isLast, openAncestors } = r;
+    const prefix = buildPrefix(depth, isLast, openAncestors);
+    const meta = node.metadata || {};
+    const hasError = !!meta.error;
+    const isHttp = node.module === 'http';
+    const c = svcColor(node.module);
+
+    const offsetMs = Math.max(0, node.started_at - rootStart);
+    const durMs = node.duration_ms || 0;
+    const leftPct = Math.min(99, (offsetMs / totalMs) * 100);
+    const widthPct = Math.max(0.3, Math.min(100 - leftPct, (durMs / totalMs) * 100));
+
+    const msText = fmtMs(durMs);
+    const labelInside = widthPct > 9;
+
+    // HTTP inline extras
+    const statusCode = meta.status;
+    const statusOk = statusCode && statusCode < 400;
+    const statusBadge = isHttp && statusCode
+      ? `<span class="log-status ${statusOk?'ok':'err'}">${statusCode}</span>` : '';
+    const clientBadge = isHttp && meta.client
+      ? `<span class="log-client">${esc(meta.client)}</span>` : '';
+
+    const rowDiv = document.createElement('div');
+    rowDiv.className = 'gantt-row' + (hasError ? ' has-error' : '');
+    rowDiv.dataset.spanId = node.hop_id;
+    rowDiv.dataset.module = node.module;
+    rowDiv.dataset.traceId = traceId;
+
+    // Searchable: include all meta values including input/output
+    rowDiv.dataset.searchText = [
+      node.label, node.module,
+      ...Object.entries(meta).map(([k,v]) => `${k}:${v}`)
+    ].join(' ').toLowerCase();
+
+    rowDiv.innerHTML = `
+      <div class="op-col">
+        <span class="op-indent">${esc(prefix)}</span>
+        <span class="svc-dot" style="background:${c.bg};box-shadow:0 0 4px ${c.bg}44"></span>
+        <span class="svc-badge" style="background:${c.badge};color:${c.text}">${esc(node.module)}</span>
+        <span class="op-label${hasError?' has-error':''}">${esc(node.label)}</span>
+        ${statusBadge}${clientBadge}
+        ${hasError ? '<span class="err-icon">⚠</span>' : ''}
+      </div>
+      <div class="timeline-col">
+        <div class="bar${hasError?' error-bar':''}"
+             style="left:${leftPct.toFixed(2)}%;width:${widthPct.toFixed(2)}%;background:${hasError?'#ef4444':c.bg};opacity:.82;">
+          ${labelInside
+            ? `<span class="bar-label inside">${msText}</span>`
+            : `<span class="bar-label">${msText}</span>`}
+        </div>
+      </div>`;
+
+    rowDiv.addEventListener('click', () => selectRow(node, traceId));
+    return rowDiv;
+  }
+
+  function buildIORow(r) {
+    const { dir, value, depth, isLast, openAncestors } = r;
+    const prefix = buildIOPrefix(depth, isLast, openAncestors);
+    const icon = dir === 'in' ? '▶ in ' : '◀ out';
+    const color = dir === 'in' ? '#60a5fa' : '#4ade80';
+
+    const rowDiv = document.createElement('div');
+    rowDiv.className = `gantt-row io-row io-${dir}`;
+    rowDiv.dataset.searchText = `${dir}: ${value}`.toLowerCase();
+
+    rowDiv.innerHTML = `
+      <div class="op-col" style="cursor:default">
+        <span class="op-indent">${esc(prefix)}</span>
+        <span class="io-icon" style="color:${color}">${icon}</span>
+        <span class="io-text" title="${esc(value)}">${esc(value)}</span>
+      </div>
+      <div class="timeline-col"></div>`;
+
+    return rowDiv;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Detail panel — shown inside the trace panel on row click
+  // ─────────────────────────────────────────────────────────────────────────
+  function selectRow(node, traceId) {
+    // Highlight in this trace's rows
+    document.querySelectorAll(`.gantt-row[data-trace-id="${traceId}"]`).forEach(el => {
+      el.classList.toggle('selected', el.dataset.spanId === node.hop_id);
+    });
+
+    const meta = node.metadata || {};
+    const c = svcColor(node.module);
+    const hasError = !!meta.error;
+
+    let kvHtml = `
+      <div class="detail-kv"><span class="detail-k">Label</span><span class="detail-v">${esc(node.label)}</span></div>
+      <div class="detail-kv"><span class="detail-k">Service</span><span class="detail-v" style="color:${c.text}">${esc(node.module)}</span></div>
+      <div class="detail-kv"><span class="detail-k">Duration</span><span class="detail-v">${fmtMs(node.duration_ms)}</span></div>
+      <div class="detail-kv"><span class="detail-k">Span ID</span><span class="detail-v" style="font-size:.65rem">${esc(node.hop_id)}</span></div>
+    `;
+
+    // Show input/output full-width + highlighted
+    if (meta.input !== undefined) {
+      kvHtml += `<div class="detail-kv detail-io"><span class="detail-k">▶ input</span><span class="detail-v">${esc(String(meta.input))}</span></div>`;
+    }
+    if (meta.output !== undefined) {
+      kvHtml += `<div class="detail-kv detail-io out"><span class="detail-k">◀ output</span><span class="detail-v">${esc(String(meta.output))}</span></div>`;
+    }
+
+    Object.entries(meta).forEach(([k, v]) => {
+      if (k === 'input' || k === 'output') return; // already shown above
+      const isErr = k === 'error';
+      kvHtml += `<div class="detail-kv">
+        <span class="detail-k">${esc(k)}</span>
+        <span class="detail-v${isErr?' err':''}">${esc(typeof v==='string'?v:JSON.stringify(v))}</span>
+      </div>`;
+    });
+
+    const detailEl = document.getElementById('detail-' + traceId);
+    if (!detailEl) return;
+    detailEl.style.display = 'block';
+    detailEl.innerHTML = `
+      <h3 style="color:${c.text}">${esc(node.module)} · ${esc(node.label)} ${hasError?'⚠':''}</h3>
+      <div class="detail-grid">${kvHtml}</div>`;
+    detailEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Render a full Gantt inside a trace panel body
+  // ─────────────────────────────────────────────────────────────────────────
+  function renderGantt(trace, bodyEl) {
+    const root = trace.tree;
+    if (!root) { bodyEl.innerHTML = '<div class="empty-state">No span data</div>'; return; }
+
+    const totalMs = trace.total_ms || root.duration_ms || 1;
+    const rootStart = root.started_at;
+    const tid = trace.trace_id;
+
+    // Services
+    const services = collectServices(root);
+
+    // Meta strip
+    const hasErr = hasAnyError(root);
+    const metaHtml = `
+      <div class="tp-meta">
+        <div class="tp-meta-item"><span class="tp-meta-k">ID</span><span class="tp-meta-v" style="font-size:.62rem">${tid}</span></div>
+        <div class="tp-meta-item"><span class="tp-meta-k">Total</span><span class="tp-meta-v">${fmtMs(totalMs)}</span></div>
+        <div class="tp-meta-item"><span class="tp-meta-k">Status</span><span class="tp-meta-v" style="color:${hasErr?'#f87171':'#22c55e'}">${hasErr?'⚠ Errors':'✓ OK'}</span></div>
+        <div class="tp-meta-item"><span class="tp-meta-k">Time</span><span class="tp-meta-v">${new Date(trace.created_at).toLocaleTimeString()}</span></div>
+        <div class="tp-meta-item"><span class="tp-meta-k">Services</span><span class="tp-meta-v">${[...services].length}</span></div>
+        <div class="tp-meta-item"><span class="tp-meta-k">Spans</span><span class="tp-meta-v">${countSpans(root)}</span></div>
+      </div>`;
+
+    // Legend
+    const legendHtml = `<div class="tp-legend">${[...services].map(svc => {
+      const c = svcColor(svc);
+      return `<div class="legend-item" onclick="filterByService('${esc(svc)}')">
+        <span class="legend-dot" style="background:${c.bg}"></span>
+        <span class="legend-name">${esc(svc)}</span></div>`;
+    }).join('')}</div>`;
+
+    // Ruler
+    const TICKS = 5;
+    let ticksHtml = '';
+    for (let i = 0; i <= TICKS; i++) {
+      const pct = (i / TICKS) * 100;
+      const ms = (totalMs * i / TICKS);
+      ticksHtml += `<div class="ruler-tick" style="left:${pct}%"><span>${fmtMs(ms)}</span></div>`;
+    }
+    const rulerHtml = `
+      <div class="ruler-row">
+        <div class="ruler-op-col"><span>Service &amp; Operation</span></div>
+        <div class="ruler-timeline">${ticksHtml}</div>
+      </div>`;
+
+    bodyEl.innerHTML = metaHtml + legendHtml + `
+      <div class="gantt-wrap"><div class="gantt-inner" id="gantt-inner-${tid}">
+        ${rulerHtml}
+        <div id="gantt-rows-${tid}"></div>
+      </div></div>
+      <div id="detail-${tid}" class="tp-detail" style="display:none;"></div>`;
+
+    // Build rows
+    const rows = flattenTree(root, 0, true, []);
+    const rowsEl = document.getElementById('gantt-rows-' + tid);
+    rows.forEach(r => {
+      if (r.type === 'span') {
+        const el = buildSpanRow(r, rootStart, totalMs, tid);
+        rowsEl.appendChild(el);
+      } else {
+        rowsEl.appendChild(buildIORow(r));
+      }
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Build accordion panel for one trace summary
+  // ─────────────────────────────────────────────────────────────────────────
+  function buildTracePanel(t, isExpanded) {
+    const op = t.operation || 'request';
+    const opClass = op === 'read' ? 'op-read'
+                  : op === 'delete' ? 'op-delete'
+                  : op.startsWith('demo') ? 'op-demo'
+                  : op === 'health' ? 'op-health' : '';
+    const hasErr = t.has_error;
+    const shortId = t.trace_id.slice(0, 8) + '…';
+
+    const panel = document.createElement('div');
+    panel.className = 'tp' + (hasErr ? ' has-error' : '');
+    panel.id = 'tp-' + t.trace_id;
+
+    panel.innerHTML = `
+      <div class="tp-header" onclick="toggleTrace('${t.trace_id}')">
+        <span class="tp-arrow ${isExpanded?'open':'closed'}" id="arr-${t.trace_id}">▼</span>
+        <span class="tp-op ${opClass}">${esc(op)}</span>
+        <span class="tp-label">${esc(op)}</span>
+        <span class="tp-uuid">${esc(t.trace_id)}</span>
+        <span class="tp-ms">${fmtMs(t.total_ms)}</span>
+        <span class="tp-spans">${t.span_count != null ? t.span_count + ' spans' : ''}</span>
+        ${hasErr ? '<span style="color:#f87171;font-size:.7rem;font-weight:600">⚠ error</span>' : ''}
+        <span class="tp-time">${timeAgo(t.created_at)}</span>
+        <span class="tp-status ${hasErr?'err':'ok'}">${hasErr?'✗ err':'✓ ok'}</span>
+      </div>
+      <div class="tp-body" id="tb-${t.trace_id}" ${isExpanded?'':'hidden'}>
+        <div class="empty-state" style="padding:20px 0">Loading…</div>
+      </div>`;
+
+    return panel;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Toggle accordion open/close — lazy loads the Gantt
+  // ─────────────────────────────────────────────────────────────────────────
+  const _loadedTraces = new Set();
+
+  async function toggleTrace(tid) {
+    const bodyEl = document.getElementById('tb-' + tid);
+    const arrEl  = document.getElementById('arr-' + tid);
+    if (!bodyEl) return;
+
+    const isOpen = !bodyEl.hasAttribute('hidden');
+    if (isOpen) {
+      bodyEl.setAttribute('hidden', '');
+      if (arrEl) { arrEl.classList.remove('open'); arrEl.classList.add('closed'); }
+      return;
+    }
+
+    bodyEl.removeAttribute('hidden');
+    if (arrEl) { arrEl.classList.add('open'); arrEl.classList.remove('closed'); }
+
+    // Lazy-load trace data
+    if (!_loadedTraces.has(tid)) {
+      await loadAndRenderTrace(tid, bodyEl);
+    }
+  }
+
+  async function loadAndRenderTrace(tid, bodyEl) {
+    try {
+      const r = await fetch(`/v1/trace/${encodeURIComponent(tid)}`);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      _loadedTraces.add(tid);
+      renderGantt(data, bodyEl);
+    } catch (e) {
+      bodyEl.innerHTML = `<div class="empty-state" style="color:#f87171">Failed to load: ${esc(e.message)}</div>`;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Load recent traces + render accordion list
+  // ─────────────────────────────────────────────────────────────────────────
+  let _knownTraceIds = [];
+  let _firstLoad = true;
+  let _userExpandedAny = false;
+
+  async function loadRecentTraces() {
+    try {
+      const r = await fetch('/v1/traces?limit=30');
+      if (!r.ok) throw new Error();
+      const data = await r.json();
+      const traces = data.traces || [];
+      renderTraceList(traces);
+      document.getElementById('refresh-pill').className = 'refresh-pill live';
+    } catch {
+      document.getElementById('refresh-pill').className = 'refresh-pill';
+      if (_firstLoad) {
+        document.getElementById('trace-list').innerHTML =
+          '<div class="empty-state">Could not load traces — is the API running?</div>';
+      }
+    }
+    _firstLoad = false;
+  }
+
+  function renderTraceList(traces) {
+    const listEl = document.getElementById('trace-list');
+
+    if (!traces.length) {
+      listEl.innerHTML = '<div class="empty-state">No traces yet. Send a request to see it here.</div>';
+      return;
+    }
+
+    // Track which IDs are new
+    const newIds = traces.map(t => t.trace_id);
+    const addedIds = newIds.filter(id => !_knownTraceIds.includes(id));
+    _knownTraceIds = newIds;
+
+    if (addedIds.length === 0 && !_firstLoad) {
+      // No new traces — just update time labels
+      traces.forEach(t => {
+        const timeEl = listEl.querySelector(`#tp-${t.trace_id} .tp-time`);
+        if (timeEl) timeEl.textContent = timeAgo(t.created_at);
+      });
+      return;
+    }
+
+    // Rebuild the list
+    listEl.innerHTML = '';
+    traces.forEach((t, idx) => {
+      const isFirst = idx === 0;
+      // Auto-expand only the most recent trace on first load
+      const isExpanded = _firstLoad && isFirst;
+      const panel = buildTracePanel(t, isExpanded);
+      listEl.appendChild(panel);
+
+      if (isExpanded) {
+        const bodyEl = document.getElementById('tb-' + t.trace_id);
+        loadAndRenderTrace(t.trace_id, bodyEl);
+      }
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Search — dims rows that don't match
+  // ─────────────────────────────────────────────────────────────────────────
+  function applySearch() {
+    const q = document.getElementById('search-input').value.trim().toLowerCase();
+    document.querySelectorAll('.gantt-row').forEach(row => {
+      if (!q) { row.classList.remove('dimmed', 'highlighted'); return; }
+      const matches = row.dataset.searchText && row.dataset.searchText.includes(q);
+      row.classList.toggle('dimmed', !matches);
+      row.classList.toggle('highlighted', matches);
+    });
+    // Also dim/highlight trace panels
+    document.querySelectorAll('.tp').forEach(panel => {
+      if (!q) { panel.style.opacity = ''; return; }
+      const anyMatch = panel.querySelector('.gantt-row.highlighted');
+      const headerText = panel.querySelector('.tp-header')?.textContent?.toLowerCase() || '';
+      panel.style.opacity = (anyMatch || headerText.includes(q)) ? '' : '0.35';
+    });
+  }
+
+  function filterByService(svc) {
+    document.getElementById('search-input').value = svc;
+    applySearch();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Init
+  // ─────────────────────────────────────────────────────────────────────────
+  loadRecentTraces();
+  setInterval(loadRecentTraces, 5000);
+  </script>
+</body>
+</html>

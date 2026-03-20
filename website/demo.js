@@ -79,8 +79,9 @@
     container.scrollTop = container.scrollHeight;
 
     setLoading(true);
-    var maxAttempts = 5;
-    var retryDelayMs = 25000;
+    var isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    var maxAttempts = isLocal ? 2 : 5;
+    var retryDelayMs = isLocal ? 3000 : 25000;
 
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
       try {

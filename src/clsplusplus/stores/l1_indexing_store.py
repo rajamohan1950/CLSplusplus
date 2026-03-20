@@ -6,6 +6,7 @@ Fast episodic encoding, pattern completion. pgvector + metadata.
 import asyncio
 import json
 import logging
+from contextlib import nullcontext
 from datetime import datetime
 from typing import Optional
 
@@ -15,6 +16,7 @@ from pgvector.asyncpg import register_vector
 from clsplusplus.config import Settings
 from clsplusplus.models import MemoryItem, StoreLevel
 from clsplusplus.stores.base import BaseStore
+from clsplusplus.tracer import tracer
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +102,12 @@ class L1IndexingStore(BaseStore):
         except Exception:
             pass  # Index may fail on empty table
 
-    async def write(self, item: MemoryItem) -> MemoryItem:
+    async def write(
+        self,
+        item: MemoryItem,
+        trace_id: Optional[str] = None,
+        parent_hop_id: Optional[str] = None,
+    ) -> MemoryItem:
         """Write to L1 with embedding."""
         item.store_level = StoreLevel.L1
         pool = await self.get_pool()
@@ -108,30 +115,37 @@ class L1IndexingStore(BaseStore):
         if item.embedding:
             embedding_str = "[" + ",".join(str(x) for x in item.embedding) + "]"
 
-        async with pool.acquire() as conn:
-            await conn.execute("""
-                INSERT INTO l1_memories (
-                    id, namespace, text, store_level, source, timestamp, confidence,
-                    version, checksum, lineage, salience, usage_count, authority,
-                    conflict_score, surprise, promotion_score, metadata,
-                    subject, predicate, object, embedding
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21::vector)
-                ON CONFLICT (id) DO UPDATE SET
-                    text = EXCLUDED.text,
-                    confidence = EXCLUDED.confidence,
-                    version = l1_memories.version + 1,
-                    salience = EXCLUDED.salience,
-                    usage_count = l1_memories.usage_count + 1,
-                    promotion_score = EXCLUDED.promotion_score,
-                    embedding = EXCLUDED.embedding
-            """,
-                item.id, item.namespace, item.text, item.store_level.value,
-                item.source, item.timestamp, item.confidence, item.version,
-                item.checksum, json.dumps(item.lineage), item.salience,
-                item.usage_count, item.authority, item.conflict_score,
-                item.surprise, item.promotion_score, json.dumps(item.metadata),
-                item.subject, item.predicate, item.object, embedding_str,
-            )
+        _span_ctx = (
+            tracer.span(trace_id, "sql.insert", "postgres",
+                        _parent=parent_hop_id,
+                        table="l1_memories", op="upsert", item_id=item.id)
+            if trace_id else nullcontext()
+        )
+        with _span_ctx:
+            async with pool.acquire() as conn:
+                await conn.execute("""
+                    INSERT INTO l1_memories (
+                        id, namespace, text, store_level, source, timestamp, confidence,
+                        version, checksum, lineage, salience, usage_count, authority,
+                        conflict_score, surprise, promotion_score, metadata,
+                        subject, predicate, object, embedding
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21::vector)
+                    ON CONFLICT (id) DO UPDATE SET
+                        text = EXCLUDED.text,
+                        confidence = EXCLUDED.confidence,
+                        version = l1_memories.version + 1,
+                        salience = EXCLUDED.salience,
+                        usage_count = l1_memories.usage_count + 1,
+                        promotion_score = EXCLUDED.promotion_score,
+                        embedding = EXCLUDED.embedding
+                """,
+                    item.id, item.namespace, item.text, item.store_level.value,
+                    item.source, item.timestamp, item.confidence, item.version,
+                    item.checksum, json.dumps(item.lineage), item.salience,
+                    item.usage_count, item.authority, item.conflict_score,
+                    item.surprise, item.promotion_score, json.dumps(item.metadata),
+                    item.subject, item.predicate, item.object, embedding_str,
+                )
         return item
 
     async def read(

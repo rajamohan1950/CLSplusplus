@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from clsplusplus.config import Settings
 from clsplusplus.integration_service import IntegrationService
 from clsplusplus.memory_service import MemoryService
-from clsplusplus.middleware import AuthMiddleware, RateLimitMiddleware, RequestIdMiddleware
+from clsplusplus.middleware import AuthMiddleware, RateLimitMiddleware, RequestIdMiddleware, TracingMiddleware
 from clsplusplus.tracer import tracer
 from clsplusplus.models import (
     AdjudicateRequest,
@@ -59,10 +59,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         expose_headers=["*"],
     )
     # Middleware execution order: outermost (added last) runs first.
-    # RequestId first -> RateLimit -> Auth -> route handler
+    # TracingMiddleware → RequestId → RateLimit → Auth → route handler
     app.add_middleware(AuthMiddleware, settings=settings)
     app.add_middleware(RateLimitMiddleware, settings=settings)
     app.add_middleware(RequestIdMiddleware)
+    app.add_middleware(TracingMiddleware)  # outermost: traces every /v1/* request
 
     # Structured error handler (blueprint: error messages that teach)
     @app.exception_handler(HTTPException)
@@ -91,16 +92,14 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return Query(default=default, min_length=1, max_length=64)
 
     def _trace_id(request: Request) -> str:
-        """Return X-Trace-Id header if provided, else use X-Request-Id, else generate."""
-        tid = (
-            request.headers.get("x-trace-id")
+        """Return the trace ID already set by TracingMiddleware, or generate one."""
+        return (
+            getattr(request.state, "trace_id", None)
+            or request.headers.get("x-trace-id")
             or request.headers.get("x-request-id")
             or getattr(request.state, "request_id", None)
+            or str(__import__("uuid").uuid4())
         )
-        if not tid:
-            import uuid as _uuid
-            tid = str(_uuid.uuid4())
-        return tid
 
     # Detect website directory (in Docker: /app/website, local dev: ../website relative to src)
     _website_dir = os.environ.get("CLS_WEBSITE_DIR")
@@ -143,7 +142,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     async def write_memory(req: WriteRequest, request: Request):
         """Write memory. Flows to L0, promotes to L1 if score warrants."""
         tid = _trace_id(request)
-        item = await memory_service.write(req, trace_id=tid)
+        with tracer.span(tid, "api.write", "api",
+                         input=req.text[:200],
+                         namespace=req.namespace, source=req.source) as api_hop:
+            item = await memory_service.write(req, trace_id=tid)
+            tracer.add_metadata(tid, api_hop,
+                                output=f"item_id={str(item.id)[:8]}…  level={item.store_level.value}")
         await _record_usage("write", request)
         return {"id": item.id, "store_level": item.store_level.value, "text": item.text, "trace_id": tid}
 
@@ -151,7 +155,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     async def encode_memory(req: WriteRequest, request: Request):
         """Product alias: POST /memories/encode -> write."""
         tid = _trace_id(request)
-        item = await memory_service.write(req, trace_id=tid)
+        with tracer.span(tid, "api.encode", "api",
+                         input=req.text[:200],
+                         namespace=req.namespace) as api_hop:
+            item = await memory_service.write(req, trace_id=tid)
+            tracer.add_metadata(tid, api_hop,
+                                output=f"item_id={str(item.id)[:8]}…  level={item.store_level.value}")
         await _record_usage("encode", request)
         return {"id": item.id, "store_level": item.store_level.value, "text": item.text, "trace_id": tid}
 
@@ -159,7 +168,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     async def read_memory(req: ReadRequest, request: Request):
         """Read memories by semantic query across all stores."""
         tid = _trace_id(request)
-        result = await memory_service.read(req, trace_id=tid)
+        with tracer.span(tid, "api.read", "api",
+                         input=req.query[:200],
+                         namespace=req.namespace, limit=req.limit) as api_hop:
+            result = await memory_service.read(req, trace_id=tid)
+            items = result.items or []
+            preview = items[0].text[:80] if items else "no results"
+            tracer.add_metadata(tid, api_hop, output=f"{len(items)} items: {preview}")
         await _record_usage("read", request)
         result.trace_id = tid
         return result
@@ -168,7 +183,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     async def retrieve_memories(req: ReadRequest, request: Request):
         """Product alias: POST /memories/retrieve -> read."""
         tid = _trace_id(request)
-        result = await memory_service.read(req, trace_id=tid)
+        with tracer.span(tid, "api.retrieve", "api",
+                         input=req.query[:200],
+                         namespace=req.namespace) as api_hop:
+            result = await memory_service.read(req, trace_id=tid)
+            items = result.items or []
+            tracer.add_metadata(tid, api_hop, output=f"{len(items)} items")
         await _record_usage("retrieve", request)
         result.trace_id = tid
         return result
@@ -177,7 +197,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     async def search_memories(req: ReadRequest, request: Request):
         """Resource-oriented: POST /memories/search -> read."""
         tid = _trace_id(request)
-        result = await memory_service.read(req, trace_id=tid)
+        with tracer.span(tid, "api.search", "api",
+                         input=req.query[:200],
+                         namespace=req.namespace) as api_hop:
+            result = await memory_service.read(req, trace_id=tid)
+            items = result.items or []
+            tracer.add_metadata(tid, api_hop, output=f"{len(items)} items")
         await _record_usage("retrieve", request)
         result.trace_id = tid
         return result
@@ -272,7 +297,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         }
 
     @app.post("/v1/demo/chat")
-    async def demo_chat(req: DemoChatRequest):
+    async def demo_chat(req: DemoChatRequest, request: Request):
         """
         Real LLM demo: Claude, OpenAI, or Gemini with shared CLS++ memory.
         Requires CLS_ANTHROPIC_API_KEY, CLS_OPENAI_API_KEY, CLS_GOOGLE_API_KEY in env.
@@ -282,10 +307,16 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         if req.model not in ("claude", "openai", "gemini"):
             raise HTTPException(status_code=400, detail="model must be claude, openai, or gemini")
 
+        tid = _trace_id(request)
         try:
-            reply = await chat_with_llm(
-                memory_service, settings, req.model, req.message.strip(), req.namespace
-            )
+            with tracer.span(tid, "api.demo_chat", "api",
+                             input=req.message[:200],
+                             model=req.model, namespace=req.namespace) as api_hop:
+                reply = await chat_with_llm(
+                    memory_service, settings, req.model, req.message.strip(), req.namespace,
+                    trace_id=tid,
+                )
+                tracer.add_metadata(tid, api_hop, output=reply[:200])
             return {"model": req.model, "reply": reply}
         except Exception as e:
             import logging
