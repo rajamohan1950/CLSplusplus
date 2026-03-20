@@ -905,7 +905,16 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.on_event("startup")
     async def startup():
-        """Start background hippocampal replay loop — fires every 5 minutes per active namespace."""
+        """Boot sequence:
+        1. Preload every known namespace from L1 into PhaseMemoryEngine so the
+           first request for any user is instant (no cold-start lag).
+        2. Re-tune IVFFlat lists for the current row count (1M-ready).
+        3. Start the periodic hippocampal replay loop (every 5 minutes).
+        """
+        # ── 1. Warm up all persisted namespaces from L1 ────────────────────
+        await memory_service.startup_preload()
+
+        # ── 2. Periodic hippocampal replay (consolidation / sleep cycle) ───
         async def _periodic_replay():
             while True:
                 await asyncio.sleep(300)  # 5 minutes

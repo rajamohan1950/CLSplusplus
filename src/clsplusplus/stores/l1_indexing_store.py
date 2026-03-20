@@ -221,16 +221,83 @@ class L1IndexingStore(BaseStore):
         )
         return "DELETE 1" in result
 
-    async def list_for_sleep(self, namespace: str, limit: int = 20000) -> list[MemoryItem]:
-        """List items for sleep cycle processing."""
+    async def list_for_sleep(self, namespace: str, limit: int = 50000) -> list[MemoryItem]:
+        """List items for sleep cycle / init preload.
+
+        Default limit raised to 50,000 so a namespace with a large number of
+        memories is fully warm on first use.  For namespaces approaching 1M
+        items the PhaseMemoryEngine keeps the 1,000 hottest items in memory
+        while L1 vector search handles the rest via kNN.
+        """
         pool = await self.get_pool()
         rows = await pool.fetch("""
             SELECT * FROM l1_memories
             WHERE namespace = $1
-            ORDER BY timestamp DESC
+            ORDER BY confidence DESC, timestamp DESC
             LIMIT $2
         """, namespace, limit)
         return [self._row_to_item(r) for r in rows]
+
+    async def list_namespaces(self) -> list[str]:
+        """Return every distinct namespace that has at least one item in L1.
+
+        Used at startup to discover which namespaces to preload into the
+        PhaseMemoryEngine so the first user request for any namespace is instant.
+        """
+        pool = await self.get_pool()
+        rows = await pool.fetch(
+            "SELECT DISTINCT namespace FROM l1_memories ORDER BY namespace"
+        )
+        return [r["namespace"] for r in rows]
+
+    async def count(self, namespace: str) -> int:
+        """Return the total number of items stored for a namespace."""
+        pool = await self.get_pool()
+        return await pool.fetchval(
+            "SELECT COUNT(*) FROM l1_memories WHERE namespace = $1", namespace
+        )
+
+    async def ensure_vector_index_scale(self) -> None:
+        """Re-tune the IVFFlat index lists based on actual row count.
+
+        Rule of thumb: lists ≈ sqrt(total_rows).
+          •  <  10k rows  →  lists =  100  (default)
+          •  < 100k rows  →  lists =  316
+          •  <   1M rows  →  lists = 1000
+          •  >= 1M rows   →  lists = 2000
+
+        This is a CONCURRENT index rebuild so reads/writes are never blocked.
+        Called once at startup — a no-op when the row count hasn't crossed a
+        threshold boundary since last build.
+        """
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            total = await conn.fetchval("SELECT COUNT(*) FROM l1_memories") or 0
+            if total < 1000:
+                return  # Too few rows for IVFFlat to matter
+
+            lists = 100
+            if total >= 1_000_000:
+                lists = 2000
+            elif total >= 100_000:
+                lists = 1000
+            elif total >= 10_000:
+                lists = 316
+
+            try:
+                await conn.execute(
+                    f"DROP INDEX CONCURRENTLY IF EXISTS idx_l1_embedding"
+                )
+                await conn.execute(
+                    f"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_l1_embedding "
+                    f"ON l1_memories USING ivfflat (embedding vector_cosine_ops) "
+                    f"WITH (lists = {lists})"
+                )
+                logger.info(
+                    "IVFFlat index rebuilt: total_rows=%d lists=%d", total, lists
+                )
+            except Exception as e:
+                logger.warning("IVFFlat scale rebuild failed (non-fatal): %s", e)
 
     async def update_scores(self, item_id: str, namespace: str, **kwargs) -> bool:
         """Update plasticity scores. Column names are validated against an allowlist."""

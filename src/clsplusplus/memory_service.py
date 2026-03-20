@@ -133,6 +133,41 @@ class MemoryService:
             return
         asyncio.create_task(self.ensure_loaded(namespace))
 
+    async def startup_preload(self) -> None:
+        """Discover every namespace stored in L1 and preload each one into the
+        PhaseMemoryEngine in the background.
+
+        Called once from the app startup handler so the brain is warm before
+        the first real request arrives.  Two extra things happen here:
+
+        1. IVFFlat index is re-tuned to the current row count so kNN stays
+           accurate as the table grows towards 1M+ items.
+        2. Each namespace is loaded concurrently (one asyncio.Task per namespace)
+           so a deployment with many users doesn't serialize on a single namespace.
+
+        This is safe to call multiple times — idempotent (prewarm is a no-op for
+        already-loaded namespaces).
+        """
+        try:
+            # Re-tune vector index before loading (non-blocking rebuild)
+            asyncio.create_task(self.l1.ensure_vector_index_scale())
+
+            namespaces = await self.l1.list_namespaces()
+            if not namespaces:
+                logger.info("startup_preload: L1 is empty — nothing to load")
+                return
+
+            logger.info(
+                "startup_preload: found %d namespace(s) in L1 — preloading all",
+                len(namespaces),
+            )
+            for ns in namespaces:
+                await self.prewarm(ns)   # schedules a background task per namespace
+
+        except Exception as e:
+            # Never crash startup — persistence is optional for a running server
+            logger.warning("startup_preload failed (server will lazy-load on demand): %s", e)
+
     # =========================================================================
     # 384-dim Semantic Re-ranking (post-TRR layer)
     # =========================================================================
