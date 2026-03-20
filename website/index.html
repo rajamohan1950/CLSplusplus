@@ -78,7 +78,38 @@
         </div>
       </div>
       <p class="demo-hint" id="demo-hint">Tell one, ask the other. Memory is shared. (First load may take 1–2 min — API warming up.)</p>
+      <p class="demo-ns-bar">
+        🧠 Your memory namespace: <code id="demo-ns-label">…</code>
+        &nbsp;·&nbsp;
+        <a href="/trace.html" target="_blank" style="color:#6366f1;text-decoration:none;">View in Trace UI ↗</a>
+        &nbsp;·&nbsp;
+        <button id="demo-reset-ns" style="background:none;border:none;color:#888;cursor:pointer;font-size:0.78rem;padding:0;" title="Clear memory and start fresh">Reset memory</button>
+      </p>
       <p class="demo-pitch">Pitch in 10 words: <strong>Your memory lives here. Switch AI anytime. No reset.</strong></p>
+      <script>
+        (function(){
+          function showNS() {
+            try {
+              var ns = localStorage.getItem('cls_demo_namespace') || '…';
+              document.getElementById('demo-ns-label').textContent = ns;
+            } catch(e){}
+          }
+          // Run after DOMContentLoaded so demo.js has already set the namespace
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', showNS);
+          } else {
+            showNS();
+          }
+          // Also poll once more after 500ms in case demo.js ran slightly late
+          setTimeout(showNS, 500);
+
+          document.getElementById('demo-reset-ns').addEventListener('click', function(){
+            if (!confirm('Clear all memory and start a fresh session?')) return;
+            try { localStorage.removeItem('cls_demo_namespace'); } catch(e){}
+            location.reload();
+          });
+        })();
+      </script>
     </div>
   </section>
 

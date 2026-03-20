@@ -976,6 +976,17 @@
     }
   }
 
+  // On load: seed namespace input from the Chat demo's persisted namespace
+  // so the phases bar automatically shows whatever namespace the chat is using.
+  (function seedNamespace() {
+    try {
+      const stored = localStorage.getItem('cls_demo_namespace');
+      if (stored) {
+        document.getElementById('phase-ns-input').value = stored;
+      }
+    } catch(e) {}
+  })();
+
   // Auto-refresh phases alongside traces
   refreshPhases();
   setInterval(refreshPhases, 3000);

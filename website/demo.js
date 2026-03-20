@@ -5,7 +5,16 @@
 (function () {
   function init() {
   const API_URL = (typeof window !== 'undefined' && window.CLS_API_URL) || '';
-  const NAMESPACE = 'demo-' + Math.random().toString(36).slice(2, 10);
+
+  // Persist namespace in localStorage so memory survives page refreshes.
+  // Generate once, reuse forever until the user explicitly clears storage.
+  var _storedNS = null;
+  try { _storedNS = localStorage.getItem('cls_demo_namespace'); } catch(e) {}
+  if (!_storedNS) {
+    _storedNS = 'demo-' + Math.random().toString(36).slice(2, 10);
+    try { localStorage.setItem('cls_demo_namespace', _storedNS); } catch(e) {}
+  }
+  const NAMESPACE = _storedNS;
   const FETCH_TIMEOUT_MS = 90000;  // Render cold start can take 60s
 
   const MODELS = ['claude', 'openai'];
