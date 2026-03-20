@@ -430,11 +430,12 @@
       font-size: 0.59rem; color: #384158; flex-shrink: 0; white-space: nowrap; margin-left: 3px;
     }
 
-    /* I/O rows inside the card */
+    /* I/O rows inside the card — hidden by default, revealed on expand */
     .lrt-io {
       margin-top: 4px; padding-top: 4px; border-top: 1px solid #151515;
-      display: flex; flex-direction: column; gap: 1px;
+      display: none; flex-direction: column; gap: 1px;
     }
+    .lrt-node.lrt-io-open > .lrt-card > .lrt-io { display: flex; }
     .lrt-io-row { display: flex; gap: 4px; align-items: baseline; min-width: 0; }
     .lrt-io-dir { font-size: 0.53rem; font-weight: 700; flex-shrink: 0; min-width: 34px; }
     .lrt-io-dir.in  { color: #60a5fa; }
@@ -1017,7 +1018,7 @@
     const hasInput  = meta.input  !== undefined;
     const hasOutput = meta.output !== undefined;
     const hasIO     = hasInput || hasOutput;
-    const canToggle = hasKids || hasIO;
+    const canToggle = hasIO;   // toggle reveals I/O details; children always visible
 
     // ── Outer node wrapper ───────────────────────────────────────
     const nodeEl = document.createElement('div');
@@ -1033,7 +1034,7 @@
 
     const tog = document.createElement('span');
     tog.className = 'lrt-tog' + (canToggle ? '' : ' leaf');
-    tog.textContent = canToggle ? '▼' : '·';
+    tog.textContent = canToggle ? '▶' : '·';  /* ▶ = details collapsed by default */
     hdr.appendChild(tog);
 
     const badge = document.createElement('span');
@@ -1103,14 +1104,14 @@
     parentEl.appendChild(nodeEl);
   }
 
-  // Toggle collapse on the .lrt-node wrapper
+  // Toggle I/O details on a node — children subtree is always visible
   function cgtToggle(nodeEl, togEl) {
-    const isOpen = !nodeEl.classList.contains('lrt-collapsed');
+    const isOpen = nodeEl.classList.contains('lrt-io-open');
     if (isOpen) {
-      nodeEl.classList.add('lrt-collapsed');
+      nodeEl.classList.remove('lrt-io-open');
       togEl.textContent = '▶';
     } else {
-      nodeEl.classList.remove('lrt-collapsed');
+      nodeEl.classList.add('lrt-io-open');
       togEl.textContent = '▼';
     }
   }
