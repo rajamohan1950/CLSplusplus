@@ -327,6 +327,223 @@ class Conversation:
     cid: str
     facts: list[str]       # facts to store in memory
     qa_pairs: list[QAPair]
+    # Optional: one datetime per fact, set on PhaseMemoryItem.event_at after store()
+    # Used by TEMP category — None means "no event_at for this fact"
+    event_ats: list = field(default_factory=list)
+
+
+def _build_temporal_conversations() -> list[Conversation]:
+    """Build 20 synthetic temporal conversations for TEMP category evaluation.
+
+    Each conversation has 4-5 facts spread across different time periods.
+    Questions use natural-language temporal expressions ("in April 2024",
+    "recently", "last month", "last week").
+
+    The reference date for relative queries is 2024-11-01 (fixed for reproducibility).
+    """
+    from datetime import datetime, timezone as _tz
+
+    REF = datetime(2024, 11, 1, tzinfo=_tz.utc)   # reference date: Nov 1 2024
+
+    def dt(y, m, d=1): return datetime(y, m, d, tzinfo=_tz.utc)
+
+    convs = []
+
+    # --- 5 "in Month Year" tests ---
+    # Each conversation: 4 facts from 4 different months; query asks about one month
+    month_tests = [
+        ("tm1",
+         [("I visited my dentist.", dt(2024, 4, 5)),
+          ("I ran a 10K race.", dt(2024, 7, 12)),
+          ("I attended a wedding in Paris.", dt(2024, 10, 20)),
+          ("I started a pottery class.", dt(2023, 11, 3))],
+         "What did I do in July 2024?", "10K race", [1]),
+
+        ("tm2",
+         [("I adopted a cat named Luna.", dt(2024, 1, 8)),
+          ("I finished reading a novel.", dt(2024, 3, 22)),
+          ("I went scuba diving in Bali.", dt(2024, 6, 15)),
+          ("I submitted my thesis.", dt(2024, 9, 2))],
+         "What did I do in January 2024?", "adopted a cat", [0]),
+
+        ("tm3",
+         [("I learned to cook ramen.", dt(2024, 2, 14)),
+          ("I climbed Mount Fuji.", dt(2024, 5, 19)),
+          ("I took a coding bootcamp.", dt(2024, 8, 7)),
+          ("I ran the Berlin marathon.", dt(2024, 10, 28))],
+         "What did I do in May 2024?", "Mount Fuji", [1]),
+
+        ("tm4",
+         [("I visited my parents in Boston.", dt(2024, 3, 10)),
+          ("I started learning guitar.", dt(2024, 6, 3)),
+          ("I moved to a new apartment.", dt(2024, 9, 18)),
+          ("I joined a yoga studio.", dt(2024, 10, 5))],
+         "What did I do in September 2024?", "moved", [2]),
+
+        ("tm5",
+         [("I got a promotion at work.", dt(2024, 2, 1)),
+          ("I bought a new laptop.", dt(2024, 4, 22)),
+          ("I attended a music festival.", dt(2024, 7, 30)),
+          ("I passed my driving test.", dt(2024, 11, 15))],
+         "What did I do in April 2024?", "laptop", [1]),
+    ]
+
+    for uid, fact_dates, question, gold, rel_idx in month_tests:
+        convs.append(Conversation(
+            cid=f"temp-{uid}",
+            facts=[fd[0] for fd in fact_dates],
+            event_ats=[fd[1] for fd in fact_dates],
+            qa_pairs=[QAPair(
+                qid=f"{uid}-q1",
+                category="TEMP",
+                question=question,
+                gold_answer=gold,
+                relevant_fact_indices=rel_idx,
+            )],
+        ))
+
+    # --- 5 "last month" tests (relative to REF = Nov 1 2024 → "last month" = October 2024) ---
+    last_month_tests = [
+        ("tl1",
+         [("I enrolled in a baking course.", dt(2024, 8, 12)),
+          ("I joined a book club.", dt(2024, 10, 7)),
+          ("I completed a 30-day fitness challenge.", dt(2024, 6, 1))],
+         "What did I do last month?", "book club", [1]),
+
+        ("tl2",
+         [("I started journaling every morning.", dt(2024, 5, 10)),
+          ("I visited the Van Gogh exhibition.", dt(2024, 10, 25)),
+          ("I bought a road bike.", dt(2024, 2, 3))],
+         "What did I do last month?", "Van Gogh", [1]),
+
+        ("tl3",
+         [("I took a sailing lesson.", dt(2024, 10, 13)),
+          ("I attended a TED conference.", dt(2024, 7, 19)),
+          ("I read about stoicism.", dt(2024, 1, 8))],
+         "What happened last month?", "sailing", [0]),
+
+        ("tl4",
+         [("I finished my online Python course.", dt(2024, 3, 5)),
+          ("I went to a comedy show.", dt(2024, 10, 17)),
+          ("I planted a vegetable garden.", dt(2024, 4, 22))],
+         "What did I do last month?", "comedy show", [1]),
+
+        ("tl5",
+         [("I volunteered at a food bank.", dt(2024, 10, 11)),
+          ("I ran a half marathon.", dt(2024, 9, 3)),
+          ("I started a podcast.", dt(2024, 6, 20))],
+         "What did I do last month?", "food bank", [0]),
+    ]
+
+    for uid, fact_dates, question, gold, rel_idx in last_month_tests:
+        convs.append(Conversation(
+            cid=f"temp-{uid}",
+            facts=[fd[0] for fd in fact_dates],
+            event_ats=[fd[1] for fd in fact_dates],
+            qa_pairs=[QAPair(
+                qid=f"{uid}-q1",
+                category="TEMP",
+                question=question,
+                gold_answer=gold,
+                relevant_fact_indices=rel_idx,
+            )],
+        ))
+
+    # --- 5 "recently / lately" tests (within last 14 days of REF) ---
+    recent_tests = [
+        ("tr1",
+         [("I tried a new sushi restaurant.", dt(2024, 10, 20)),
+          ("I visited my childhood hometown.", dt(2024, 9, 5)),
+          ("I donated blood.", dt(2024, 6, 15))],
+         "What have I done recently?", "sushi restaurant", [0]),
+
+        ("tr2",
+         [("I fixed my bicycle brakes.", dt(2024, 10, 25)),
+          ("I wrote a short story.", dt(2024, 7, 11)),
+          ("I learned to make sourdough.", dt(2024, 3, 3))],
+         "What did I do lately?", "bicycle", [0]),
+
+        ("tr3",
+         [("I set up a home gym.", dt(2024, 8, 14)),
+          ("I watched a meteor shower.", dt(2024, 10, 22)),
+          ("I attended a pottery fair.", dt(2024, 4, 19))],
+         "What have I been doing recently?", "meteor shower", [1]),
+
+        ("tr4",
+         [("I organized a dinner party.", dt(2024, 10, 27)),
+          ("I visited the aquarium.", dt(2024, 7, 7)),
+          ("I completed a puzzle.", dt(2024, 2, 14))],
+         "What did I do lately?", "dinner party", [0]),
+
+        ("tr5",
+         [("I cut my hair short.", dt(2024, 5, 22)),
+          ("I won a chess tournament.", dt(2024, 10, 19)),
+          ("I fixed the leaky faucet.", dt(2024, 1, 30))],
+         "What have I done recently?", "chess tournament", [1]),
+    ]
+
+    for uid, fact_dates, question, gold, rel_idx in recent_tests:
+        convs.append(Conversation(
+            cid=f"temp-{uid}",
+            facts=[fd[0] for fd in fact_dates],
+            event_ats=[fd[1] for fd in fact_dates],
+            qa_pairs=[QAPair(
+                qid=f"{uid}-q1",
+                category="TEMP",
+                question=question,
+                gold_answer=gold,
+                relevant_fact_indices=rel_idx,
+            )],
+        ))
+
+    # --- 5 "last week" tests (within last 7 days of REF = Oct 25-Nov 1 2024) ---
+    last_week_tests = [
+        ("tw1",
+         [("I took a day trip to the mountains.", dt(2024, 10, 28)),
+          ("I attended a webinar on AI.", dt(2024, 9, 2)),
+          ("I rearranged my living room.", dt(2024, 5, 17))],
+         "What did I do last week?", "mountains", [0]),
+
+        ("tw2",
+         [("I backed up all my files.", dt(2024, 10, 26)),
+          ("I saw a live jazz concert.", dt(2024, 8, 11)),
+          ("I started intermittent fasting.", dt(2024, 3, 9))],
+         "What did I do last week?", "backed up", [0]),
+
+        ("tw3",
+         [("I got a haircut.", dt(2024, 7, 7)),
+          ("I met an old friend for coffee.", dt(2024, 10, 29)),
+          ("I renovated my kitchen.", dt(2024, 2, 20))],
+         "What happened last week?", "old friend", [1]),
+
+        ("tw4",
+         [("I completed a crossword puzzle.", dt(2024, 10, 27)),
+          ("I visited a botanical garden.", dt(2024, 6, 4)),
+          ("I went on a beach trip.", dt(2024, 4, 12))],
+         "What did I do last week?", "crossword puzzle", [0]),
+
+        ("tw5",
+         [("I upgraded my phone.", dt(2024, 1, 23)),
+          ("I attended a local farmers market.", dt(2024, 10, 26)),
+          ("I made homemade pasta.", dt(2024, 7, 15))],
+         "What did I do last week?", "farmers market", [1]),
+    ]
+
+    for uid, fact_dates, question, gold, rel_idx in last_week_tests:
+        convs.append(Conversation(
+            cid=f"temp-{uid}",
+            facts=[fd[0] for fd in fact_dates],
+            event_ats=[fd[1] for fd in fact_dates],
+            qa_pairs=[QAPair(
+                qid=f"{uid}-q1",
+                category="TEMP",
+                question=question,
+                gold_answer=gold,
+                relevant_fact_indices=rel_idx,
+            )],
+        ))
+
+    return convs
 
 
 def _build_synthetic_conversations() -> list[Conversation]:
@@ -618,6 +835,9 @@ def _build_synthetic_conversations() -> list[Conversation]:
             )],
         ))
 
+    # --- Block 6: Temporal (20 conversations) ---
+    convs.extend(_build_temporal_conversations())
+
     return convs
 
 
@@ -663,9 +883,25 @@ def run_eval(
     target_j1: float = 0.85,
     verbose: bool = False,
     use_llm: bool = False,
+    category_filter: Optional[str] = None,
 ) -> EvalSummary:
-    """Run the full LoCoMo synthetic evaluation."""
-    print("CLS++ LoCoMo Synthetic Evaluation")
+    """Run the full LoCoMo synthetic evaluation.
+
+    Parameters
+    ----------
+    category_filter
+        If set (e.g. "TEMP", "SH", "MH"), only conversations containing
+        QA pairs of that category are evaluated.
+    """
+    from datetime import datetime as _dt, timezone as _tz
+    import math as _math
+    from clsplusplus.temporal import parse_temporal_filter as _ptf
+
+    # Fixed reference date for TEMP category (reproducible relative queries)
+    _TEMP_REF = _dt(2024, 11, 1, tzinfo=_tz.utc)
+
+    label = f" [category={category_filter}]" if category_filter else ""
+    print(f"CLS++ LoCoMo Synthetic Evaluation{label}")
     print("=" * 72)
 
     llm_client = None
@@ -677,16 +913,36 @@ def run_eval(
             print("LLM synthesis: DISABLED (no API key)")
 
     conversations = _build_synthetic_conversations()
+
+    # Apply category filter: keep conversations that have at least one QA pair
+    # matching the requested category
+    if category_filter:
+        cat = category_filter.upper()
+        conversations = [
+            c for c in conversations
+            if any(qa.category == cat for qa in c.qa_pairs)
+        ]
+        if not conversations:
+            print(f"No conversations found for category '{category_filter}'")
+            return EvalSummary(
+                total_qa=0, by_category={}, overall_j1=0.0,
+                overall_precision_5=0.0, overall_recall_5=0.0,
+                overall_recall_20=0.0, overall_f1_5=0.0,
+                avg_latency_ms=0.0, target_j1=target_j1, target_met=False,
+            )
+
     all_results: list[EvalResult] = []
 
     for conv in conversations:
         engine = PhaseMemoryEngine()
         ns = conv.cid
 
-        # Store all facts
+        # Store all facts; set event_at on PhaseMemoryItem when provided (TEMP category)
         fact_ids: list[str] = []
-        for fact_text in conv.facts:
+        for i, fact_text in enumerate(conv.facts):
             item = engine.store(fact_text, ns)
+            if item and conv.event_ats and i < len(conv.event_ats) and conv.event_ats[i] is not None:
+                item.event_at = conv.event_ats[i]
             fact_ids.append(item.id if item else "")
 
         # Evaluate each QA pair
@@ -705,6 +961,45 @@ def run_eval(
             # multi-hop accuracy since the gold answer exists in individual retrieved
             # facts and the 2-pass search would mutate engine state across QA pairs.
             results = engine.search(qa.question, ns, limit=20)
+
+            # TEMP category: apply temporal date filter + recency decay using
+            # the same machinery as MemoryService.read() but without the DB layer.
+            if qa.category == "TEMP":
+                tf = _ptf(qa.question, _TEMP_REF)
+                # Date-range filter
+                if tf.start or tf.end:
+                    def _in_range(pi):
+                        ea = getattr(pi, "event_at", None)
+                        if ea is None:
+                            return True
+                        ea_tz = ea if ea.tzinfo else ea.replace(tzinfo=_tz.utc)
+                        if tf.start:
+                            s = tf.start if tf.start.tzinfo else tf.start.replace(tzinfo=_tz.utc)
+                            if ea_tz < s:
+                                return False
+                        if tf.end:
+                            e = tf.end if tf.end.tzinfo else tf.end.replace(tzinfo=_tz.utc)
+                            if ea_tz > e:
+                                return False
+                        return True
+                    results = [(s, pi) for s, pi in results if _in_range(pi)]
+                # Recency decay blend
+                if tf.recency_alpha > 0.05:
+                    half_life = max(tf.recency_half_life_days, 1.0)
+                    alpha = tf.recency_alpha
+                    reranked = []
+                    for score, pi in results:
+                        ea = getattr(pi, "event_at", None)
+                        if ea is None:
+                            age_d = 0.0
+                        else:
+                            ea_tz = ea if ea.tzinfo else ea.replace(tzinfo=_tz.utc)
+                            age_d = max(0.0, (_TEMP_REF - ea_tz).total_seconds() / 86400.0)
+                        recency = _math.exp(-age_d * _math.log(2) / half_life)
+                        final = (1.0 - alpha) * score + alpha * recency
+                        reranked.append((final, pi))
+                    reranked.sort(key=lambda x: x[0], reverse=True)
+                    results = reranked
 
             elapsed_ms = (time.perf_counter() - start) * 1000
 
@@ -882,9 +1177,16 @@ if __name__ == "__main__":
     parser.add_argument("--json", action="store_true", help="Output results as JSON")
     parser.add_argument("--llm", action="store_true",
                         help="Use Claude Haiku LLM synthesis for answer extraction (requires ANTHROPIC_API_KEY)")
+    parser.add_argument("--category", "-c", type=str, default=None,
+                        help="Run only tests of this category (e.g. TEMP, SH, MH, SUM, ADV)")
     args = parser.parse_args()
 
-    summary = run_eval(target_j1=args.target, verbose=args.verbose, use_llm=args.llm)
+    summary = run_eval(
+        target_j1=args.target,
+        verbose=args.verbose,
+        use_llm=args.llm,
+        category_filter=args.category,
+    )
 
     if args.json:
         print(json.dumps(asdict(summary), indent=2))
