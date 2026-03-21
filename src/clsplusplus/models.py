@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
@@ -36,6 +37,22 @@ def _validate_item_id(v: str) -> str:
     return v
 
 
+@dataclass
+class TemporalFilter:
+    """Temporal constraints for a memory read query.
+
+    Produced by ``parse_temporal_filter()`` from the query text, or supplied
+    directly by the caller.  All fields have safe defaults that disable
+    filtering / decay so the object is always safe to pass through.
+    """
+
+    start: Optional[datetime] = None          # inclusive lower bound on event_at
+    end: Optional[datetime] = None            # inclusive upper bound on event_at
+    recency_half_life_days: float = 90.0      # exponential-decay half-life
+    temporal_signal: str = "none"             # "recent"|"historical"|"range"|"none"
+    recency_alpha: float = 0.1               # blend weight: (1-α)·semantic + α·recency
+
+
 class StoreLevel(str, Enum):
     """Memory store level (L0-L3)."""
 
@@ -60,6 +77,10 @@ class MemoryItem(BaseModel):
     version: int = 1
     checksum: Optional[str] = None
     lineage: list[str] = Field(default_factory=list)
+
+    # Temporal provenance
+    event_at: Optional[datetime] = None       # when the event HAPPENED (differs from write timestamp)
+    superseded: bool = False                  # True = a newer fact on the same topic exists
 
     # Plasticity signals
     salience: float = 0.5
@@ -111,6 +132,10 @@ class WriteRequest(BaseModel):
     # ISO-8601 string or datetime accepted.  Example: "2024-05-08T14:30:00"
     conversation_date: Optional[datetime] = Field(default=None)
 
+    # Explicit event_at override.  If omitted, extract_event_date() is used to
+    # auto-detect from the resolved text.  If that also fails, event_at is left None.
+    event_at: Optional[datetime] = Field(default=None)
+
     @field_validator("namespace")
     @classmethod
     def ns_valid(cls, v: str) -> str:
@@ -125,6 +150,11 @@ class ReadRequest(BaseModel):
     limit: int = Field(default=10, ge=1, le=MAX_LIMIT)
     store_levels: Optional[list[StoreLevel]] = None
     min_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+    # Temporal filtering. If None, auto-parsed from query text at read time.
+    temporal_filter: Optional[TemporalFilter] = Field(default=None)
+    # When False (default), superseded facts are hidden from results.
+    include_superseded: bool = Field(default=False)
 
     @field_validator("namespace")
     @classmethod

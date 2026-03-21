@@ -87,11 +87,26 @@ class L1IndexingStore(BaseStore):
                 predicate TEXT,
                 object TEXT,
                 embedding vector(384),
+                event_at TIMESTAMPTZ DEFAULT NULL,
+                superseded BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )
         """)
+        # Idempotent migrations for existing tables (safe on fresh tables too)
+        await conn.execute("""
+            ALTER TABLE l1_memories ADD COLUMN IF NOT EXISTS event_at TIMESTAMPTZ DEFAULT NULL
+        """)
+        await conn.execute("""
+            ALTER TABLE l1_memories ADD COLUMN IF NOT EXISTS superseded BOOLEAN DEFAULT FALSE
+        """)
         await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_l1_namespace ON l1_memories(namespace)
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_l1_event_at ON l1_memories(namespace, event_at)
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_l1_superseded ON l1_memories(namespace, superseded)
         """)
         # IVFFlat index - requires rows; create when table has data
         try:
@@ -128,8 +143,11 @@ class L1IndexingStore(BaseStore):
                         id, namespace, text, store_level, source, timestamp, confidence,
                         version, checksum, lineage, salience, usage_count, authority,
                         conflict_score, surprise, promotion_score, metadata,
-                        subject, predicate, object, embedding
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21::vector)
+                        subject, predicate, object, embedding, event_at, superseded
+                    ) VALUES (
+                        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+                        $14, $15, $16, $17, $18, $19, $20, $21::vector, $22, $23
+                    )
                     ON CONFLICT (id) DO UPDATE SET
                         text = EXCLUDED.text,
                         confidence = EXCLUDED.confidence,
@@ -137,7 +155,9 @@ class L1IndexingStore(BaseStore):
                         salience = EXCLUDED.salience,
                         usage_count = l1_memories.usage_count + 1,
                         promotion_score = EXCLUDED.promotion_score,
-                        embedding = EXCLUDED.embedding
+                        embedding = EXCLUDED.embedding,
+                        event_at = COALESCE(EXCLUDED.event_at, l1_memories.event_at),
+                        superseded = EXCLUDED.superseded
                 """,
                     item.id, item.namespace, item.text, item.store_level.value,
                     item.source, item.timestamp, item.confidence, item.version,
@@ -145,6 +165,7 @@ class L1IndexingStore(BaseStore):
                     item.usage_count, item.authority, item.conflict_score,
                     item.surprise, item.promotion_score, json.dumps(item.metadata),
                     item.subject, item.predicate, item.object, embedding_str,
+                    item.event_at, item.superseded,
                 )
         return item
 
@@ -177,6 +198,17 @@ class L1IndexingStore(BaseStore):
         emb = None
         if row["embedding"]:
             emb = [float(x) for x in row["embedding"]]
+        # event_at column may be absent from old rows before migration
+        event_at = None
+        try:
+            event_at = row["event_at"]
+        except (KeyError, Exception):
+            pass
+        superseded = False
+        try:
+            superseded = bool(row["superseded"])
+        except (KeyError, Exception):
+            pass
         return MemoryItem(
             id=row["id"],
             namespace=row["namespace"],
@@ -199,6 +231,8 @@ class L1IndexingStore(BaseStore):
             predicate=row["predicate"],
             object=row["object"],
             embedding=emb,
+            event_at=event_at,
+            superseded=superseded,
         )
 
     async def get_by_id(self, item_id: str, namespace: str) -> Optional[MemoryItem]:
@@ -232,7 +266,7 @@ class L1IndexingStore(BaseStore):
         pool = await self.get_pool()
         rows = await pool.fetch("""
             SELECT * FROM l1_memories
-            WHERE namespace = $1
+            WHERE namespace = $1 AND (superseded IS NULL OR superseded = FALSE)
             ORDER BY confidence DESC, timestamp DESC
             LIMIT $2
         """, namespace, limit)
@@ -331,6 +365,19 @@ class L1IndexingStore(BaseStore):
             *values,
         )
         return True
+
+    async def update_superseded(self, item_id: str, namespace: str) -> None:
+        """Mark an item as superseded (a newer fact on the same topic now exists).
+
+        Superseded items are hidden from default reads but never physically deleted.
+        Callers can retrieve them by passing ``include_superseded=True`` on a read.
+        """
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE l1_memories SET superseded = TRUE WHERE id = $1 AND namespace = $2",
+                item_id, namespace,
+            )
 
     async def close(self) -> None:
         """Cleanly shut down the connection pool."""

@@ -14,8 +14,9 @@ Startup: L1 → PhaseMemoryEngine (reload persisted items into brain)
 
 import asyncio
 import logging
+import math
 import re as _re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from clsplusplus.config import Settings
@@ -24,7 +25,12 @@ from clsplusplus.memory_phase import Fact, PhaseMemoryEngine
 from clsplusplus.models import MemoryItem, ReadRequest, ReadResponse, StoreLevel, WriteRequest
 from clsplusplus.reconsolidation import ReconsolidationGate
 from clsplusplus.stores import L1IndexingStore, L2SchemaGraph
-from clsplusplus.temporal import annotate_relative_dates, resolve_relative_dates
+from clsplusplus.temporal import (
+    annotate_relative_dates,
+    extract_event_date,
+    parse_temporal_filter,
+    resolve_relative_dates,
+)
 from clsplusplus.tracer import tracer
 
 logger = logging.getLogger(__name__)
@@ -89,6 +95,8 @@ class MemoryService:
             subject=phase_item.fact.subject or (req.subject if req else None),
             predicate=phase_item.fact.relation or None,
             object=(phase_item.fact.value[:256] if phase_item.fact.value else None) or (req.object if req else None),
+            event_at=getattr(phase_item, "event_at", None),
+            superseded=getattr(phase_item, "superseded", False),
         )
 
     # =========================================================================
@@ -131,6 +139,10 @@ class MemoryService:
                         phase_item.surprise_at_birth      = float(item.surprise or 0.0)
                         if item.embedding:
                             phase_item.embedding_dense = list(item.embedding)
+                        # Restore temporal provenance
+                        if item.event_at is not None:
+                            phase_item.event_at = item.event_at
+                        phase_item.superseded = bool(item.superseded)
                 self.engine.finalize_batch(namespace)
                 logger.info(
                     "Loaded %d items from L1 into PhaseMemoryEngine for ns=%s "
@@ -433,33 +445,179 @@ class MemoryService:
                     break  # each token in a matches at most one in b
         return count
 
-    def _matching_threads(self, query: str, namespace: str) -> list[MemoryItem]:
+    def _matching_threads(
+        self,
+        query: str,
+        namespace: str,
+        temporal_filter=None,
+    ) -> list[MemoryItem]:
         """Return thread MemoryItems whose event key meaningfully overlaps with the query.
 
         Uses non-stopword token overlap (with fuzzy suffix matching) to prevent
         common words ("went", "yesterday", "i") from causing unrelated threads to
         inject into results, while handling "hike" vs "hiking" variations.
         Requires at least 1 meaningful shared token.
+
+        When *temporal_filter* has date bounds, thread dates are filtered to
+        that window.  Query patterns like "last time", "how many times", and
+        "most recent" are handled with specialised display text.
         """
         query_tokens = self._meaningful_tokens(query)
         if not query_tokens:
             return []
+        q_lower = query.lower()
         matched = []
         for event_key, dates in self._event_threads.get(namespace, {}).items():
             if len(dates) < 2:
                 continue
             key_tokens = self._meaningful_tokens(event_key)
-            if self._fuzzy_token_overlap(query_tokens, key_tokens) > 0:
-                text = self._thread_display_text(event_key, dates)
-                matched.append(MemoryItem(
-                    text=text,
-                    namespace=namespace,
-                    store_level=StoreLevel.L1,
-                    source="thread",
-                    confidence=1.0,
-                    salience=1.0,
-                ))
+            if self._fuzzy_token_overlap(query_tokens, key_tokens) == 0:
+                continue
+
+            # Apply date-range filter if temporal_filter has bounds
+            filtered_dates = dates
+            if temporal_filter and (temporal_filter.start or temporal_filter.end):
+                filtered_dates = [
+                    d for d in dates
+                    if self._thread_date_in_range(d, temporal_filter)
+                ]
+            if len(filtered_dates) < 1:
+                continue
+
+            # Choose display style based on query intent
+            if any(w in q_lower for w in ("last time", "most recent", "latest", "when did i last", "when was the last")):
+                text = f"[Last time] {event_key}: {filtered_dates[-1]}"
+            elif any(w in q_lower for w in ("how many", "how often", "times have", "how many times", "count")):
+                recent = filtered_dates[-3:]
+                text = f"[Frequency] {event_key}: {len(filtered_dates)} times. Most recent: {', '.join(recent)}"
+            else:
+                text = self._thread_display_text(event_key, filtered_dates)
+
+            matched.append(MemoryItem(
+                text=text,
+                namespace=namespace,
+                store_level=StoreLevel.L1,
+                source="thread",
+                confidence=1.0,
+                salience=1.0,
+            ))
         return matched
+
+    @staticmethod
+    def _thread_date_in_range(date_str: str, tf) -> bool:
+        """Return True if a thread date string falls within a TemporalFilter's bounds."""
+        # Thread dates are stored as strings like "7 May 2024" — parse them lazily
+        try:
+            from datetime import datetime as _dt
+            # Try "7 May 2024" format
+            d = _dt.strptime(date_str.strip(), "%d %B %Y").replace(tzinfo=timezone.utc)
+        except ValueError:
+            try:
+                # Try ISO format fallback
+                d = _dt.fromisoformat(date_str.strip())
+                if d.tzinfo is None:
+                    d = d.replace(tzinfo=timezone.utc)
+            except ValueError:
+                return True  # Can't parse → include conservatively
+        if tf.start and d < tf.start:
+            return False
+        if tf.end and d > tf.end:
+            return False
+        return True
+
+    # =========================================================================
+    # Temporal helpers
+    # =========================================================================
+
+    @staticmethod
+    def _event_at_in_range(event_at, tf) -> bool:
+        """Return True if *event_at* falls within the TemporalFilter bounds.
+
+        If *event_at* is None (unknown), the item is conservatively included.
+        """
+        if event_at is None:
+            return True  # no event_at → unknown time → include conservatively
+        dt = event_at
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        if tf.start:
+            start = tf.start if tf.start.tzinfo else tf.start.replace(tzinfo=timezone.utc)
+            if dt < start:
+                return False
+        if tf.end:
+            end = tf.end if tf.end.tzinfo else tf.end.replace(tzinfo=timezone.utc)
+            if dt > end:
+                return False
+        return True
+
+    def _apply_recency_decay(self, results, now: datetime, tf) -> list:
+        """Blend recency score into semantic score using exponential half-life decay.
+
+        Formula: recency = exp(-age_days * ln(2) / half_life_days)
+        Final:   score   = (1 - alpha) * semantic + alpha * recency
+
+        Items with unknown event_at are treated as age=0 (brand new, max recency).
+        """
+        half_life = max(tf.recency_half_life_days, 1.0)
+        alpha = tf.recency_alpha
+        now_tz = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
+        reranked = []
+        for score, phase_item in results:
+            event_at = getattr(phase_item, "event_at", None)
+            if event_at is None:
+                age_days = 0.0  # unknown age → treat as current
+            else:
+                dt = event_at if event_at.tzinfo else event_at.replace(tzinfo=timezone.utc)
+                age_days = max(0.0, (now_tz - dt).total_seconds() / 86400.0)
+            recency = math.exp(-age_days * math.log(2) / half_life)
+            final = (1.0 - alpha) * score + alpha * recency
+            reranked.append((final, phase_item))
+        reranked.sort(key=lambda x: x[0], reverse=True)
+        return reranked
+
+    async def _mark_superseded_async(
+        self,
+        new_item,           # PhaseMemoryItem — the new, winning fact
+        namespace: str,
+        new_event_at: datetime,
+    ) -> None:
+        """Mark older same-(subject, relation) facts as superseded.
+
+        Conservative: only supersedes when:
+        - exact subject + relation match
+        - older event_at < new_event_at
+        Never deletes — superseded=True just hides from default reads.
+        """
+        try:
+            subject = new_item.fact.subject
+            relation = new_item.fact.relation
+            if not subject or not relation:
+                return
+
+            new_tz = new_event_at if new_event_at.tzinfo else new_event_at.replace(tzinfo=timezone.utc)
+
+            candidates = self.engine._items.get(namespace, [])
+            for item in candidates:
+                if item.id == new_item.id:
+                    continue
+                if item.fact.subject != subject or item.fact.relation != relation:
+                    continue
+                # Same subject + relation — check if older
+                old_event_at = getattr(item, "event_at", None)
+                if old_event_at is None:
+                    # No event_at on old item → supersede it (new fact wins by default)
+                    item.superseded = True
+                    asyncio.create_task(self.l1.update_superseded(item.id, namespace))
+                    # Record lineage: new item supersedes old
+                    if item.id not in new_item.fact.raw_text:
+                        pass  # lineage tracked at MemoryItem level, not here
+                else:
+                    old_tz = old_event_at if old_event_at.tzinfo else old_event_at.replace(tzinfo=timezone.utc)
+                    if old_tz < new_tz:
+                        item.superseded = True
+                        asyncio.create_task(self.l1.update_superseded(item.id, namespace))
+        except Exception as e:
+            logger.debug("_mark_superseded_async non-fatal: %s", e)
 
     # =========================================================================
     # Persistence helpers — fire-and-forget so failures never block reads/writes
@@ -561,8 +719,18 @@ class MemoryService:
                 else:
                     tracer.add_metadata(trace_id, store_hop, output="none", phase="none", strength=0)
 
-            # Populate session_date so temporal context travels with the item
-            # Also maintain a temporal event thread for recurring episodic events
+            # ---- Temporal provenance: event_at + session_date + event threads ----
+            # Determine when the described event HAPPENED.  Priority:
+            #   1. Explicit override from req.event_at
+            #   2. Auto-extracted from store_text (which has resolved relative dates)
+            #   3. conversation_date fallback (the write happened "now" in the conversation)
+            _event_at: Optional[datetime] = (
+                req.event_at
+                or extract_event_date(store_text, req.conversation_date)
+            )
+            if phase_item and _event_at is not None:
+                phase_item.event_at = _event_at
+
             if req.conversation_date:
                 from clsplusplus.temporal import date_label as _date_label
                 _dl = _date_label(req.conversation_date)  # "7 May 2024 (Tuesday)"
@@ -574,6 +742,17 @@ class MemoryService:
                     _event_dates = self._DATE_PAT.findall(store_text)
                     if _event_dates:
                         await self._update_event_thread(req, req.text, _event_dates[0])
+
+            # Belief supersession: fire-and-forget, never blocks the write
+            if (
+                phase_item
+                and phase_item.fact.subject
+                and phase_item.fact.relation
+                and _event_at is not None
+            ):
+                asyncio.create_task(
+                    self._mark_superseded_async(phase_item, req.namespace, _event_at)
+                )
 
             # 2b. Attach 384-dim dense embedding to PhaseMemoryItem (fire-and-forget on item)
             # PhaseMemoryEngine stays zero-dep; we attach post-store so TRR is unaffected.
@@ -645,13 +824,20 @@ class MemoryService:
                              namespace=req.namespace):
                 await self.ensure_loaded(req.namespace)
 
+            # 1b. Auto-parse temporal filter from query if not provided
+            effective_tf = req.temporal_filter
+            if effective_tf is None:
+                effective_tf = parse_temporal_filter(req.query, datetime.now(timezone.utc))
+
             # 2. Search via PhaseMemoryEngine (in-memory, sub-ms)
             # Fetch ALL items in the namespace (up to 500) so the semantic re-ranker
             # can find vocabulary-gap matches ("job title" → "software engineer").
-            # TRR scores items that lack query tokens near-zero, but they still appear
-            # in the pool for cosine re-ranking to promote.
+            # For temporal queries with date bounds, fetch everything so date-filter works.
             ns_size = len(self.engine._items.get(req.namespace, []))
-            fetch_limit = max(req.limit * 2, req.limit + 20, min(500, ns_size))
+            if effective_tf and (effective_tf.start or effective_tf.end):
+                fetch_limit = max(500, ns_size)
+            else:
+                fetch_limit = max(req.limit * 2, req.limit + 20, min(500, ns_size))
             with tracer.span(trace_id, "engine.search", "phase_engine",
                              input=req.query[:200],
                              namespace=req.namespace, fetch_limit=fetch_limit) as search_hop:
@@ -663,6 +849,13 @@ class MemoryService:
                                         results=len(results))
                 else:
                     tracer.add_metadata(trace_id, search_hop, output="0 results", results=0)
+
+            # 2a. Apply temporal date filter (before semantic re-rank)
+            if effective_tf and (effective_tf.start or effective_tf.end):
+                results = [
+                    (s, pi) for s, pi in results
+                    if self._event_at_in_range(getattr(pi, "event_at", None), effective_tf)
+                ]
 
             # 2b. 384-dim semantic re-ranking (post-TRR layer)
             if len(results) > 1:
@@ -683,6 +876,11 @@ class MemoryService:
                     except Exception as _rr_err:
                         logger.debug("Semantic re-rank failed (falling back to TRR order): %s", _rr_err)
                         tracer.add_metadata(trace_id, rerank_hop, output=f"failed: {_rr_err}")
+
+            # 2c. Recency decay blend (after semantic re-rank, before slicing)
+            if effective_tf and effective_tf.recency_alpha > 0.05:
+                results = self._apply_recency_decay(results, datetime.now(timezone.utc), effective_tf)
+
             results = results[:req.limit]
 
             # 3. Convert PhaseMemoryItems to MemoryItems
@@ -692,13 +890,16 @@ class MemoryService:
                 for score, phase_item in results:
                     mem_item = self._phase_to_item(phase_item)
                     if mem_item.confidence >= req.min_confidence:
+                        # Filter superseded items unless caller explicitly wants them
+                        if not req.include_superseded and mem_item.superseded:
+                            continue
                         items.append(mem_item)
                 preview = " | ".join(i.text[:60] for i in items[:2]) if items else "no results"
                 tracer.add_metadata(trace_id, conv_hop,
                                     output=f"{len(items)} items: {preview}")
 
             # 3b. Inject matching temporal event threads at the top of results.
-            thread_items = self._matching_threads(req.query, req.namespace)
+            thread_items = self._matching_threads(req.query, req.namespace, effective_tf)
             if thread_items:
                 items = thread_items + items
 

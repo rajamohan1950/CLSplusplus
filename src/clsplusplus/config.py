@@ -84,6 +84,14 @@ class Settings(BaseSettings):
     phase_capacity: int = 1000           # Max items per namespace (denominator for ρ)
     phase_beta_retrieval: float = 0.15   # Retrieval reinforcement: s *= (1 + β·ln(1+R))
 
+    # Temporal recency decay
+    # half-life used when query has no temporal signal (fallback)
+    temporal_recency_half_life_days: float = 90.0
+    # blend weight for queries with no temporal signal ("what are my hobbies?")
+    temporal_recency_alpha_default: float = 0.1
+    # blend weight for strong recency signals ("recently", "last week", "yesterday")
+    temporal_recency_alpha_strong: float = 0.5
+
     # Demo LLM keys (optional; demo uses these for real Claude/OpenAI/Gemini)
     anthropic_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None

@@ -41,6 +41,7 @@ import math
 import string
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Optional
 from uuid import uuid4
 
@@ -445,6 +446,14 @@ class PhaseMemoryItem:
     # --- Conversation context (set by benchmark/API callers, optional) ---
     session_date: str = ""        # Human-readable session date ("8 May 2023")
     conversation_turn: int = 0    # Turn index within its conversation
+
+    # --- Temporal provenance (set by MemoryService at write time) ---
+    # When the described event HAPPENED (wall-clock).  Differs from birth_order
+    # (which is a memory-event counter) and from the write timestamp.
+    event_at: Optional[datetime] = None
+    # True = a newer fact on the same (subject, relation) dimension exists.
+    # Superseded items are hidden from default reads but never deleted.
+    superseded: bool = False
 
     # --- Crystallization (Liquid → Solid phase transition) ---
     schema_meta: Optional[SchemaMeta] = None  # Non-None = solid/glass phase
