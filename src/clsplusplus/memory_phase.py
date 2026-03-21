@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import math
 import string
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
@@ -570,7 +570,7 @@ class PhaseMemoryEngine:
         self.MIN_GROUP_SIZE: int = 3                          # ≥ 3 episodes to crystallize
 
         # --- TRR Constants (Thermodynamic Resonance Retrieval) ---
-        self._SVD_RECOMPUTE_INTERVAL: int = 50   # Recompute SVD every N stores
+        self._SVD_RECOMPUTE_INTERVAL: int = 10   # Recompute SVD every N stores (per namespace)
         self._SVD_DIMS: int = 50                  # Embedding dimensionality
         self._MORPH_PREFIX_LEN: int = 4           # Minimum prefix for morphological matching
 
@@ -581,22 +581,26 @@ class PhaseMemoryEngine:
         self._item_by_id: dict[str, PhaseMemoryItem] = {}  # O(1) lookup for PESQD
 
         # Token Index — Thermodynamic Semantic Field (TSF)
-        # Single token index: token → list of PhaseMemoryItems
-        # Entries phase-transition in/out based on R(s) = floor(N × s^(1/3))
-        self._token_index: dict[str, list[PhaseMemoryItem]] = {}
+        # Nested dict: namespace -> token -> item.id -> PhaseMemoryItem
+        # O(1) insert/delete, no namespace filtering needed at search time
+        self._token_index: dict[str, dict[str, dict[str, PhaseMemoryItem]]] = {}
 
         # Morphological Kernel — prefix equivalence classes for query-time expansion
         # prefix4 → set of indexed tokens sharing that prefix
         self._prefix_index: dict[str, set[str]] = {}
 
         # Document frequency for IDF computation (self-computed from corpus)
-        self._doc_freq: Counter = Counter()
+        # Per-namespace: namespace -> token -> count
+        self._doc_freq: dict[str, Counter] = defaultdict(Counter)
 
-        # PPMI Co-occurrence — token pairs co-occurring in same item
-        self._cooccurrence: Counter = Counter()
-        self._svd_store_count: int = 0
-        self._svd_dirty: bool = False
-        self._token_vectors: dict[str, list[float]] = {}
+        # PPMI Co-occurrence — token pairs co-occurring in same item (per-namespace)
+        self._cooccurrence: dict[str, Counter] = defaultdict(Counter)
+        self._svd_store_count: dict[str, int] = defaultdict(int)   # per-namespace
+        self._svd_dirty: dict[str, bool] = defaultdict(bool)        # per-namespace
+        self._token_vectors: dict[str, dict[str, list[float]]] = defaultdict(dict)  # namespace -> token -> vec
+
+        # Per-namespace dirty flag for free energy recomputation
+        self._free_energy_dirty: dict[str, bool] = {}
 
         # --- Cross-Entity Resonance (CER) — Kuramoto Coupled Oscillators ---
         self._entity_nodes: dict[str, EntityNode] = {}
@@ -679,11 +683,10 @@ class PhaseMemoryEngine:
             radius = max(1, int(n_tokens * cube_root_s))
 
         # Index tokens within radius + update prefix index
+        ns_idx = self._token_index.setdefault(item.namespace, {})
         for token in tokens[:radius]:
-            if token not in self._token_index:
-                self._token_index[token] = []
-            if item not in self._token_index[token]:
-                self._token_index[token].append(item)
+            tok_idx = ns_idx.setdefault(token, {})
+            tok_idx[item.id] = item  # O(1) insert, replaces list.append
             # Maintain prefix index for morphological kernel
             if len(token) >= self._MORPH_PREFIX_LEN:
                 prefix = token[:self._MORPH_PREFIX_LEN]
@@ -691,34 +694,42 @@ class PhaseMemoryEngine:
 
         # De-index tokens beyond radius
         for token in tokens[radius:]:
-            if token in self._token_index and item in self._token_index[token]:
-                self._token_index[token].remove(item)
-                if not self._token_index[token]:
-                    del self._token_index[token]
-                    # Clean prefix index if token fully removed
-                    if len(token) >= self._MORPH_PREFIX_LEN:
-                        prefix = token[:self._MORPH_PREFIX_LEN]
-                        if prefix in self._prefix_index:
-                            self._prefix_index[prefix].discard(token)
-                            if not self._prefix_index[prefix]:
-                                del self._prefix_index[prefix]
+            ns_idx.get(token, {}).pop(item.id, None)
+            # Clean up empty token dicts + prefix index
+            if token in ns_idx and not ns_idx[token]:
+                del ns_idx[token]
+                if len(token) >= self._MORPH_PREFIX_LEN:
+                    prefix = token[:self._MORPH_PREFIX_LEN]
+                    # Only remove prefix if no namespace has this token indexed
+                    token_still_exists = any(
+                        token in self._token_index.get(ns, {})
+                        for ns in self._token_index
+                    )
+                    if not token_still_exists and prefix in self._prefix_index:
+                        self._prefix_index[prefix].discard(token)
+                        if not self._prefix_index[prefix]:
+                            del self._prefix_index[prefix]
 
         item._last_field_radius = radius
 
     def _deindex_item(self, item: PhaseMemoryItem) -> None:
         """Remove a memory item from the token index entirely."""
+        ns_idx = self._token_index.get(item.namespace, {})
         for token in item.indexed_tokens:
-            if token in self._token_index and item in self._token_index[token]:
-                self._token_index[token].remove(item)
-                if not self._token_index[token]:
-                    del self._token_index[token]
-                    # Clean prefix index if token fully removed
-                    if len(token) >= self._MORPH_PREFIX_LEN:
-                        prefix = token[:self._MORPH_PREFIX_LEN]
-                        if prefix in self._prefix_index:
-                            self._prefix_index[prefix].discard(token)
-                            if not self._prefix_index[prefix]:
-                                del self._prefix_index[prefix]
+            ns_idx.get(token, {}).pop(item.id, None)
+            if token in ns_idx and not ns_idx[token]:
+                del ns_idx[token]
+                # Clean prefix index if no namespace has this token anymore
+                if len(token) >= self._MORPH_PREFIX_LEN:
+                    prefix = token[:self._MORPH_PREFIX_LEN]
+                    token_still_exists = any(
+                        token in self._token_index.get(ns, {})
+                        for ns in self._token_index
+                    )
+                    if not token_still_exists and prefix in self._prefix_index:
+                        self._prefix_index[prefix].discard(token)
+                        if not self._prefix_index[prefix]:
+                            del self._prefix_index[prefix]
 
     def _update_field_radius(self, item: PhaseMemoryItem) -> None:
         """Lazy field radius update. Only re-indexes if R(s) has changed."""
@@ -744,18 +755,26 @@ class PhaseMemoryEngine:
             return 0.0
         return fe
 
-    def _compute_idf(self, token: str) -> float:
+    def _compute_idf(self, token: str, namespace: str = "") -> float:
         """
         Compute Inverse Document Frequency for a token.
 
         idf(t) = log(1 + N / (1 + df(t)))
 
         Self-computed from the engine's own corpus. Zero external knowledge.
-        N = total items across all namespaces.
-        df(t) = number of items containing token t.
+        N = total items in the namespace (or all namespaces if namespace="").
+        df(t) = number of items containing token t in the namespace.
         """
-        df = self._doc_freq.get(token, 0)
-        return math.log(1.0 + self._total_item_count / (1.0 + df))
+        if namespace:
+            ns_freq = self._doc_freq.get(namespace, Counter())
+            df = ns_freq.get(token, 0)
+            ns_items = self._items.get(namespace, [])
+            N = len(ns_items) if ns_items else self._total_item_count
+        else:
+            # Fallback: aggregate across all namespaces
+            df = sum(self._doc_freq[ns].get(token, 0) for ns in self._doc_freq)
+            N = self._total_item_count
+        return math.log(1.0 + max(N, 1) / (1.0 + df))
 
     # =========================================================================
     # TRR — Thermodynamic Resonance Retrieval
@@ -772,7 +791,7 @@ class PhaseMemoryEngine:
     #   6. Schema-Aware Query Expansion
     # =========================================================================
 
-    def _morph_expand(self, token: str) -> list[str]:
+    def _morph_expand(self, token: str, namespace: str = "") -> list[str]:
         """
         Morphological Kernel: expand a query token to all indexed variants
         sharing a ≥4-char prefix.
@@ -781,21 +800,30 @@ class PhaseMemoryEngine:
 
         Uses _prefix_index for O(1) lookup. No suffix rules.
         Universal: works for any language with prefixed morphology.
+        When namespace is provided, only returns tokens present in that namespace's index.
         """
+        ns_idx = self._token_index.get(namespace, {}) if namespace else {}
+
+        def _token_indexed(t: str) -> bool:
+            if namespace:
+                return t in ns_idx
+            # Fallback: check any namespace
+            return any(t in self._token_index.get(ns, {}) for ns in self._token_index)
+
         if len(token) < self._MORPH_PREFIX_LEN:
-            return [token] if token in self._token_index else []
+            return [token] if _token_indexed(token) else []
         prefix = token[:self._MORPH_PREFIX_LEN]
         variants = self._prefix_index.get(prefix, set())
         if not variants:
-            return [token] if token in self._token_index else []
+            return [token] if _token_indexed(token) else []
         # Return variants that are actually in the token index
-        result = [v for v in variants if v in self._token_index]
+        result = [v for v in variants if _token_indexed(v)]
         # Ensure original token is included if indexed
-        if token in self._token_index and token not in result:
+        if _token_indexed(token) and token not in result:
             result.append(token)
         return result
 
-    def _compute_entropy_weight(self, token: str) -> float:
+    def _compute_entropy_weight(self, token: str, namespace: str = "") -> float:
         """
         BMX entropy weight: penalizes tokens distributed uniformly across items,
         boosts tokens that cluster in specific items.
@@ -806,8 +834,13 @@ class PhaseMemoryEngine:
         Clustered token (low entropy) → high weight → more informative.
         Uniform token (high entropy) → low weight → less discriminating.
         """
-        df = self._doc_freq.get(token, 0)
-        N = max(self._total_item_count, 1)
+        if namespace:
+            ns_freq = self._doc_freq.get(namespace, Counter())
+            df = ns_freq.get(token, 0)
+            N = max(len(self._items.get(namespace, [])), 1)
+        else:
+            df = sum(self._doc_freq[ns].get(token, 0) for ns in self._doc_freq)
+            N = max(self._total_item_count, 1)
         if df == 0 or df == N:
             return 1.0
         p = df / N
@@ -840,7 +873,7 @@ class PhaseMemoryEngine:
 
         return 1.0  # Liquid
 
-    def _compute_pmi(self, token_a: str, token_b: str) -> float:
+    def _compute_pmi(self, token_a: str, token_b: str, namespace: str = "") -> float:
         """
         Pointwise Mutual Information from co-occurrence statistics.
 
@@ -850,41 +883,64 @@ class PhaseMemoryEngine:
         Self-computed from the engine's own corpus. Zero external knowledge.
         """
         a, b = (token_a, token_b) if token_a < token_b else (token_b, token_a)
-        co = self._cooccurrence.get((a, b), 0)
+        if namespace:
+            ns_co = self._cooccurrence.get(namespace, Counter())
+            co = ns_co.get((a, b), 0)
+            ns_freq = self._doc_freq.get(namespace, Counter())
+            df_a = ns_freq.get(token_a, 0)
+            df_b = ns_freq.get(token_b, 0)
+            N = max(len(self._items.get(namespace, [])), 1)
+        else:
+            co = sum(self._cooccurrence[ns].get((a, b), 0) for ns in self._cooccurrence)
+            df_a = sum(self._doc_freq[ns].get(token_a, 0) for ns in self._doc_freq)
+            df_b = sum(self._doc_freq[ns].get(token_b, 0) for ns in self._doc_freq)
+            N = max(self._total_item_count, 1)
         if co == 0:
             return 0.0
-        df_a = self._doc_freq.get(token_a, 0)
-        df_b = self._doc_freq.get(token_b, 0)
         if df_a == 0 or df_b == 0:
             return 0.0
-        N = max(self._total_item_count, 1)
         pmi = math.log(N * co / (df_a * df_b))
         return max(0.0, pmi)  # PPMI: clamp negative
 
-    def _recompute_svd(self) -> None:
+    def _recompute_svd(self, namespace: str = "") -> None:
         """
         Recompute PPMI-SVD token vectors from co-occurrence matrix.
 
         Pure Python. Zero external dependencies (no numpy, no scipy).
         Uses randomized power iteration for truncated SVD.
 
-        Output: self._token_vectors — per-token vectors for semantic matching.
+        When namespace is provided, recomputes only for that namespace.
+        Output: self._token_vectors[namespace] — per-token vectors for semantic matching.
         Mathematically equivalent to word2vec (Levy & Goldberg 2014).
         """
-        if not self._cooccurrence:
+        if namespace:
+            ns_co = self._cooccurrence.get(namespace, Counter())
+            ns_freq = self._doc_freq.get(namespace, Counter())
+            N = max(len(self._items.get(namespace, [])), 1)
+        else:
+            # Fallback: aggregate across all namespaces (used by finalize_batch)
+            ns_co = Counter()
+            for ns_counter in self._cooccurrence.values():
+                ns_co.update(ns_counter)
+            ns_freq = Counter()
+            for ns_counter in self._doc_freq.values():
+                ns_freq.update(ns_counter)
+            N = max(self._total_item_count, 1)
+
+        if not ns_co:
             return
 
         # Build vocabulary from tokens with sufficient document frequency
         vocab: set[str] = set()
-        for (a, b) in self._cooccurrence:
-            if self._doc_freq.get(a, 0) >= 2:
+        for (a, b) in ns_co:
+            if ns_freq.get(a, 0) >= 2:
                 vocab.add(a)
-            if self._doc_freq.get(b, 0) >= 2:
+            if ns_freq.get(b, 0) >= 2:
                 vocab.add(b)
 
         # Cap vocabulary at top 5000 by document frequency
         if len(vocab) > 5000:
-            vocab_sorted = sorted(vocab, key=lambda t: self._doc_freq.get(t, 0), reverse=True)
+            vocab_sorted = sorted(vocab, key=lambda t: ns_freq.get(t, 0), reverse=True)
             vocab = set(vocab_sorted[:5000])
 
         vocab_list = sorted(vocab)
@@ -897,12 +953,11 @@ class PhaseMemoryEngine:
 
         # Build sparse PPMI matrix as dict-of-dicts
         ppmi_rows: dict[int, dict[int, float]] = {}
-        N = max(self._total_item_count, 1)
-        for (a, b), co in self._cooccurrence.items():
+        for (a, b), co in ns_co.items():
             if a not in tok2idx or b not in tok2idx:
                 continue
-            df_a = self._doc_freq.get(a, 0)
-            df_b = self._doc_freq.get(b, 0)
+            df_a = ns_freq.get(a, 0)
+            df_b = ns_freq.get(b, 0)
             if df_a == 0 or df_b == 0:
                 continue
             pmi_val = math.log(N * co / (df_a * df_b))
@@ -950,7 +1005,8 @@ class PhaseMemoryEngine:
             basis = new_basis
 
         # Extract token vectors: each token gets a dims-dimensional vector
-        self._token_vectors = {}
+        target_ns = namespace if namespace else ""
+        self._token_vectors[target_ns] = {}
         for idx, token in enumerate(vocab_list):
             vec = [basis[d][idx] for d in range(dims)]
             # Scale by approximate singular value (Rayleigh quotient)
@@ -958,7 +1014,18 @@ class PhaseMemoryEngine:
             for j, val in ppmi_rows.get(idx, {}).items():
                 for d in range(dims):
                     Av[d] = Av[d]  # skip full computation for speed
-            self._token_vectors[token] = vec
+            self._token_vectors[target_ns][token] = vec
+
+        # Bug #412: Back-fill embedding_dense on all items in this namespace
+        if namespace:
+            ns_vecs = self._token_vectors[namespace]
+            if ns_vecs:
+                dims_actual = len(next(iter(ns_vecs.values())))
+                for item in self._items.get(namespace, []):
+                    vecs = [ns_vecs[t] for t in item.indexed_tokens if t in ns_vecs]
+                    if vecs:
+                        avg = [sum(v[d] for v in vecs) / len(vecs) for d in range(dims_actual)]
+                        item.embedding_dense = avg
 
     @staticmethod
     def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
@@ -970,9 +1037,10 @@ class PhaseMemoryEngine:
             return 0.0
         return dot / (mag_a * mag_b)
 
-    def _mean_vector(self, tokens: list[str]) -> Optional[list[float]]:
+    def _mean_vector(self, tokens: list[str], namespace: str = "") -> Optional[list[float]]:
         """Average vector of tokens that have embeddings. None if no vectors."""
-        vecs = [self._token_vectors[t] for t in tokens if t in self._token_vectors]
+        tv = self._token_vectors.get(namespace, {}) if namespace else self._token_vectors.get("", {})
+        vecs = [tv[t] for t in tokens if t in tv]
         if not vecs:
             return None
         dims = len(vecs[0])
@@ -1456,10 +1524,10 @@ class PhaseMemoryEngine:
         # Resolve aliases
         entities = list(set(self._resolve_alias(e) for e in entities_raw))
 
-        # Compute IDF for item tokens
+        # Compute IDF for item tokens (namespace-scoped)
         tokens_with_idf: dict[str, float] = {}
         for token in item.indexed_tokens:
-            tokens_with_idf[token] = self._compute_idf(token)
+            tokens_with_idf[token] = self._compute_idf(token, namespace)
 
         # Build entity token filter: compound entity parts excluded from spectrum
         # e.g. "jean paul" → {"jean paul", "jean", "paul"}
@@ -1828,14 +1896,14 @@ class PhaseMemoryEngine:
                     candidates.append(members)
 
         # 2. High-IDF token co-occurrence
-        for token, token_items in self._token_index.items():
-            idf = self._compute_idf(token)
+        ns_tok_idx = self._token_index.get(namespace, {})
+        for token, tok_items_dict in ns_tok_idx.items():
+            idf = self._compute_idf(token, namespace)
             if idf < 1.0:
                 continue  # Skip common tokens
             ns_items = [
-                i for i in token_items
-                if i.namespace == namespace
-                and i.schema_meta is None
+                i for i in tok_items_dict.values()
+                if i.schema_meta is None
                 and i.consolidation_strength >= self.STRENGTH_FLOOR
             ]
             if len(ns_items) >= self.MIN_GROUP_SIZE:
@@ -1861,11 +1929,12 @@ class PhaseMemoryEngine:
             for token in set(item.indexed_tokens):
                 token_member_count[token] += 1
 
+        ns = group[0].namespace if group else ""
         fixed: dict[str, float] = {}
         for token, count in token_member_count.items():
             coverage = count / N
             if coverage >= self.RG_SOFT_THRESHOLD:
-                idf = self._compute_idf(token)
+                idf = self._compute_idf(token, ns)
                 fixed[token] = idf * idf * coverage  # MI contribution
 
         ordered = sorted(fixed.keys(), key=lambda t: fixed[t], reverse=True)
@@ -2007,7 +2076,7 @@ class PhaseMemoryEngine:
         self._index_item(schema_item)
 
         for token in set(fixed_tokens):
-            self._doc_freq[token] += 1
+            self._doc_freq[namespace][token] += 1
 
         # Archive constituent episodes for detail retrieval before evaporation
         self._episode_archive[schema_item.id] = list(group)
@@ -2355,29 +2424,33 @@ class PhaseMemoryEngine:
             self._item_by_id[item.id] = item
             self._index_item(item)
 
-            # Update document frequency
+            # Update document frequency (per-namespace)
             for token in set(tokens):
-                self._doc_freq[token] += 1
+                self._doc_freq[namespace][token] += 1
 
-            # Update co-occurrence matrix (PPMI Layer)
+            # Update co-occurrence matrix (PPMI Layer, per-namespace)
             unique_tokens = list(set(tokens))
             for i in range(len(unique_tokens)):
                 for j in range(i + 1, len(unique_tokens)):
                     a, b = unique_tokens[i], unique_tokens[j]
                     pair = (a, b) if a < b else (b, a)
-                    self._cooccurrence[pair] += 1
+                    self._cooccurrence[namespace][pair] += 1
 
-            self._svd_store_count += 1
-            self._svd_dirty = True
+            self._svd_store_count[namespace] += 1
+            self._svd_dirty[namespace] = True
+            self._free_energy_dirty[namespace] = True
 
-            # Trigger SVD recomputation if enough stores accumulated
+            # Trigger SVD recomputation if enough stores OR cooccurrence pairs accumulated
+            # (dual trigger: item count OR pair count — handles dedup-heavy corpora)
             _svd_recomputed = False
-            if (self._svd_store_count >= self._SVD_RECOMPUTE_INTERVAL
-                    and self._svd_dirty
-                    and not getattr(self, '_batch_mode', False)):
-                self._recompute_svd()
-                self._svd_store_count = 0
-                self._svd_dirty = False
+            _n_pairs = len(self._cooccurrence.get(namespace, {}))
+            if (self._svd_dirty[namespace]
+                    and not getattr(self, '_batch_mode', False)
+                    and (self._svd_store_count[namespace] >= self._SVD_RECOMPUTE_INTERVAL
+                         or _n_pairs >= 10)):
+                self._recompute_svd(namespace)
+                self._svd_store_count[namespace] = 0
+                self._svd_dirty[namespace] = False
                 _svd_recomputed = True
             _add_algo_meta(_trace, _idx_hop,
                            output=f"indexed  total_ns={len(self._items.get(namespace,[]))}  svd_recomputed={_svd_recomputed}")
@@ -2442,9 +2515,11 @@ class PhaseMemoryEngine:
                 self._deindex_item(item)
                 self._cer_gc_item(item)
                 self._item_by_id.pop(item.id, None)
-                # Decrement doc freq for dead item's tokens
+                # Decrement doc freq for dead item's tokens (per-namespace)
                 for token in set(item.indexed_tokens):
-                    self._doc_freq[token] = max(0, self._doc_freq.get(token, 1) - 1)
+                    self._doc_freq[namespace][token] = max(
+                        0, self._doc_freq[namespace].get(token, 1) - 1
+                    )
         self._items[namespace] = alive
         # Recompute cached total item count after GC
         self._total_item_count = sum(len(v) for v in self._items.values())
@@ -2477,7 +2552,10 @@ class PhaseMemoryEngine:
         All parameters self-tuned from corpus statistics.
         Zero external calls. Sub-millisecond.
         """
-        self._recompute_all_free_energies(namespace)
+        # Bug #410: Only recompute free energy when state has changed (dirty flag)
+        if self._free_energy_dirty.get(namespace, True):
+            self._recompute_all_free_energies(namespace)
+            self._free_energy_dirty[namespace] = False
 
         query_tokens = _tokenize(query)
         query_token_set = set(query_tokens)
@@ -2555,22 +2633,22 @@ class PhaseMemoryEngine:
         candidates: dict[str, tuple[PhaseMemoryItem, list[str]]] = {}
 
         # Layer 1: Morphological Kernel — expand query tokens to prefix variants
+        # Use namespace-scoped token index: no namespace filter needed in inner loop
+        ns_idx = self._token_index.get(namespace, {})
         with _algo_span(trace_id, "algo.morph_kernel",
                         query_tokens=len(query_tokens)) as _morph_hop:
             for token in query_tokens:
-                variants = self._morph_expand(token)
+                variants = self._morph_expand(token, namespace)
                 if not variants:
                     # Direct lookup fallback for short tokens
-                    if token in self._token_index:
+                    if token in ns_idx:
                         variants = [token]
                     else:
                         continue
                 for variant in variants:
-                    if variant not in self._token_index:
+                    if variant not in ns_idx:
                         continue
-                    for item in self._token_index[variant]:
-                        if item.namespace != namespace:
-                            continue
+                    for item in ns_idx[variant].values():  # O(1) dict values, no namespace filter
                         if item.id not in candidates:
                             candidates[item.id] = (item, [])
                         if variant not in candidates[item.id][1]:
@@ -2581,11 +2659,11 @@ class PhaseMemoryEngine:
         scored: list[tuple[float, PhaseMemoryItem]] = []
 
         if candidates:
-            # Pre-compute query vector for semantic bonus
-            query_vec = self._mean_vector(query_tokens) if self._token_vectors else None
+            # Pre-compute query vector for semantic bonus (namespace-scoped)
+            query_vec = self._mean_vector(query_tokens, namespace) if self._token_vectors.get(namespace) else None
             avg_idf = 0.0
             if query_tokens:
-                avg_idf = sum(self._compute_idf(t) for t in query_tokens) / len(query_tokens)
+                avg_idf = sum(self._compute_idf(t, namespace) for t in query_tokens) / len(query_tokens)
 
             # Layers 2–5: score all candidates in one pass
             with _algo_span(trace_id, "algo.score",
@@ -2598,8 +2676,8 @@ class PhaseMemoryEngine:
                     # Layer 2: BMX Scoring — entropy-weighted BM25
                     bmx_score = 0.0
                     for t in matched_tokens:
-                        idf = self._compute_idf(t)
-                        h_weight = self._compute_entropy_weight(t)
+                        idf = self._compute_idf(t, namespace)
+                        h_weight = self._compute_entropy_weight(t, namespace)
                         # Inferred tokens (from schema expansion) scored at 0.5×
                         inf_weight = 0.5 if t in inferred_tokens else 1.0
                         bmx_score += idf * h_weight * inf_weight
@@ -2607,7 +2685,7 @@ class PhaseMemoryEngine:
                     # Layer 3: Semantic Bonus (PPMI-SVD vectors, if available)
                     semantic_bonus = 0.0
                     if query_vec is not None:
-                        item_vec = self._mean_vector(item.indexed_tokens)
+                        item_vec = self._mean_vector(item.indexed_tokens, namespace)
                         if item_vec is not None:
                             sim = self._cosine_similarity(query_vec, item_vec)
                             semantic_bonus = sim * avg_idf
@@ -2940,13 +3018,13 @@ class PhaseMemoryEngine:
 
                 # Accumulate IDF per item across all matching tokens
                 # (consistent with TSF/PESQD which sum IDFs)
+                # Use namespace-scoped token index: no namespace filter needed
+                ns_tok_idx = self._token_index.get(namespace, {})
                 item_idf_acc: dict[str, tuple[float, PhaseMemoryItem]] = {}
                 for token, weight in search_tokens.most_common(20):
-                    if token in self._token_index:
-                        for item in self._token_index[token]:
-                            if item.namespace != namespace:
-                                continue
-                            idf = self._compute_idf(token)
+                    if token in ns_tok_idx:
+                        for item in ns_tok_idx[token].values():
+                            idf = self._compute_idf(token, namespace)
                             if item.id in item_idf_acc:
                                 prev_idf, _ = item_idf_acc[item.id]
                                 item_idf_acc[item.id] = (prev_idf + idf, item)
@@ -2968,14 +3046,14 @@ class PhaseMemoryEngine:
                         # Use sum of shared token IDFs (consistent with token-match scoring)
                         item_token_set = set(item.indexed_tokens)
                         shared_idf = sum(
-                            self._compute_idf(t)
+                            self._compute_idf(t, namespace)
                             for t in search_tokens
                             if t in item_token_set
                         )
                         if shared_idf == 0:
                             # Fallback: mean IDF of item's tokens
                             shared_idf = sum(
-                                self._compute_idf(t) for t in item.indexed_tokens
+                                self._compute_idf(t, namespace) for t in item.indexed_tokens
                             ) / max(len(item.indexed_tokens), 1)
                         rank = (
                             edge.coupling_strength * shared_idf
@@ -2986,14 +3064,13 @@ class PhaseMemoryEngine:
 
         elif len(entities) >= 3:
             entity_set = set(entities)
+            ns_tok_idx = self._token_index.get(namespace, {})
             for cluster in self._resonance_clusters.values():
                 if entity_set.issubset(cluster.members):
                     for token, weight in cluster.cluster_spectrum.most_common(20):
-                        if token in self._token_index:
-                            for item in self._token_index[token]:
-                                if item.namespace != namespace:
-                                    continue
-                                idf = self._compute_idf(token)
+                        if token in ns_tok_idx:
+                            for item in ns_tok_idx[token].values():
+                                idf = self._compute_idf(token, namespace)
                                 cer_score = (
                                     cluster.coherence * idf
                                     * item.consolidation_strength
@@ -3189,7 +3266,9 @@ class PhaseMemoryEngine:
 
     def get_phase_debug(self, namespace: str) -> dict[str, Any]:
         """Return the complete thermodynamic state for the debug panel."""
-        self._recompute_all_free_energies(namespace)
+        if self._free_energy_dirty.get(namespace, True):
+            self._recompute_all_free_energies(namespace)
+            self._free_energy_dirty[namespace] = False
 
         items = self._items.get(namespace, [])
         rho = self._memory_density(namespace)
@@ -3232,10 +3311,10 @@ class PhaseMemoryEngine:
                 ),
             },
             "trr": {
-                "cooccurrence_pairs": len(self._cooccurrence),
-                "token_vectors": len(self._token_vectors),
+                "cooccurrence_pairs": len(self._cooccurrence.get(namespace, {})),
+                "token_vectors": len(self._token_vectors.get(namespace, {})),
                 "prefix_index_size": len(self._prefix_index),
-                "svd_store_count": self._svd_store_count,
+                "svd_store_count": self._svd_store_count.get(namespace, 0),
             },
         }
 
@@ -3259,22 +3338,26 @@ class PhaseMemoryEngine:
         """
         self._batch_mode = False
 
-        # 1. Recompute SVD from accumulated co-occurrence
-        if self._cooccurrence and self._svd_dirty:
-            self._recompute_svd()
-            self._svd_store_count = 0
-            self._svd_dirty = False
+        # 1. Recompute SVD from accumulated co-occurrence (per-namespace)
+        namespaces_to_process = [namespace] if namespace is not None else list(self._items.keys())
+        for ns in namespaces_to_process:
+            if self._cooccurrence.get(ns) and self._svd_dirty.get(ns, False):
+                self._recompute_svd(ns)
+                self._svd_store_count[ns] = 0
+                self._svd_dirty[ns] = False
 
         # 2. Recompute free energies (triggers crystallization, GC, etc.)
-        if namespace is not None:
-            self._recompute_all_free_energies(namespace)
-        else:
-            for ns in list(self._items.keys()):
-                self._recompute_all_free_energies(ns)
+        for ns in namespaces_to_process:
+            self._recompute_all_free_energies(ns)
+            self._free_energy_dirty[ns] = False
+
+        # Aggregate stats across all namespaces
+        total_vecs = sum(len(v) for v in self._token_vectors.values())
+        total_co = sum(len(c) for c in self._cooccurrence.values())
 
         return {
-            "token_vectors": len(self._token_vectors),
-            "cooccurrence_pairs": len(self._cooccurrence),
+            "token_vectors": total_vecs,
+            "cooccurrence_pairs": total_co,
             "total_items": self._total_item_count,
         }
 
@@ -3323,16 +3406,16 @@ class PhaseMemoryEngine:
 
         return rehearsed
 
-    def export_vectors(self) -> dict[str, list[float]]:
+    def export_vectors(self, namespace: str = "") -> dict[str, list[float]]:
         """
         Export anonymized token vectors for cross-user knowledge sharing.
 
-        Returns a copy of _token_vectors. No user-identifying information.
-        Token vectors are derived from co-occurrence statistics only.
+        Returns a copy of _token_vectors for the given namespace (or global "").
+        No user-identifying information. Token vectors are derived from co-occurrence statistics only.
         """
-        return dict(self._token_vectors)
+        return dict(self._token_vectors.get(namespace, {}))
 
-    def import_vectors(self, external_vectors: dict[str, list[float]]) -> int:
+    def import_vectors(self, external_vectors: dict[str, list[float]], namespace: str = "") -> int:
         """
         Import token vectors from another user's memory space.
 
@@ -3344,17 +3427,18 @@ class PhaseMemoryEngine:
         Returns the number of tokens affected.
         """
         affected = 0
+        local_vecs = self._token_vectors[namespace]  # defaultdict(dict) creates it
         for token, ext_vec in external_vectors.items():
             if len(ext_vec) != self._SVD_DIMS:
                 continue
-            if token in self._token_vectors:
-                local_vec = self._token_vectors[token]
+            if token in local_vecs:
+                local_vec = local_vecs[token]
                 merged = [0.8 * l + 0.2 * e for l, e in zip(local_vec, ext_vec)]
                 mag = math.sqrt(sum(v * v for v in merged))
                 if mag > 1e-12:
-                    self._token_vectors[token] = [v / mag for v in merged]
+                    local_vecs[token] = [v / mag for v in merged]
                 affected += 1
             else:
-                self._token_vectors[token] = ext_vec
+                local_vecs[token] = ext_vec
                 affected += 1
         return affected
