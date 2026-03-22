@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "clsplusplus",
-      "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd /Users/rjabbala/Projects/CLSplusplus && PYTHONPATH=src .venv/bin/python -m uvicorn clsplusplus.api:app --reload --port 8090"],
-      "port": 8090
+      "name": "prototype",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "7070", "--directory", "prototype"],
+      "port": 7070
     }
   ]
 }

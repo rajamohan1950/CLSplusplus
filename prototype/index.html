@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CLS++ · Memory for Every AI</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#05050a;--accent:#7c6ef0;--accent2:#5de0c5;
+      --text:#f0f0f8;--muted:rgba(240,240,248,0.42);
+    }
+    html,body{height:100%;background:var(--bg);color:var(--text);overflow:hidden;
+      font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;
+      -webkit-font-smoothing:antialiased}
+
+    #canvas{position:fixed;inset:0;pointer-events:none;z-index:0}
+
+    /* ── MEMORY BADGE — always top right after arm ─── */
+    #mem-badge{
+      position:fixed;top:18px;right:20px;z-index:100;
+      display:none;align-items:center;gap:8px;
+      background:rgba(13,13,24,.92);
+      border:1px solid rgba(93,224,197,.25);
+      border-radius:30px;padding:7px 14px 7px 10px;
+      cursor:pointer;transition:all .2s ease;
+      backdrop-filter:blur(12px);
+      text-decoration:none;
+    }
+    #mem-badge:hover{border-color:rgba(93,224,197,.5);background:rgba(20,20,36,.95)}
+    .mb-dot{width:7px;height:7px;border-radius:50%;background:var(--accent2);
+      box-shadow:0 0 7px var(--accent2);animation:blink 1.8s ease-in-out infinite}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+    .mb-text{font-size:12px;font-weight:600;color:var(--accent2);white-space:nowrap}
+    .mb-count{font-size:11px;color:var(--muted)}
+
+    .screen{position:fixed;inset:0;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;z-index:10;
+      transition:opacity .3s ease}
+    .screen.gone{opacity:0;pointer-events:none}
+
+    /* ── SCREEN 1: ARM ─────────────────────────────── */
+    #s-arm .tagline{
+      font-size:clamp(32px,5.5vw,58px);font-weight:800;letter-spacing:-.04em;
+      line-height:1.05;text-align:center;margin-bottom:10px;
+      background:linear-gradient(140deg,#fff 20%,var(--accent) 55%,var(--accent2) 90%);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    #s-arm .sub{font-size:15px;color:var(--muted);text-align:center;
+      margin-bottom:60px;letter-spacing:.01em}
+
+    #btn-arm{width:192px;height:192px;border-radius:50%;border:none;cursor:pointer;
+      background:conic-gradient(from 200deg,#4a3da8,#7c6ef0,#9d90ff,#5de0c5,#7c6ef0,#4a3da8);
+      box-shadow:0 0 60px rgba(124,110,240,.5),0 0 120px rgba(93,224,197,.2),0 12px 50px rgba(0,0,0,.7);
+      outline:none;transition:transform .15s ease;
+      animation:breathe 2.5s ease-in-out infinite}
+    #btn-arm:hover{transform:scale(1.05)}
+    #btn-arm:active{transform:scale(0.95)}
+    @keyframes breathe{
+      0%,100%{box-shadow:0 0 60px rgba(124,110,240,.5),0 0 120px rgba(93,224,197,.2),0 12px 50px rgba(0,0,0,.7)}
+      50%{box-shadow:0 0 0 28px rgba(124,110,240,.05),0 0 100px rgba(124,110,240,.7),0 0 180px rgba(93,224,197,.3),0 12px 50px rgba(0,0,0,.7)}}
+    .btn-inner{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%}
+    .btn-icon{font-size:60px;line-height:1}
+    .btn-word{font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;
+      color:rgba(255,255,255,.75);margin-top:8px}
+    #s-arm .note{margin-top:24px;font-size:12px;color:var(--muted);letter-spacing:.02em}
+
+    /* ── SCREEN 2: ARMED flash ─────────────────────── */
+    #s-armed{gap:0}
+    .armed-ring{width:130px;height:130px;border-radius:50%;
+      background:radial-gradient(circle at 40% 35%,#5de0c5,#3abfa8);
+      display:flex;align-items:center;justify-content:center;font-size:60px;
+      animation:armed-pop .4s ease-out forwards}
+    @keyframes armed-pop{
+      0%{transform:scale(.3);box-shadow:0 0 0 80px rgba(93,224,197,.25)}
+      60%{transform:scale(1.18);box-shadow:0 0 0 0 rgba(93,224,197,0)}
+      100%{transform:scale(1);box-shadow:0 0 50px rgba(93,224,197,.4)}}
+    .armed-lbl{font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+      color:var(--accent2);margin-top:18px;opacity:0;animation:fi .25s .3s ease forwards}
+    @keyframes fi{to{opacity:1}}
+
+    /* ── SCREEN 3: PICK YOUR AI ─────────────────────── */
+    #s-pick{gap:0}
+    .pick-title{font-size:20px;font-weight:700;letter-spacing:-.02em;
+      margin-bottom:5px;text-align:center;opacity:0;animation:rise .3s .05s ease forwards}
+    .pick-sub{font-size:13px;color:var(--muted);text-align:center;
+      margin-bottom:32px;opacity:0;animation:rise .3s .12s ease forwards}
+    @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+    .ai-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:460px}
+    .ai-btn{display:flex;flex-direction:column;align-items:center;gap:7px;
+      padding:18px 10px;border-radius:16px;border:1px solid rgba(255,255,255,.07);
+      background:rgba(255,255,255,.04);cursor:pointer;transition:all .18s ease;
+      opacity:0;animation:rise .3s ease forwards;position:relative}
+    .ai-btn:nth-child(1){animation-delay:.1s}.ai-btn:nth-child(2){animation-delay:.16s}
+    .ai-btn:nth-child(3){animation-delay:.22s}.ai-btn:nth-child(4){animation-delay:.28s}
+    .ai-btn:nth-child(5){animation-delay:.34s}.ai-btn:nth-child(6){animation-delay:.40s}
+    .ai-btn:hover{background:rgba(124,110,240,.1);border-color:rgba(124,110,240,.28);
+      transform:translateY(-2px);box-shadow:0 8px 28px rgba(124,110,240,.2)}
+    .ai-btn:active{transform:scale(0.96)}
+    .ai-icon{font-size:30px;line-height:1}
+    .ai-name{font-size:12px;font-weight:600}
+    .ai-ready{font-size:10px;color:var(--accent2)}
+    .ready-dot{position:absolute;top:10px;right:10px;width:6px;height:6px;border-radius:50%;
+      background:var(--accent2);box-shadow:0 0 5px var(--accent2);
+      animation:blink 1.8s ease-in-out infinite}
+
+    /* ── SCREEN 4: BRIDGE ──────────────────────────── */
+    #s-bridge{gap:0}
+    .br-from{font-size:13px;color:var(--muted);margin-bottom:20px;
+      opacity:0;animation:fi .3s .05s ease forwards;text-align:center}
+    .br-orbs{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+    .orb{width:60px;height:60px;border-radius:50%;display:flex;align-items:center;
+      justify-content:center;font-size:26px;flex-shrink:0}
+    .orb.src{background:radial-gradient(circle at 40% 35%,#9d90ff,var(--accent));
+      box-shadow:0 0 28px rgba(124,110,240,.5);animation:orb-in .4s ease forwards}
+    .orb.dst{opacity:0;animation:orb-in .4s .55s ease forwards}
+    @keyframes orb-in{from{transform:scale(.2);opacity:0}to{transform:scale(1);opacity:1}}
+    .br-line{flex:1;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));
+      border-radius:2px;opacity:0;animation:fi .1s .38s ease forwards;position:relative;overflow:visible}
+    .br-dot{width:9px;height:9px;border-radius:50%;background:var(--accent2);
+      box-shadow:0 0 8px var(--accent2);position:absolute;top:-3.5px;left:0;
+      animation:shoot .5s .42s cubic-bezier(.4,0,.2,1) forwards}
+    @keyframes shoot{from{left:0}to{left:calc(100% - 9px)}}
+
+    .br-mems{display:flex;flex-direction:column;gap:5px;width:380px}
+    .bm{display:flex;align-items:center;gap:8px;padding:6px 11px;border-radius:8px;
+      background:rgba(93,224,197,.05);border:1px solid rgba(93,224,197,.12);
+      font-size:11px;color:var(--muted);
+      opacity:0;transform:translateX(-10px);animation:bm-in .3s ease forwards}
+    .bm:nth-child(1){animation-delay:.72s}.bm:nth-child(2){animation-delay:.86s}
+    .bm:nth-child(3){animation-delay:1s}.bm:nth-child(4){animation-delay:1.14s}
+    @keyframes bm-in{to{opacity:1;transform:translateX(0)}}
+    .bm-dot{width:4px;height:4px;border-radius:50%;background:var(--accent2);flex-shrink:0}
+
+    .br-cta{margin-top:22px;opacity:0;animation:fi .3s 1.3s ease forwards;
+      display:flex;flex-direction:column;align-items:center;gap:8px}
+    .br-cta p{font-size:12px;color:var(--muted)}
+    #btn-go{background:var(--accent);border:none;border-radius:30px;color:#fff;
+      font-size:13px;font-weight:700;padding:12px 28px;cursor:pointer;
+      box-shadow:0 4px 24px rgba(124,110,240,.5);transition:all .18s}
+    #btn-go:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(124,110,240,.7)}
+    .br-note{font-size:11px;color:var(--muted);margin-top:6px;text-align:center}
+
+    /* ── Particles ──────────────────────────────────── */
+    .particle{position:fixed;border-radius:50%;pointer-events:none;z-index:50;
+      animation:pfly var(--d,.8s) ease-out forwards}
+    @keyframes pfly{0%{transform:translate(0,0) scale(1);opacity:1}
+      100%{transform:translate(var(--tx),var(--ty)) scale(0);opacity:0}}
+  </style>
+</head>
+<body>
+<canvas id="canvas" aria-hidden="true"></canvas>
+
+<!-- MEMORY BADGE — top right, always visible after arm -->
+<a id="mem-badge" href="memory.html" target="_blank" aria-label="Memory active — view your memories">
+  <div class="mb-dot"></div>
+  <span class="mb-text">Memory Active</span>
+  <span class="mb-count" id="mb-count"></span>
+</a>
+
+<!-- S1: ONE BUTTON -->
+<section id="s-arm" class="screen">
+  <h1 class="tagline">Every AI.<br/>Always remembers.</h1>
+  <p class="sub">Silent. Automatic. Works with every AI you already use.</p>
+  <button id="btn-arm" aria-label="Activate memory — one tap, no sign-up" autofocus>
+    <div class="btn-inner">
+      <span class="btn-icon">🧠</span>
+      <span class="btn-word">Activate</span>
+    </div>
+  </button>
+  <p class="note">No sign-up &nbsp;·&nbsp; No API key &nbsp;·&nbsp; No code &nbsp;·&nbsp; No friction</p>
+</section>
+
+<!-- S2: ARMED flash -->
+<section id="s-armed" class="screen gone">
+  <div class="armed-ring">✓</div>
+  <div class="armed-lbl">Memory Armed</div>
+</section>
+
+<!-- S3: PICK YOUR AI -->
+<section id="s-pick" class="screen gone">
+  <h2 class="pick-title">Where do you want to go?</h2>
+  <p class="pick-sub">We'll run silently in the background. Your AI's interface stays exactly the same.</p>
+  <div class="ai-grid">
+    <div class="ai-btn" data-url="https://chatgpt.com"           data-icon="🤖" data-name="ChatGPT">
+      <div class="ready-dot"></div><div class="ai-icon">🤖</div>
+      <div class="ai-name">ChatGPT</div><div class="ai-ready">Memory ready</div>
+    </div>
+    <div class="ai-btn" data-url="https://claude.ai"             data-icon="🔮" data-name="Claude">
+      <div class="ready-dot"></div><div class="ai-icon">🔮</div>
+      <div class="ai-name">Claude</div><div class="ai-ready">Memory ready</div>
+    </div>
+    <div class="ai-btn" data-url="https://gemini.google.com"     data-icon="✨" data-name="Gemini">
+      <div class="ready-dot"></div><div class="ai-icon">✨</div>
+      <div class="ai-name">Gemini</div><div class="ai-ready">Memory ready</div>
+    </div>
+    <div class="ai-btn" data-url="https://copilot.microsoft.com" data-icon="💠" data-name="Copilot">
+      <div class="ready-dot"></div><div class="ai-icon">💠</div>
+      <div class="ai-name">Copilot</div><div class="ai-ready">Memory ready</div>
+    </div>
+    <div class="ai-btn" data-url="https://perplexity.ai"         data-icon="🔍" data-name="Perplexity">
+      <div class="ready-dot"></div><div class="ai-icon">🔍</div>
+      <div class="ai-name">Perplexity</div><div class="ai-ready">Memory ready</div>
+    </div>
+    <div class="ai-btn" data-url="https://grok.com"              data-icon="⚡" data-name="Grok">
+      <div class="ready-dot"></div><div class="ai-icon">⚡</div>
+      <div class="ai-name">Grok</div><div class="ai-ready">Memory ready</div>
+    </div>
+  </div>
+</section>
+
+<!-- S4: BRIDGE -->
+<section id="s-bridge" class="screen gone">
+  <p class="br-from">Transferring your memory to <strong id="br-name">ChatGPT</strong>…</p>
+  <div class="br-orbs">
+    <div class="orb src">🧠</div>
+    <div class="br-line"><div class="br-dot"></div></div>
+    <div class="orb dst" id="br-dst">🤖</div>
+  </div>
+  <div class="br-mems" id="br-mems"></div>
+  <div class="br-cta">
+    <p>Context injected. Your AI is ready.</p>
+    <button id="btn-go">Open Now →</button>
+    <p class="br-note">Your AI's interface is unchanged. CLS++ runs silently behind it.</p>
+  </div>
+</section>
+
+<script>
+const API = 'http://localhost:8080';
+
+// ── Identity ───────────────────────────────────────────
+const UID = (() => {
+  const k = 'clspp_uid';
+  let id = localStorage.getItem(k);
+  if (!id) {
+    const sig = [navigator.userAgent, navigator.language, screen.width,
+      screen.height, Intl.DateTimeFormat().resolvedOptions().timeZone].join('|');
+    let h = 5381;
+    for (let i = 0; i < sig.length; i++) h = ((h<<5)+h) + sig.charCodeAt(i);
+    id = 'u_' + (Math.abs(h)>>>0).toString(36) + (Date.now()%1e6).toString(36);
+    localStorage.setItem(k, id);
+  }
+  return id;
+})();
+
+// ── Particles ──────────────────────────────────────────
+const cv = document.getElementById('canvas'), cx = cv.getContext('2d');
+let W, H;
+function rsz(){ W=cv.width=innerWidth; H=cv.height=innerHeight; }
+rsz(); addEventListener('resize', rsz);
+const pts = Array.from({length:100}, () => ({
+  x:Math.random()*W, y:Math.random()*H,
+  r:Math.random()*1.2+.3,
+  vx:(Math.random()-.5)*.15, vy:(Math.random()-.5)*.15,
+  a:Math.random()*.3+.04
+}));
+(function draw(){
+  cx.clearRect(0,0,W,H);
+  pts.forEach(p => {
+    cx.beginPath(); cx.arc(p.x,p.y,p.r,0,Math.PI*2);
+    cx.fillStyle=`rgba(124,110,240,${p.a})`; cx.fill();
+    p.x+=p.vx; p.y+=p.vy;
+    if(p.x<0||p.x>W)p.vx*=-1; if(p.y<0||p.y>H)p.vy*=-1;
+  });
+  requestAnimationFrame(draw);
+})();
+
+function show(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.add('gone'));
+  document.getElementById(id).classList.remove('gone');
+}
+
+// ── Rocket sound (Web Audio) ───────────────────────────
+function playRocket(){
+  try{
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const len  = Math.ceil(ctx.sampleRate*.9);
+    const buf  = ctx.createBuffer(1,len,ctx.sampleRate);
+    const d    = buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+
+    const n=ctx.createBufferSource(); n.buffer=buf;
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass';
+    bp.frequency.setValueAtTime(3500,ctx.currentTime);
+    bp.frequency.exponentialRampToValueAtTime(180,ctx.currentTime+.75);
+    bp.Q.value=.7;
+    const g1=ctx.createGain();
+    g1.gain.setValueAtTime(0,ctx.currentTime);
+    g1.gain.linearRampToValueAtTime(1.1,ctx.currentTime+.02);
+    g1.gain.setValueAtTime(1.1,ctx.currentTime+.2);
+    g1.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.85);
+    n.connect(bp); bp.connect(g1); g1.connect(ctx.destination);
+
+    const osc=ctx.createOscillator(); osc.type='sawtooth';
+    osc.frequency.setValueAtTime(80,ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(30,ctx.currentTime+.7);
+    const g2=ctx.createGain();
+    g2.gain.setValueAtTime(0,ctx.currentTime);
+    g2.gain.linearRampToValueAtTime(.35,ctx.currentTime+.03);
+    g2.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.75);
+    osc.connect(g2); g2.connect(ctx.destination);
+
+    const n2=ctx.createBufferSource(); n2.buffer=buf;
+    const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=4000;
+    const g3=ctx.createGain();
+    g3.gain.setValueAtTime(.4,ctx.currentTime);
+    g3.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.3);
+    n2.connect(hp); hp.connect(g3); g3.connect(ctx.destination);
+
+    n.start(); osc.start(); n2.start();
+    n.stop(ctx.currentTime+.9); osc.stop(ctx.currentTime+.8); n2.stop(ctx.currentTime+.3);
+    setTimeout(()=>ctx.close(),1200);
+  }catch(e){}
+}
+
+// ── Particles burst ────────────────────────────────────
+function burst(bx, by){
+  const cols=['#7c6ef0','#5de0c5','#f0c05d','#f06e9a','#a78fff','#fff'];
+  for(let i=0;i<38;i++){
+    const el=document.createElement('div'); el.className='particle';
+    const a=Math.random()*Math.PI*2, dist=80+Math.random()*160, sz=4+Math.random()*7;
+    el.style.cssText=`left:${bx}px;top:${by}px;width:${sz}px;height:${sz}px;
+      background:${cols[i%6]};--tx:${Math.cos(a)*dist}px;--ty:${Math.sin(a)*dist}px;
+      --d:${.5+Math.random()*.5}s;margin-left:-${sz/2}px;margin-top:-${sz/2}px;`;
+    document.body.appendChild(el);
+    setTimeout(()=>el.remove(), 1000);
+  }
+}
+
+// ── Badge ──────────────────────────────────────────────
+async function showBadge(){
+  const badge = document.getElementById('mem-badge');
+  badge.style.display = 'flex';
+  try{
+    const r = await fetch(`${API}/api/memories/${UID}`);
+    const d = await r.json();
+    if(d.count > 0)
+      document.getElementById('mb-count').textContent = `· ${d.count}`;
+  }catch(_){}
+}
+
+// Refresh badge count live
+function startBadgePoll(){
+  setInterval(async()=>{
+    try{
+      const r=await fetch(`${API}/api/memories/${UID}`);
+      const d=await r.json();
+      document.getElementById('mb-count').textContent = d.count>0?`· ${d.count}`:'';
+    }catch(_){}
+  }, 5000);
+}
+
+// ── ACTIVATE ───────────────────────────────────────────
+let hasArmed = localStorage.getItem('clspp_armed') === '1';
+
+document.getElementById('btn-arm').addEventListener('click', e => {
+  playRocket();
+  const r = e.currentTarget.getBoundingClientRect();
+  burst(r.left+r.width/2, r.top+r.height/2);
+
+  localStorage.setItem('clspp_armed','1');
+  hasArmed = true;
+
+  show('s-armed');
+  showBadge();
+  startBadgePoll();
+
+  setTimeout(()=> show('s-pick'), 900);
+});
+
+// ── AI PICKER ──────────────────────────────────────────
+let _goURL = '';
+
+document.querySelectorAll('.ai-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const name = btn.dataset.name;
+    const icon = btn.dataset.icon;
+    _goURL = btn.dataset.url;
+
+    document.getElementById('br-name').textContent = name;
+    document.getElementById('br-dst').textContent  = icon;
+    document.getElementById('btn-go').textContent  = `Open ${name} →`;
+
+    // Load real memories for bridge display
+    const mems = document.getElementById('br-mems');
+    mems.innerHTML = '';
+    const snippets = [
+      'Your device identity · no account needed',
+      'Memory engine active · tracking silently',
+      `Context ready for ${name}`,
+    ];
+    try{
+      const r = await fetch(`${API}/api/memories/${UID}`);
+      const d = await r.json();
+      if(d.memories && d.memories.length)
+        d.memories.slice(0,4).forEach(m=>snippets.push(m.text));
+    }catch(_){}
+
+    snippets.slice(0,4).forEach(t=>{
+      const el=document.createElement('div'); el.className='bm';
+      el.innerHTML=`<div class="bm-dot"></div><span>${esc(t.slice(0,72))}</span>`;
+      mems.appendChild(el);
+    });
+
+    show('s-bridge');
+  });
+});
+
+document.getElementById('btn-go').addEventListener('click', ()=>{
+  if(_goURL) window.open(_goURL,'_blank');
+  // Return to picker so they can switch AIs freely
+  setTimeout(()=>show('s-pick'), 200);
+});
+
+// If already armed on return visit, skip straight to picker
+if(hasArmed){
+  show('s-pick');
+  showBadge();
+  startBadgePoll();
+}
+
+function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+addEventListener('keydown', e=>{
+  if(!document.getElementById('s-arm').classList.contains('gone')
+     && (e.key===' '||e.key==='Enter')){
+    e.preventDefault(); document.getElementById('btn-arm').click();
+  }
+});
+</script>
+</body>
+</html>
