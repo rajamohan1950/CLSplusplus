@@ -2,12 +2,12 @@
   "status": "complete",
   "q_done": 100,
   "total": 100,
-  "failures": 100,
-  "pass_rate_pct": 0.0,
-  "avg_j1": 0.012,
+  "failures": 92,
+  "pass_rate_pct": 8.0,
+  "avg_j1": 0.0765,
   "by_type": {
-    "single-session-user": 0.0105,
-    "multi-session": 0.0155
+    "single-session-user": 0.1093,
+    "multi-session": 0.0
   },
-  "last_update": "06:03:47 UTC"
+  "last_update": "07:40:49 UTC"
 }

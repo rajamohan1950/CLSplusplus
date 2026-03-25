@@ -1,0 +1,99 @@
+// CLS++ Background Service Worker
+// Handles identity, memory API calls, and cross-tab state
+
+const API = 'http://localhost:8080';
+
+// ── User identity ──────────────────────────────────────────────────────────
+// Always fetch UID from the server so all Chrome profiles share the same
+// identity (tied to the machine via ~/.clspp_uid).
+let _cachedUID = null;
+async function getUID() {
+  if (_cachedUID) return _cachedUID;
+  try {
+    const r = await fetch(`${API}/api/uid`);
+    const d = await r.json();
+    if (d.uid) { _cachedUID = d.uid; return _cachedUID; }
+  } catch (_) {}
+  // Fallback: generate locally if server is down
+  const { uid } = await chrome.storage.local.get('uid');
+  if (uid) return uid;
+  const newUID = 'u_' + Math.random().toString(36).slice(2, 14) + Date.now().toString(36);
+  await chrome.storage.local.set({ uid: newUID });
+  return newUID;
+}
+
+// ── API helpers ────────────────────────────────────────────────────────────
+async function searchMemories(query, limit = 5) {
+  const uid = await getUID();
+  try {
+    const r = await fetch(`${API}/api/search/${uid}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, limit }),
+    });
+    const d = await r.json();
+    return d.memories || [];
+  } catch (_) { return []; }
+}
+
+async function storeMessage(text, source, model) {
+  const uid = await getUID();
+  try {
+    await fetch(`${API}/api/store/${uid}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, source, model }),
+    });
+  } catch (_) {}
+}
+
+async function getMemoryCount() {
+  const uid = await getUID();
+  try {
+    const r = await fetch(`${API}/api/memories/${uid}?limit=1`);
+    const d = await r.json();
+    return d.count || 0;
+  } catch (_) { return 0; }
+}
+
+// ── Message handler from content scripts ──────────────────────────────────
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.type === 'SEARCH_MEMORIES') {
+    searchMemories(msg.query, msg.limit || 5).then(sendResponse);
+    return true; // async
+  }
+  if (msg.type === 'STORE_MESSAGE') {
+    storeMessage(msg.text, msg.source, msg.model).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+  if (msg.type === 'GET_COUNT') {
+    getMemoryCount().then(count => sendResponse({ count }));
+    return true;
+  }
+  if (msg.type === 'GET_UID') {
+    getUID().then(uid => sendResponse({ uid }));
+    return true;
+  }
+});
+
+// ── Update badge count every 10s ──────────────────────────────────────────
+async function updateBadge() {
+  const count = await getMemoryCount();
+  chrome.action.setBadgeText({ text: count > 0 ? String(count) : '' });
+  chrome.action.setBadgeBackgroundColor({ color: '#7c6ef0' });
+}
+
+updateBadge();
+setInterval(updateBadge, 10000);
+
+// ── On install: open welcome page ──────────────────────────────────────────
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === 'install') {
+    chrome.tabs.create({ url: 'http://localhost:8080/ui/index.html' });
+  }
+});
+
+// ── Allow index.html to detect extension is present ────────────────────────
+chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
+  if (msg.type === 'PING') sendResponse({ ok: true, version: '1.0.0' });
+});

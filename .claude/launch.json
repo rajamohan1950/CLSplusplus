@@ -4,8 +4,8 @@
     {
       "name": "prototype",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "7070", "--directory", "prototype"],
-      "port": 7070
+      "runtimeArgs": ["prototype/server.py"],
+      "port": 8080
     }
   ]
 }
