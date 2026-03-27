@@ -1,24 +1,9 @@
-# CLS++ - Single service: API + Website in one container
+# CLS++ — Cloud-hosted memory server + Chrome extension download
 # Deploy: https://render.com/deploy?repo=https://github.com/rajamohan1950/CLSplusplus
-# You'll be prompted for CLS_REDIS_URL and CLS_DATABASE_URL - paste from your existing services
-
 services:
   - type: web
-    name: clsplusplus-api
+    name: clsplusplus
     runtime: docker
     dockerfilePath: ./Dockerfile
     plan: free
-    healthCheckPath: /v1/memory/health
-    envVars:
-      - key: CLS_WEBSITE_DIR
-        value: /app/website
-      - key: CLS_REDIS_URL
-        sync: false  # Paste from Dashboard → your Redis → Connection String
-      - key: CLS_DATABASE_URL
-        sync: false  # Paste from Dashboard → your Postgres → Connection String
-      - key: CLS_ANTHROPIC_API_KEY
-        sync: false  # For demo: Claude (get from console.anthropic.com)
-      - key: CLS_OPENAI_API_KEY
-        sync: false  # For demo: OpenAI (get from platform.openai.com)
-      - key: CLS_GOOGLE_API_KEY
-        sync: false  # For demo: Gemini (get from aistudio.google.com)
+    healthCheckPath: /health

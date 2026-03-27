@@ -114,3 +114,37 @@ async def test_e2e_mock_claude_echo_injection_contract(proto_client: AsyncClient
     )
     assert r.status_code == 200
     assert r.json().get("injection_ok") is True
+
+
+@pytest.mark.asyncio
+async def test_install_macos_route_exists(proto_client: AsyncClient):
+    """Browser install uses GET /install/macos; 404 is OK when downloads/ has no zip yet."""
+    r = await proto_client.get("/install/macos")
+    assert r.status_code in (200, 404)
+    if r.status_code == 404:
+        data = r.json()
+        assert data.get("error") == "no_installer"
+    else:
+        ct = (r.headers.get("content-type") or "").lower()
+        assert "zip" in ct or "octet-stream" in ct
+
+
+@pytest.mark.asyncio
+async def test_install_macos_apply_and_status(proto_client: AsyncClient):
+    """One-click POST exists; outcome depends on OS, loopback, zip, CLS_E2E."""
+    st = await proto_client.get("/install/macos/status")
+    assert st.status_code == 200
+    assert "phase" in st.json()
+
+    r = await proto_client.post("/install/macos/apply")
+    assert r.status_code in (200, 403, 404, 409, 503)
+
+
+def test_workspace_repo_detection():
+    """Full repo layout (src/clsplusplus) enables one-click install without a zip."""
+    _proto_app()
+    import server as proto_server  # noqa: PLC0415
+
+    root = proto_server._workspace_repo_with_engine()
+    assert root is not None
+    assert (Path(root) / "src" / "clsplusplus" / "memory_phase.py").is_file()

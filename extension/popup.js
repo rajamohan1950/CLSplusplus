@@ -1,4 +1,4 @@
-const API = 'http://localhost:8080';
+const API = 'https://clsplusplus.onrender.com';
 
 // Load count
 chrome.runtime.sendMessage({ type: 'GET_COUNT' }, (resp) => {
@@ -19,9 +19,9 @@ document.getElementById('toggle-inject').addEventListener('change', e => {
 fetch(`${API}/health`).then(r => {
   if (r.ok) {
     document.getElementById('status-dot').style.background = '#5de0c5';
-    document.getElementById('status-text').textContent = 'Memory engine running';
+    document.getElementById('status-text').textContent = 'Memory engine online';
   }
 }).catch(() => {
   document.getElementById('status-dot').style.background = '#f05d9a';
-  document.getElementById('status-text').textContent = 'Start server.py to activate';
+  document.getElementById('status-text').textContent = 'Server unreachable';
 });

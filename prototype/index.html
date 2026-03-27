@@ -38,7 +38,7 @@
     .mb-count{font-size:11px;color:var(--muted)}
 
     .home{position:relative;z-index:10;min-height:100vh;display:flex;flex-direction:column;
-      align-items:center;padding:72px 20px 48px;gap:48px}
+      align-items:center;justify-content:center;padding:56px 20px 48px;gap:28px}
 
     .hero{display:flex;flex-direction:column;align-items:center;text-align:center;max-width:520px}
     .tagline{
@@ -46,7 +46,7 @@
       line-height:1.08;margin-bottom:12px;
       background:linear-gradient(140deg,#fff 20%,var(--accent) 55%,var(--accent2) 90%);
       -webkit-background-clip:text;-webkit-text-fill-color:transparent}
-    .sub{font-size:15px;color:var(--muted);margin-bottom:40px;letter-spacing:.01em;line-height:1.45}
+    .sub{font-size:14px;color:var(--muted);margin-bottom:8px;letter-spacing:.01em;line-height:1.45;max-width:400px}
 
     #btn-arm{width:176px;height:176px;border-radius:50%;border:none;cursor:pointer;
       background:conic-gradient(from 200deg,#4a3da8,#7c6ef0,#9d90ff,#5de0c5,#7c6ef0,#4a3da8);
@@ -63,32 +63,37 @@
     .btn-word{font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;
       color:rgba(255,255,255,.75);margin-top:8px}
     .note{margin-top:22px;font-size:12px;color:var(--muted);letter-spacing:.02em}
-    #armed-banner{display:none;margin-top:14px;font-size:13px;color:var(--accent2);font-weight:600}
+    #armed-banner{display:none;margin-top:10px;font-size:12px;color:var(--accent2);font-weight:600}
     body.armed #armed-banner{display:block}
 
-    .open-ai{display:flex;flex-direction:column;align-items:center;width:100%;max-width:480px}
-    .section-title{font-size:19px;font-weight:700;letter-spacing:-.02em;text-align:center;margin-bottom:6px}
-    .section-sub{font-size:13px;color:var(--muted);text-align:center;margin-bottom:26px;line-height:1.4}
+    .how-to{
+      width:100%;max-width:420px;text-align:left;
+      padding:18px 20px;border-radius:18px;
+      border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04)}
+    .how-to h2{
+      font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+      color:var(--muted);margin-bottom:14px}
+    .how-to ul{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:12px}
+    .how-to li{font-size:13px;line-height:1.5;color:rgba(240,240,248,.88)}
+    .how-to li strong{color:var(--text);font-weight:600}
 
-    .ai-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%;max-width:460px}
-    @media(max-width:520px){.ai-grid{grid-template-columns:repeat(2,1fr)}}
-    .ai-btn{display:flex;flex-direction:column;align-items:center;gap:7px;
-      padding:16px 8px;border-radius:16px;border:1px solid rgba(255,255,255,.07);
-      background:rgba(255,255,255,.04);cursor:pointer;transition:all .18s ease;position:relative}
-    .ai-btn:hover{background:rgba(124,110,240,.1);border-color:rgba(124,110,240,.28);
-      transform:translateY(-2px);box-shadow:0 8px 28px rgba(124,110,240,.2)}
-    .ai-btn:active{transform:scale(0.96)}
-    .ai-icon{font-size:28px;line-height:1}
-    .ai-name{font-size:12px;font-weight:600}
-    .ai-ready{font-size:10px;color:var(--accent2)}
-    .ready-dot{position:absolute;top:10px;right:10px;width:6px;height:6px;border-radius:50%;
-      background:var(--accent2);box-shadow:0 0 5px var(--accent2);
-      animation:blink 1.8s ease-in-out infinite}
+    #install-status{
+      width:100%;max-width:400px;min-height:20px;font-size:13px;line-height:1.45;
+      color:var(--accent2);text-align:center;display:none}
+    #install-status.busy{color:rgba(240,240,248,.72)}
+    #install-status.err{color:#f0a85d}
+
+    .admin-details{
+      width:100%;max-width:400px;margin-top:8px;font-size:11px;color:var(--muted);text-align:left}
+    .admin-details summary{cursor:pointer;color:rgba(124,110,240,.95)}
+    .admin-details p{margin-top:8px;line-height:1.45}
 
     .particle{position:fixed;border-radius:50%;pointer-events:none;z-index:50;
       animation:pfly var(--d,.8s) ease-out forwards}
     @keyframes pfly{0%{transform:translate(0,0) scale(1);opacity:1}
       100%{transform:translate(var(--tx),var(--ty)) scale(0);opacity:0}}
+
+    #btn-arm:disabled{opacity:.5;cursor:wait;transform:none;animation:none}
   </style>
 </head>
 <body>
@@ -102,59 +107,41 @@
 
 <main class="home">
   <section class="hero" aria-labelledby="tagline">
-    <h1 class="tagline" id="tagline">Every AI.<br/>Always remembers.</h1>
-    <p class="sub">Silent. Automatic. Works with every AI you already use. Install once, then open any assistant below.</p>
-    <button type="button" id="btn-arm" aria-label="Download or install CLS++" autofocus>
+    <h1 class="tagline" id="tagline">CLS++</h1>
+    <p class="sub" id="hero-sub">One click installs CLS++ to this Mac from this page — no zip, no Terminal, no extra scripts.</p>
+
+    <div class="how-to" id="how-to-box" aria-labelledby="how-to-heading">
+      <h2 id="how-to-heading">How you use CLS++</h2>
+      <ul>
+        <li><strong>Chat</strong> — Use ChatGPT, Claude, or Gemini in the browser. CLS++ adds your saved context in the background; you keep chatting normally.</li>
+        <li><strong>Menu bar</strong> — After install, <strong>🧠</strong> appears at the top of the screen. Click it for CLS++ options. macOS may ask for <strong>Accessibility</strong> once — choose <strong>Allow</strong> so it can see chat text.</li>
+        <li><strong>Memories</strong> — Use <strong>Memories</strong> (top right on this page) to see what was remembered.</li>
+        <li><strong>Chrome / Brave / Arc</strong> — Optional: <a href="memory-activate.html" style="color:var(--accent2)">load the browser extension</a> in one click from the local page.</li>
+      </ul>
+    </div>
+
+    <div id="install-status" role="status" aria-live="polite"></div>
+
+    <button type="button" id="btn-arm" aria-label="Install CLS++ on this Mac" autofocus>
       <div class="btn-inner">
         <span class="btn-icon">🧠</span>
-        <span class="btn-word" id="btn-label">Download</span>
+        <span class="btn-word" id="btn-label">Install CLS++</span>
       </div>
     </button>
-    <p class="note" id="os-note">Detecting your system…</p>
-    <p class="note" style="margin-top:6px;font-size:11px;opacity:.5">View stored facts anytime via <strong>Memories</strong> (top right).</p>
-    <p id="armed-banner">Installer started — finish steps in the download, then use the grid below.</p>
-  </section>
+    <p class="note" id="os-note" style="margin-top:14px">Shipped builds can preset the API here — you do not type keys on this screen.</p>
+    <p id="armed-banner">CLS++ is running — click the button again to open <strong>Memories</strong>, or use the link up top. <a href="memory-activate.html" style="color:var(--accent2);font-weight:600">Browser extension →</a></p>
 
-  <section class="open-ai" aria-labelledby="open-title">
-    <h2 class="section-title" id="open-title">Open your AI</h2>
-    <p class="section-sub">Same tabs you already use. CLS++ runs in the background; the chat UI does not change.</p>
-    <div class="ai-grid">
-      <button type="button" class="ai-btn" data-url="https://chatgpt.com" data-name="ChatGPT">
-        <div class="ready-dot" aria-hidden="true"></div>
-        <span class="ai-icon" aria-hidden="true">🤖</span>
-        <span class="ai-name">ChatGPT</span><span class="ai-ready">Open</span>
-      </button>
-      <button type="button" class="ai-btn" data-url="https://claude.ai" data-name="Claude">
-        <div class="ready-dot" aria-hidden="true"></div>
-        <span class="ai-icon" aria-hidden="true">🔮</span>
-        <span class="ai-name">Claude</span><span class="ai-ready">Open</span>
-      </button>
-      <button type="button" class="ai-btn" data-url="https://gemini.google.com" data-name="Gemini">
-        <div class="ready-dot" aria-hidden="true"></div>
-        <span class="ai-icon" aria-hidden="true">✨</span>
-        <span class="ai-name">Gemini</span><span class="ai-ready">Open</span>
-      </button>
-      <button type="button" class="ai-btn" data-url="https://copilot.microsoft.com" data-name="Copilot">
-        <div class="ready-dot" aria-hidden="true"></div>
-        <span class="ai-icon" aria-hidden="true">💠</span>
-        <span class="ai-name">Copilot</span><span class="ai-ready">Open</span>
-      </button>
-      <button type="button" class="ai-btn" data-url="https://perplexity.ai" data-name="Perplexity">
-        <div class="ready-dot" aria-hidden="true"></div>
-        <span class="ai-icon" aria-hidden="true">🔍</span>
-        <span class="ai-name">Perplexity</span><span class="ai-ready">Open</span>
-      </button>
-      <button type="button" class="ai-btn" data-url="https://grok.com" data-name="Grok">
-        <div class="ready-dot" aria-hidden="true"></div>
-        <span class="ai-icon" aria-hidden="true">⚡</span>
-        <span class="ai-name">Grok</span><span class="ai-ready">Open</span>
-      </button>
-    </div>
+    <details class="admin-details">
+      <summary>Hosting / IT (zip &amp; build)</summary>
+      <p>Serve from <code style="font-size:10px">http://127.0.0.1:8080/ui/</code> with <code style="font-size:10px">python server.py</code> in <code style="font-size:10px">prototype/</code>. One click copies <code style="font-size:10px">src/clsplusplus</code> + this UI into <code style="font-size:10px">~/.clspp</code> — no zip and no <code style="font-size:10px">build_installer.sh</code> required. Optional: ship a zip in <code style="font-size:10px">prototype/downloads/</code> for minimal bundles without <code style="font-size:10px">src/</code>.</p>
+    </details>
   </section>
 </main>
 
+<!-- Shipped API (no user forms): define before clspp-config.js
+  <script>window.__CLSPP_CONNECTION__={apiBase:"https://api.example.com",backend:"enterprise",apiKey:"…",armed:true};</script> -->
+<script src="clspp-config.js"></script>
 <script>
-const API = 'http://localhost:8080';
 
 const UID = (() => {
   const k = 'clspp_uid';
@@ -168,6 +155,21 @@ const UID = (() => {
     localStorage.setItem(k, id);
   }
   return id;
+})();
+
+/** Shipped builds: set before this script (same page), no user input.
+ *  window.__CLSPP_CONNECTION__ = { apiBase, backend?: 'prototype'|'enterprise', apiKey?: '', armed?: true } */
+(function applyShippedConnection() {
+  try {
+    const p = window.__CLSPP_CONNECTION__;
+    if (!p || !String(p.apiBase || '').trim()) return;
+    CLSPPConfig.setConnection({
+      apiBase: String(p.apiBase).replace(/\/$/, ''),
+      backend: p.backend === 'enterprise' ? 'enterprise' : 'prototype',
+      apiKey: p.apiKey !== undefined ? p.apiKey : '',
+    });
+    if (p.armed) localStorage.setItem('clspp_armed', '1');
+  } catch (e) {}
 })();
 
 const cv = document.getElementById('canvas'), cx = cv.getContext('2d');
@@ -248,13 +250,27 @@ function burst(bx, by){
 
 async function refreshBadgeCount(){
   try{
-    const r = await fetch(`${API}/api/memories/${UID}`);
+    if (CLSPPConfig.uiBackend() === 'enterprise') {
+      const r = await CLSPPConfig.fetchApi('/v1/memory/read', {
+        method: 'POST',
+        body: JSON.stringify({ query: '*', namespace: 'default', limit: 100 }),
+      });
+      if (!r.ok) throw new Error('read failed');
+      const d = await r.json();
+      const c = (d.items && d.items.length) || 0;
+      document.getElementById('mb-count').textContent = c > 0 ? `· ${c}` : '';
+      return;
+    }
+    const r = await CLSPPConfig.fetchApi('/api/memories/' + encodeURIComponent(UID));
     const d = await r.json();
     document.getElementById('mb-count').textContent = d.count > 0 ? `· ${d.count}` : '';
   }catch(_){}
 }
 
+let badgePollStarted = false;
 function startBadgePoll(){
+  if (badgePollStarted) return;
+  badgePollStarted = true;
   setInterval(refreshBadgeCount, 5000);
 }
 
@@ -266,45 +282,272 @@ const _os = (() => {
   return 'unknown';
 })();
 
-const OS_INFO = {
-  macos:   { file: 'downloads/CLS++-macOS-v1.3.0.zip',   note: 'macOS 12+ &nbsp;·&nbsp; Apple Silicon & Intel &nbsp;·&nbsp; 621 KB' },
-  windows: { file: 'downloads/CLS++-Windows-v1.3.0.zip', note: 'Windows 10+ &nbsp;·&nbsp; 64-bit &nbsp;·&nbsp; Coming soon' },
-  linux:   { file: 'downloads/CLS++-Linux-v1.3.0.zip',   note: 'Ubuntu 20.04+ / Debian / Fedora &nbsp;·&nbsp; Coming soon' },
-  unknown: { file: 'downloads/CLS++-macOS-v1.3.0.zip',   note: 'Available for macOS, Windows, Linux' },
-};
+const INSTALLER_MAC_URL = window.location.origin + '/install/macos';
 
-const osInfo = OS_INFO[_os];
-document.getElementById('btn-label').textContent = _os === 'macos' ? 'Install' : 'Download';
-document.getElementById('os-note').innerHTML = osInfo.note;
+const LOCAL_HEALTH = 'http://127.0.0.1:8080/health';
+let installRunId = 0;
 
-function setArmedState(on){
-  if(on){
+const isLoopbackHost =
+  window.location.hostname === '127.0.0.1' ||
+  window.location.hostname === 'localhost' ||
+  window.location.hostname === '[::1]';
+
+function waitForLocalHealth(maxSec) {
+  const deadline = Date.now() + maxSec * 1000;
+  function tick() {
+    return fetch(LOCAL_HEALTH, { method: 'GET' })
+      .then(function (r) {
+        if (!r.ok) return false;
+        return r.json().then(function (j) {
+          return j && j.status === 'ok';
+        }).catch(function () {
+          return false;
+        });
+      })
+      .catch(function () {
+        return false;
+      });
+  }
+  function loop() {
+    if (Date.now() >= deadline) return Promise.resolve(false);
+    return tick().then(function (ok) {
+      if (ok) return true;
+      return new Promise(function (res) {
+        setTimeout(res, 1200);
+      }).then(loop);
+    });
+  }
+  return loop();
+}
+
+function setInstallStatus(msg, kind) {
+  const el = document.getElementById('install-status');
+  el.style.display = msg ? 'block' : 'none';
+  el.textContent = msg || '';
+  el.className = kind === 'err' ? 'err' : kind === 'busy' ? 'busy' : '';
+}
+
+function setArmedState(on) {
+  const armBtn = document.getElementById('btn-arm');
+  const label = document.getElementById('btn-label');
+  if (on) {
     document.body.classList.add('armed');
     document.getElementById('mb-label').textContent = 'Memory active';
+    label.textContent = 'Open Memories';
+    armBtn.setAttribute('aria-label', 'Open Memories');
+  } else {
+    label.textContent = 'Install CLS++';
+    armBtn.setAttribute('aria-label', 'Install CLS++ on this Mac');
   }
 }
 
-function armNow(){
-  const btn = document.getElementById('btn-arm');
-  const r = btn.getBoundingClientRect();
+function runDownloadFallback(myId) {
+  const armBtn = document.getElementById('btn-arm');
+  fetch(INSTALLER_MAC_URL, { method: 'HEAD' })
+    .then(function (r) {
+      if (myId !== installRunId) return;
+      if (!r.ok && r.status !== 405) {
+        armBtn.disabled = false;
+        setInstallStatus(
+          'The installer file is not on this server yet. Your IT team should run build_installer.sh — you did nothing wrong.',
+          'err',
+        );
+        return;
+      }
+      startDownloadFlowInner(myId);
+    })
+    .catch(function () {
+      if (myId !== installRunId) return;
+      startDownloadFlowInner(myId);
+    });
+}
+
+function startDownloadFlowInner(myId) {
+  const armBtn = document.getElementById('btn-arm');
+  if (myId !== installRunId) return;
+
+  const r = armBtn.getBoundingClientRect();
   playRocket();
-  burst(r.left+r.width/2, r.top+r.height/2);
+  burst(r.left + r.width / 2, r.top + r.height / 2);
 
-  const a = document.createElement('a');
-  a.href = osInfo.file;
-  a.download = '';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  CLSPPConfig.setConnection({
+    apiBase: 'http://127.0.0.1:8080',
+    backend: 'prototype',
+    apiKey: '',
+  });
 
-  localStorage.setItem('clspp_armed','1');
+  setInstallStatus(
+    'Saving the installer to your Mac… If this page is not on 127.0.0.1, open the zip from Downloads and double-click Install CLS++.command inside the CLS++ folder.',
+    'busy',
+  );
+
+  setTimeout(function () {
+    if (myId !== installRunId) return;
+    const a = document.createElement('a');
+    a.href = INSTALLER_MAC_URL;
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }, 400);
+
+  localStorage.setItem('clspp_armed', '1');
   setArmedState(true);
   refreshBadgeCount();
   startBadgePoll();
+
+  setTimeout(function () {
+    if (myId !== installRunId) return;
+    waitForLocalHealth(120).then(function (ok) {
+      if (myId !== installRunId) return;
+      armBtn.disabled = false;
+      if (ok) {
+        setInstallStatus('CLS++ is online. Use Memories (top right) or click the button below.', '');
+      } else {
+        setInstallStatus(
+          'After 🧠 appears in the menu bar, refresh this page or open http://127.0.0.1:8080/ui/',
+          'busy',
+        );
+      }
+    });
+  }, 2000);
 }
 
+function runOneClickInstall() {
+  const armBtn = document.getElementById('btn-arm');
+  if (armBtn.disabled) return;
+
+  if (_os !== 'macos' && _os !== 'unknown') {
+    document.getElementById('hero-sub').textContent =
+      'CLS++ desktop install is Mac-only today. Use a Mac or ask your team for another build.';
+    setInstallStatus('Windows and Linux one-click install are not on this page yet.', 'err');
+    return;
+  }
+
+  const myId = ++installRunId;
+  armBtn.disabled = true;
+  setInstallStatus('Starting…', 'busy');
+
+  const tryApply = isLoopbackHost && (_os === 'macos' || _os === 'unknown');
+
+  if (!tryApply) {
+    setInstallStatus('Opening this site at http://127.0.0.1:8080 enables full one-click install. Saving the installer file for you now…', 'busy');
+    runDownloadFallback(myId);
+    return;
+  }
+
+  fetch('/install/macos/apply', { method: 'POST' })
+    .then(function (r) {
+      return r.text().then(function (txt) {
+        var j = {};
+        try {
+          j = JSON.parse(txt);
+        } catch (e) {}
+        return { r: r, j: j };
+      });
+    })
+    .catch(function () {
+      return { r: { ok: false, status: 0 }, j: {} };
+    })
+    .then(function (o) {
+      if (myId !== installRunId) return;
+      const r = o.r;
+      const j = o.j || {};
+
+      if (r.status === 503 && j.error === 'disabled_in_e2e') {
+        runDownloadFallback(myId);
+        return;
+      }
+
+      if (r.ok && j.ok && (j.mode === 'detached' || j.mode === 'workspace')) {
+        const btn = document.getElementById('btn-arm');
+        const rect = btn.getBoundingClientRect();
+        playRocket();
+        burst(rect.left + rect.width / 2, rect.top + rect.height / 2);
+
+        CLSPPConfig.setConnection({
+          apiBase: 'http://127.0.0.1:8080',
+          backend: 'prototype',
+          apiKey: '',
+        });
+        localStorage.setItem('clspp_armed', '1');
+        setArmedState(true);
+        refreshBadgeCount();
+        startBadgePoll();
+
+        if (j.mode === 'workspace') {
+          setInstallStatus(
+            'Installing from this checkout to your Mac (copy + Python packages + menu bar, 1–3 min). Status updates below — this tab may disconnect when the app restarts.',
+            'busy',
+          );
+        } else {
+          setInstallStatus(
+            'Installer is running on your Mac (1–3 minutes). This tab may stop loading — that is normal. Wait, then refresh http://127.0.0.1:8080/ui/',
+            'busy',
+          );
+        }
+
+        let polls = 0;
+        var statusTimer = setInterval(function () {
+          polls += 1;
+          if (myId !== installRunId || polls > 25) {
+            clearInterval(statusTimer);
+            armBtn.disabled = false;
+            return;
+          }
+          fetch('/install/macos/status')
+            .then(function (x) {
+              return x.json();
+            })
+            .then(function (s) {
+              if (s && s.message) setInstallStatus(s.message, 'busy');
+            })
+            .catch(function () {});
+        }, 2000);
+
+        waitForLocalHealth(180).then(function (ok) {
+          clearInterval(statusTimer);
+          if (myId !== installRunId) return;
+          armBtn.disabled = false;
+          if (ok) {
+            setInstallStatus('CLS++ is back online. Use Memories (top right) or the button below.', '');
+          }
+        });
+
+        return;
+      }
+
+      if (r.status === 404) {
+        armBtn.disabled = false;
+        setInstallStatus(
+          (j && j.message) ||
+            'This page is not a full CLS++ checkout (missing src/clsplusplus) and there is no Mac zip in downloads/. Clone the full repository or add a zip under prototype/downloads/.',
+          'err',
+        );
+        return;
+      }
+
+      if (r.status === 403) {
+        runDownloadFallback(myId);
+        return;
+      }
+
+      runDownloadFallback(myId);
+    });
+}
+
+document.getElementById('btn-arm').addEventListener('click', function () {
+  if (document.body.classList.contains('armed')) {
+    window.location.href = 'memory.html';
+    return;
+  }
+  runOneClickInstall();
+});
+
 let hasArmed = localStorage.getItem('clspp_armed') === '1';
-if(hasArmed){
+if (window.__CLSPP_CONNECTION__ && window.__CLSPP_CONNECTION__.armed) hasArmed = true;
+
+if (hasArmed) {
   setArmedState(true);
   refreshBadgeCount();
   startBadgePoll();
@@ -312,14 +555,15 @@ if(hasArmed){
   refreshBadgeCount();
 }
 
-document.getElementById('btn-arm').addEventListener('click', () => { armNow(); });
-
-document.querySelectorAll('.ai-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const url = btn.getAttribute('data-url');
-    if(url) window.open(url, '_blank', 'noopener,noreferrer');
-  });
-});
+(function finishShippedPresetUi() {
+  try {
+    const p = window.__CLSPP_CONNECTION__;
+    if (!p || !p.armed) return;
+    setArmedState(true);
+    startBadgePoll();
+    refreshBadgeCount();
+  } catch (e) {}
+})();
 </script>
 </body>
 </html>

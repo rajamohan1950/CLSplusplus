@@ -825,17 +825,20 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     # Trace / Call Graph API
     # =========================================================================
 
-    @app.get("/v1/trace/{trace_id}")
-    async def get_trace(trace_id: str):
-        """Return the full call graph tree for a trace UUID."""
-        trace = tracer.get(trace_id)
-        if not trace:
-            raise HTTPException(status_code=404, detail=f"Trace {trace_id} not found (max {tracer.MAX_TRACES} traces kept in memory)")
-        return trace.to_dict()
-
-    @app.get("/v1/traces")
-    async def list_traces(limit: int = Query(default=50, ge=1, le=200)):
-        """List recent traces (newest first)."""
+    @app.get("/v1/memory/traces")
+    async def memory_traces(
+        trace_id: Optional[str] = Query(default=None, description="If set, return full call graph for this id"),
+        limit: int = Query(default=50, ge=1, le=200),
+    ):
+        """Single endpoint: list recent traces, or one trace tree when trace_id is set."""
+        if trace_id and trace_id.strip():
+            trace = tracer.get(trace_id.strip())
+            if not trace:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Trace {trace_id} not found (max {tracer.MAX_TRACES} traces kept in memory)",
+                )
+            return trace.to_dict()
         return {"traces": tracer.list_recent(limit)}
 
     @app.get("/v1/memory/namespaces")

@@ -110,14 +110,14 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 
 
 # Paths/prefixes that produce too much noise to trace.
-# /v1/trace*          — trace page auto-polls itself every 5s
+# /v1/memory/traces   — trace list/detail polling (memory UI)
 # /v1/demo/status     — demo.js warmup ping fires 5× on page load, every 30s
 # /v1/memory/phases   — phase-bar polling (every 3s)
 # /v1/memory/namespaces — namespace chip polling (every 3s)
 # /v1/chat/sessions GET probes are low-value but message POSTs are traced via inner spans
 _TRACE_SKIP_PREFIXES = (
     "/docs", "/redoc", "/openapi", "/_",
-    "/v1/trace",              # trace list / detail endpoints
+    "/v1/memory/traces",      # trace list/detail — avoid noise in trace buffer
     "/v1/demo/status",        # warmup ping — not a user action
     "/v1/memory/phases",      # phase-bar polling — high frequency, no value in trace list
     "/v1/memory/namespaces",  # namespace chip polling — same reason
@@ -134,6 +134,7 @@ _OP_MAP = {
     "/memories/knowledge": "read",
     "/memory/forget": "delete",
     "/memories/forget": "delete",
+    "/memory/traces": "traces",
     "/memory/health": "health",
     "/health/score": "health",
     "/demo/chat": "demo.chat",

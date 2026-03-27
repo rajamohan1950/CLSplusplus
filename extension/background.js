@@ -1,24 +1,18 @@
 // CLS++ Background Service Worker
 // Handles identity, memory API calls, and cross-tab state
 
-const API = 'http://localhost:8080';
+const API = 'https://clsplusplus.onrender.com';
 
 // ── User identity ──────────────────────────────────────────────────────────
-// Always fetch UID from the server so all Chrome profiles share the same
-// identity (tied to the machine via ~/.clspp_uid).
+// Stable per-browser UID stored in chrome.storage.local (no local server).
 let _cachedUID = null;
 async function getUID() {
   if (_cachedUID) return _cachedUID;
-  try {
-    const r = await fetch(`${API}/api/uid`);
-    const d = await r.json();
-    if (d.uid) { _cachedUID = d.uid; return _cachedUID; }
-  } catch (_) {}
-  // Fallback: generate locally if server is down
   const { uid } = await chrome.storage.local.get('uid');
-  if (uid) return uid;
+  if (uid) { _cachedUID = uid; return uid; }
   const newUID = 'u_' + Math.random().toString(36).slice(2, 14) + Date.now().toString(36);
   await chrome.storage.local.set({ uid: newUID });
+  _cachedUID = newUID;
   return newUID;
 }
 
@@ -89,7 +83,7 @@ setInterval(updateBadge, 10000);
 // ── On install: open welcome page ──────────────────────────────────────────
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
-    chrome.tabs.create({ url: 'http://localhost:8080/ui/index.html' });
+    chrome.tabs.create({ url: `${API}/ui/install.html` });
   }
 });
 

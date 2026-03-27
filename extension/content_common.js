@@ -2,11 +2,11 @@
 // This file is loaded by each site-specific content script
 
 const MEMORY_PREFIX = '[CLS++ Memory]\n';
-// Match page hostname so E2E (127.0.0.1) and localhost UI hit the same origin as the tab.
+// E2E tests run on localhost — route API there; production AI sites hit the cloud.
 const CLSPP_API =
   typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(location.hostname)
     ? `http://${location.hostname}:${location.port || '8080'}`
-    : 'http://127.0.0.1:8080';
+    : 'https://clsplusplus.onrender.com';
 
 // ── Share UID with MAIN world (intercept.js) ─────────────────────────────
 let _clsppUID = null;

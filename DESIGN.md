@@ -737,8 +737,7 @@ with tracer.span(trace_id, "engine.store", "phase_engine", ...):
   ...                              ← measures duration, records hop
 tracer.add_metadata(trace_id, hop_id, phase="liquid", strength=0.84)
 
-GET /v1/trace/{trace_id}           → full call tree
-GET /v1/traces                     → 50 most recent
+GET /v1/memory/traces              → list recent traces (or `?trace_id=` for full call tree)
 
 Visible at: trace.html
 ```
