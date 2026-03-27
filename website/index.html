@@ -29,7 +29,7 @@
         <a href="trace.html">Traces</a>
         <a href="/docs" target="_blank" rel="noopener">API</a>
         <a href="https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener">GitHub</a>
-        <a href="#pricing" class="btn btn-primary">Get Started</a>
+        <a href="#" onclick="clsppInstallExtension(event)" class="btn btn-primary">Get Started</a>
       </div>
       <button class="nav-toggle" aria-label="Menu">☰</button>
     </div>
@@ -210,7 +210,7 @@
             <li>1 namespace</li>
             <li>Community support</li>
           </ul>
-          <a href="https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener" class="btn btn-outline">Get Started Free</a>
+          <a href="#" onclick="clsppInstallExtension(event)" class="btn btn-outline">Get Started Free</a>
         </div>
         <div class="pricing-card">
           <h3>Team</h3>
@@ -223,7 +223,7 @@
             <li>Email support</li>
             <li>Sleep cycle included</li>
           </ul>
-          <a href="mailto:contact@alphaforge.ai?subject=CLS++%20Team%20Plan" class="btn btn-primary">Start Free Trial</a>
+          <a href="#" onclick="clsppInstallExtension(event)" class="btn btn-primary">Start Free Trial</a>
         </div>
         <div class="pricing-card pricing-card-featured">
           <span class="badge">Popular</span>
@@ -278,6 +278,18 @@
     // Default: always hit the Render production API
     if (window.location.search.includes('local=1')) {
       window.CLS_API_URL = 'http://localhost:8090';
+    }
+
+    const CLSPP_CLOUD = 'https://clsplusplus.onrender.com';
+    function clsppInstallExtension(e) {
+      if (e) e.preventDefault();
+      const a = document.createElement('a');
+      a.href = CLSPP_CLOUD + '/extension/download';
+      a.download = 'CLS++-Extension.zip';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.open(CLSPP_CLOUD + '/ui/install.html', '_blank');
     }
   </script>
   <!-- namespace.js must load before demo.js — sets window.CLS_USER_NAMESPACE -->

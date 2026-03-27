@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CLS++ · Install Extension</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#06060c;--surface:#0d0d18;--surface2:#131325;
+      --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
+      --accent:#7c6ef0;--accent2:#5de0c5;--text:#f0f0f8;--muted:rgba(240,240,248,0.42);
+      --r:14px;
+    }
+    html,body{height:100%;background:var(--bg);color:var(--text);
+      font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;
+      -webkit-font-smoothing:antialiased}
+
+    .wrap{max-width:620px;margin:0 auto;padding:80px 24px 120px}
+
+    .logo{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;margin-bottom:48px}
+    .logo-dot{width:7px;height:7px;border-radius:50%;background:var(--accent2);
+      box-shadow:0 0 6px var(--accent2);animation:blink 1.8s ease-in-out infinite}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+
+    h1{font-size:28px;font-weight:800;letter-spacing:-0.04em;margin-bottom:8px}
+    .subtitle{font-size:14px;color:var(--muted);margin-bottom:40px;line-height:1.5}
+
+    .steps{display:flex;flex-direction:column;gap:24px}
+    .step{display:flex;gap:16px;align-items:flex-start}
+    .step-num{flex-shrink:0;width:36px;height:36px;border-radius:50%;
+      background:rgba(124,110,240,0.12);border:1px solid rgba(124,110,240,0.3);
+      display:flex;align-items:center;justify-content:center;
+      font-size:14px;font-weight:700;color:var(--accent)}
+    .step-num.done{background:rgba(93,224,197,0.15);border-color:rgba(93,224,197,0.4);color:var(--accent2)}
+    .step-body{padding-top:6px}
+    .step-title{font-size:15px;font-weight:700;margin-bottom:4px}
+    .step-desc{font-size:13px;color:var(--muted);line-height:1.5}
+    .step-desc code{background:rgba(255,255,255,0.06);border:1px solid var(--border);
+      padding:1px 6px;border-radius:6px;font-family:"SF Mono",Menlo,monospace;font-size:12px;color:var(--text)}
+
+    .status-banner{margin-top:48px;padding:16px 20px;border-radius:var(--r);
+      background:var(--surface2);border:1px solid var(--border2);
+      display:flex;align-items:center;gap:12px;font-size:13px;font-weight:600}
+    .status-icon{font-size:20px}
+    .status-banner.ok{border-color:rgba(93,224,197,0.4);background:rgba(93,224,197,0.06)}
+    .status-banner.waiting{border-color:rgba(124,110,240,0.3)}
+
+    .cta{display:block;width:100%;margin-top:32px;padding:14px;text-align:center;
+      font-size:14px;font-weight:700;border-radius:var(--r);cursor:pointer;
+      text-decoration:none;transition:all .18s;border:none}
+    .cta-primary{background:var(--accent);color:#fff}
+    .cta-primary:hover{filter:brightness(1.12)}
+    .cta-secondary{background:rgba(124,110,240,0.12);color:var(--accent);border:1px solid rgba(124,110,240,0.25)}
+    .cta-secondary:hover{background:rgba(124,110,240,0.2)}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo">
+    <div class="logo-dot"></div>
+    <span>CLS++ Memory</span>
+  </div>
+
+  <h1>Install the Extension</h1>
+  <p class="subtitle">
+    Your download has started. Follow these steps to activate CLS++ memory
+    across ChatGPT, Claude, and Gemini.
+  </p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num" id="sn1">1</div>
+      <div class="step-body">
+        <div class="step-title">Download started</div>
+        <div class="step-desc">
+          The CLS++ Extension zip is downloading. Check your browser's
+          download bar or <strong>Downloads</strong> folder.
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <div class="step-title">Unzip the file</div>
+        <div class="step-desc">
+          Double-click <code>CLS++-Extension.zip</code> to extract the folder.
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <div class="step-title">Load into Chrome</div>
+        <div class="step-desc">
+          Open <code>chrome://extensions</code> in your browser.
+          Enable <strong>Developer mode</strong> (top-right toggle).
+          Click <strong>Load unpacked</strong> and select the
+          <code>CLS++-Extension</code> folder.
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <div class="step-title">You're done</div>
+        <div class="step-desc">
+          Open <a href="https://chatgpt.com" style="color:var(--accent2)">ChatGPT</a>,
+          <a href="https://claude.ai" style="color:var(--accent2)">Claude</a>, or
+          <a href="https://gemini.google.com" style="color:var(--accent2)">Gemini</a>.
+          CLS++ memory is active — every conversation is remembered and shared
+          across all your AI tools.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status-banner waiting" id="status-banner">
+    <span class="status-icon">⏳</span>
+    <span id="status-text">Waiting for extension…</span>
+  </div>
+
+  <a class="cta cta-secondary" href="https://clsplusplus.onrender.com/ui/memory.html" target="_blank" id="memory-link" style="display:none">
+    View My Memories →
+  </a>
+</div>
+
+<script>
+const EXT_ID_KEY = '__clspp_ext_installed';
+
+function checkExtension() {
+  if (document.documentElement.dataset.clspp === 'active') {
+    showInstalled();
+    return;
+  }
+  const marker = document.querySelector('meta[name="clspp-ext"]');
+  if (marker) { showInstalled(); return; }
+  setTimeout(checkExtension, 2000);
+}
+
+function showInstalled() {
+  const banner = document.getElementById('status-banner');
+  banner.className = 'status-banner ok';
+  document.getElementById('status-text').textContent = 'CLS++ extension detected — you\'re all set!';
+  banner.querySelector('.status-icon').textContent = '✅';
+  document.getElementById('sn1').classList.add('done');
+  document.getElementById('memory-link').style.display = 'block';
+}
+
+checkExtension();
+</script>
+</body>
+</html>

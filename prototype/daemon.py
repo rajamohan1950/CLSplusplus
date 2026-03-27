@@ -57,12 +57,57 @@ APPLESCRIPT_BROWSERS = {
 }
 
 URL_ONLY_SCRIPTS = {
-    "Google Chrome":  'tell application "Google Chrome" to return URL of active tab of front window',
-    "Arc":            'tell application "Arc" to return URL of active tab of front window',
-    "Safari":         'tell application "Safari" to return URL of front document',
-    "Brave Browser":  'tell application "Brave Browser" to return URL of active tab of front window',
-    "Microsoft Edge": 'tell application "Microsoft Edge" to return URL of active tab of front window',
+    "Google Chrome":        'tell application "Google Chrome" to return URL of active tab of front window',
+    "Google Chrome Canary": 'tell application "Google Chrome Canary" to return URL of active tab of front window',
+    "Chromium":             'tell application "Chromium" to return URL of active tab of front window',
+    "Arc":                  'tell application "Arc" to return URL of active tab of front window',
+    "Safari":               'tell application "Safari" to return URL of front document',
+    "Brave Browser":        'tell application "Brave Browser" to return URL of active tab of front window',
+    "Microsoft Edge":       'tell application "Microsoft Edge" to return URL of active tab of front window',
 }
+
+# AppleScript application names (must match names shown in Script Editor)
+CHROMIUM_FAMILY = (
+    "Google Chrome",
+    "Google Chrome Canary",
+    "Chromium",
+    "Arc",
+    "Brave Browser",
+    "Microsoft Edge",
+)
+
+
+def resolve_applescript_browser(frontmost_name: str) -> str:
+    """Map System Events process names to AppleScript application names."""
+    if not frontmost_name:
+        return ""
+    n = frontmost_name.strip()
+    aliases = {
+        "Chrome": "Google Chrome",
+        "Google Chrome": "Google Chrome",
+        "Google Chrome Canary": "Google Chrome Canary",
+        "Chromium": "Chromium",
+        "Brave": "Brave Browser",
+        "Brave Browser": "Brave Browser",
+        "Arc": "Arc",
+        "Microsoft Edge": "Microsoft Edge",
+        "Edge": "Microsoft Edge",
+        "Safari": "Safari",
+    }
+    if n in aliases:
+        return aliases[n]
+    low = n.lower()
+    if "canary" in low and "chrome" in low:
+        return "Google Chrome Canary"
+    if "chromium" in low:
+        return "Chromium"
+    if "brave" in low:
+        return "Brave Browser"
+    if "microsoft edge" in low or (low.endswith("edge") and "edg" in low):
+        return "Microsoft Edge"
+    if "chrome" in low and "canary" not in low:
+        return "Google Chrome"
+    return n
 
 # ── JavaScript snippets per site ─────────────────────────────────────────────
 
@@ -304,10 +349,11 @@ def get_frontmost_app() -> str:
 
 def get_active_url() -> tuple[str, str]:
     """Return (url, app_name) for the front browser tab."""
-    app = get_frontmost_app()
+    raw = get_frontmost_app()
+    app = resolve_applescript_browser(raw)
     script = URL_ONLY_SCRIPTS.get(app, "")
     if not script:
-        return "", app
+        return "", raw
     url = _run_apple(script, timeout=1.5)
     return url, app
 
@@ -316,7 +362,7 @@ def get_all_browser_ai_tabs() -> list[tuple[str, str]]:
     """Scan ALL open browser tabs across ALL windows for AI sites.
     Returns [(url, app_name), ...] with one entry per AI tab found."""
     results = []
-    for app in ("Google Chrome", "Arc", "Brave Browser", "Microsoft Edge"):
+    for app in CHROMIUM_FAMILY:
         try:
             script = f'''
                 tell application "{app}"
@@ -371,7 +417,7 @@ def run_js_in_browser(js: str, app: str = "", target_url: str = "") -> str:
     js_oneline = re.sub(r'\s+', ' ', js).strip()
     escaped = js_oneline.replace('\\', '\\\\').replace('"', '\\"')
 
-    if target_url and app in ("Google Chrome", "Arc", "Brave Browser", "Microsoft Edge"):
+    if target_url and app in CHROMIUM_FAMILY:
         # Target a specific tab by URL (works even when not frontmost)
         url_match = target_url.split("?")[0]  # strip query params for matching
         script = f'''
@@ -400,7 +446,7 @@ def run_js_in_browser(js: str, app: str = "", target_url: str = "") -> str:
                 return "tab_not_found"
             end tell
         '''
-    elif app in ("Google Chrome", "Arc", "Brave Browser", "Microsoft Edge"):
+    elif app in CHROMIUM_FAMILY:
         script = (
             f'tell application "{app}" to return '
             f'(execute active tab of front window javascript "{escaped}")'

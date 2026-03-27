@@ -882,7 +882,7 @@
 
   async function loadAndRenderTrace(tid, bodyEl) {
     try {
-      const r = await fetch(`/v1/trace/${encodeURIComponent(tid)}`);
+      const r = await fetch(`/v1/memory/traces?trace_id=${encodeURIComponent(tid)}`);
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const data = await r.json();
       _traceCache[tid] = data;
@@ -1216,7 +1216,7 @@
 
   async function loadRecentTraces() {
     try {
-      const r = await fetch('/v1/traces?limit=30');
+      const r = await fetch('/v1/memory/traces?limit=30');
       if (!r.ok) throw new Error();
       const data = await r.json();
       const traces = data.traces || [];

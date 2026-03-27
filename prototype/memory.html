@@ -69,6 +69,54 @@
     .phase-solid{background:rgba(124,110,240,.15);color:#a89cf7}
     .phase-glass{background:rgba(200,200,255,.12);color:#c8c8ff}
 
+    .view-tabs{display:flex;gap:6px;margin-top:12px}
+    .view-tab{
+      flex:1;font-size:11px;font-weight:600;padding:8px 6px;border-radius:8px;
+      border:1px solid var(--border);background:var(--surface2);color:var(--muted);
+      cursor:pointer;transition:all .15s}
+    .view-tab:hover{color:var(--text);border-color:var(--border2)}
+    .view-tab.active{background:rgba(124,110,240,.2);border-color:rgba(124,110,240,.35);color:var(--text)}
+    #sidebar-memories-panel{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+    #sidebar-memories-panel.panel-hidden{display:none}
+    #sidebar-traces-panel{display:none;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+    #sidebar-traces-panel.panel-open{display:flex}
+    .trace-side-scroll{flex:1;overflow-y:auto;padding:8px 12px}
+    .trace-side-item{
+      padding:10px 10px;border-radius:10px;margin-bottom:4px;cursor:pointer;
+      border:1px solid transparent;font-size:11px;line-height:1.35}
+    .trace-side-item:hover{background:rgba(255,255,255,.04)}
+    .trace-side-item.active{background:rgba(124,110,240,.12);border-color:rgba(124,110,240,.25)}
+    .trace-side-item .op{font-weight:600;word-break:break-all}
+    .trace-side-item .meta{font-size:10px;color:var(--muted);margin-top:4px}
+    #btn-refresh-traces{
+      width:calc(100% - 32px);margin:8px 16px;font-size:11px;font-weight:600;padding:8px;
+      border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer}
+    #main-panel-memories{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+    #main-panel-memories.panel-hidden{display:none}
+    #main-panel-traces{display:none;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+    #main-panel-traces.panel-open{display:flex}
+    .trace-panels{flex:1;display:grid;grid-template-rows:1fr 1fr;gap:0;min-height:0}
+    @media(min-width:900px){
+      .trace-panels{grid-template-rows:1fr;grid-template-columns:1fr 1fr}
+    }
+    .trace-subpanel{border-bottom:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
+    @media(min-width:900px){.trace-subpanel{border-bottom:none;border-right:1px solid var(--border)}.trace-subpanel:last-child{border-right:none}}
+    .trace-subhead{padding:8px 16px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:rgba(0,0,0,.2)}
+    .trace-subbody{flex:1;overflow:auto;padding:10px 16px}
+    .tl-row{
+      display:grid;grid-template-columns:24px 1fr 72px;gap:8px;align-items:start;
+      font-size:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+    .tl-bar-wrap{height:6px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden;margin-top:4px}
+    .tl-bar{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--accent2));max-width:100%}
+    .tl-mod{font-size:10px;color:var(--accent2)}
+    .graph-wrap{overflow:auto;background:rgba(0,0,0,.25);border-radius:var(--r);min-height:180px}
+    .graph-wrap svg{display:block;margin:0 auto}
+    .node-box{fill:rgba(124,110,240,.15);stroke:rgba(124,110,240,.45);stroke-width:1.5;rx:8}
+    .node-text{fill:var(--text);font-size:11px}
+    .edge{stroke:rgba(93,224,197,.35);stroke-width:1.5;fill:none}
+    #trace-err-banner{display:none;margin:0 20px 10px;padding:10px 14px;border-radius:10px;
+      background:rgba(240,110,154,.12);border:1px solid rgba(240,110,154,.3);font-size:12px}
+    #trace-err-banner.show{display:block}
     .sidebar-footer{margin-top:auto;padding:16px;border-top:1px solid var(--border)}
     .btn-back{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);
       text-decoration:none;padding:8px 12px;border-radius:8px;
@@ -92,6 +140,10 @@
       border-radius:9px;color:#5de0c5;font-size:12px;font-weight:600;padding:8px 14px;
       cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px}
     .btn-ctx-log:hover{background:rgba(93,224,197,.14);border-color:rgba(93,224,197,.35)}
+    .btn-last-trace{background:rgba(124,110,240,.1);border:1px solid rgba(124,110,240,.25);
+      border-radius:9px;color:#a89cf7;font-size:12px;font-weight:600;padding:8px 14px;
+      cursor:pointer;transition:all .2s;display:none;align-items:center}
+    .btn-last-trace:hover{background:rgba(124,110,240,.18);border-color:rgba(124,110,240,.4)}
 
     .mem-grid{flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:10px}
     .mem-card{background:var(--surface);border:1px solid var(--border);
@@ -171,6 +223,14 @@
   <aside class="sidebar">
     <div class="sidebar-head">
       <div class="logo"><div class="logo-dot"></div>CLS++ Memory</div>
+      <div class="view-tabs">
+        <button type="button" class="view-tab active" id="tab-memories" data-view="memories">Memories</button>
+        <button type="button" class="view-tab" id="tab-traces" data-view="traces">Traces</button>
+      </div>
+    </div>
+
+    <div id="sidebar-memories-panel">
+    <div class="sidebar-head" style="padding-top:0;border-bottom:none">
       <div class="total-count" id="total-count">0</div>
       <div class="total-label">memories stored</div>
     </div>
@@ -230,6 +290,12 @@
         </div>
       </div>
     </div>
+    </div><!-- sidebar-memories-panel -->
+
+    <div id="sidebar-traces-panel">
+      <button type="button" id="btn-refresh-traces">Refresh traces</button>
+      <div class="trace-side-scroll" id="trace-side-list"></div>
+    </div>
 
     <div class="sidebar-footer">
       <a href="index.html" class="btn-back">← Home</a>
@@ -238,6 +304,7 @@
 
   <!-- ── MAIN: MEMORY CARDS ─────────────────────────────── -->
   <main class="main">
+    <div id="main-panel-memories">
     <div class="main-head">
       <div>
         <div class="main-title" id="main-title">All Memories</div>
@@ -245,6 +312,7 @@
       </div>
       <div class="search-row">
         <input id="search" type="text" placeholder="Search memories…" autocomplete="off"/>
+        <button type="button" class="btn-last-trace" id="btn-last-trace">Last trace</button>
         <button class="btn-ctx-log" id="btn-ctx-log">
           <span style="width:6px;height:6px;border-radius:50%;background:#5de0c5;box-shadow:0 0 6px #5de0c5;display:inline-block;animation:blink 1.8s ease-in-out infinite"></span>
           Context Log
@@ -259,6 +327,33 @@
           Open ChatGPT, Claude, or Gemini in another tab and start chatting.
           Memories will appear here automatically.
         </div>
+      </div>
+    </div>
+    </div><!-- main-panel-memories -->
+
+    <div id="main-panel-traces">
+      <div id="trace-err-banner"></div>
+      <div class="main-head">
+        <div>
+          <div class="main-title" id="trace-detail-title">Select a trace</div>
+          <div class="main-sub" id="trace-detail-sub"></div>
+        </div>
+      </div>
+      <div class="trace-panels">
+        <section class="trace-subpanel">
+          <div class="trace-subhead">End-to-end timeline</div>
+          <div class="trace-subbody" id="trace-timeline-body">
+            <div class="empty" style="padding:20px">Pick a trace from the sidebar.</div>
+          </div>
+        </section>
+        <section class="trace-subpanel">
+          <div class="trace-subhead">Call graph</div>
+          <div class="trace-subbody">
+            <div class="graph-wrap" id="trace-graph-wrap">
+              <div class="empty" style="padding:20px">No graph yet.</div>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   </main>
@@ -279,12 +374,282 @@
   </div>
 </div>
 
+<script src="clspp-config.js"></script>
 <script>
-const API = 'http://localhost:8080';
+
+const UID = (() => {
+  const k = 'clspp_uid';
+  let id = localStorage.getItem(k);
+  if (!id) {
+    const sig = [navigator.userAgent, navigator.language, screen.width,
+      screen.height, Intl.DateTimeFormat().resolvedOptions().timeZone].join('|');
+    let h = 5381;
+    for (let i = 0; i < sig.length; i++) h = ((h<<5)+h) + sig.charCodeAt(i);
+    id = 'u_' + (Math.abs(h)>>>0).toString(36) + (Date.now()%1e6).toString(36);
+    localStorage.setItem(k, id);
+  }
+  return id;
+})();
 
 let allMemories = [];
 let activeModel = '';
 let activeCat   = '';
+
+const LS_LAST_TRACE = 'clspp_last_trace_id';
+
+function rememberTraceFromResponse(res, jsonBody) {
+  const tid =
+    (jsonBody && jsonBody.trace_id) ||
+    res.headers.get('x-trace-id') ||
+    res.headers.get('X-Trace-Id');
+  if (tid && String(tid).trim()) {
+    try {
+      sessionStorage.setItem(LS_LAST_TRACE, String(tid).trim());
+    } catch (_) {}
+  }
+  syncLastTraceBtn();
+}
+
+function syncLastTraceBtn() {
+  const b = document.getElementById('btn-last-trace');
+  if (!b) return;
+  let tid = '';
+  try {
+    tid = sessionStorage.getItem(LS_LAST_TRACE) || '';
+  } catch (_) {}
+  if (tid) {
+    b.style.display = 'inline-flex';
+    b.onclick = () => setView('traces', tid);
+  } else {
+    b.style.display = 'none';
+    b.onclick = null;
+  }
+}
+
+// ── Traces (single GET …/memory/traces, embedded in this page) ───────────
+function fmtTimeMs(ms) {
+  if (ms == null) return '—';
+  if (ms < 1000) return ms + ' ms';
+  return (ms / 1000).toFixed(2) + ' s';
+}
+
+function showTraceErr(msg) {
+  const el = document.getElementById('trace-err-banner');
+  el.textContent = msg || '';
+  el.classList.toggle('show', !!msg);
+}
+
+function flattenTraceTree(node, depth, out) {
+  if (!node) return;
+  out.push({ node, depth });
+  (node.children || []).forEach(c => flattenTraceTree(c, depth + 1, out));
+}
+
+function maxTraceDuration(rows) {
+  let m = 1;
+  rows.forEach(({ node }) => {
+    const d = node.duration_ms;
+    if (d != null && d > m) m = d;
+  });
+  return m;
+}
+
+function renderTraceTimeline(tree) {
+  const body = document.getElementById('trace-timeline-body');
+  if (!tree) {
+    body.innerHTML = '<div class="empty" style="padding:20px">No span tree for this trace.</div>';
+    return;
+  }
+  const rows = [];
+  flattenTraceTree(tree, 0, rows);
+  const maxD = maxTraceDuration(rows);
+  body.innerHTML = rows.map(({ node, depth }) => {
+    const pct = node.duration_ms != null ? Math.min(100, (node.duration_ms / maxD) * 100) : 0;
+    const meta = node.metadata && Object.keys(node.metadata).length
+      ? JSON.stringify(node.metadata)
+      : '';
+    return `<div class="tl-row" style="padding-left:${8 + depth * 14}px">
+      <div></div>
+      <div>
+        <div>${esc(node.label || node.hop_id || '')}</div>
+        <div class="tl-mod">${esc(node.module || '')}</div>
+        ${meta ? `<div style="font-size:10px;color:var(--muted);margin-top:4px">${esc(meta)}</div>` : ''}
+        <div class="tl-bar-wrap"><div class="tl-bar" style="width:${pct}%"></div></div>
+      </div>
+      <div style="text-align:right;color:var(--muted)">${fmtTimeMs(node.duration_ms)}</div>
+    </div>`;
+  }).join('');
+}
+
+let traceLeafCursor = 0;
+const TRACE_LEAF_GAP = 112;
+const TRACE_DEPTH_Y = 76;
+
+function layoutTraceNode(node, depth, positions) {
+  if (!node.children || node.children.length === 0) {
+    const x = 48 + traceLeafCursor * TRACE_LEAF_GAP;
+    traceLeafCursor++;
+    positions[node.hop_id] = { x, y: 36 + depth * TRACE_DEPTH_Y, node };
+    return { minX: x, maxX: x };
+  }
+  const bounds = node.children.map(c => layoutTraceNode(c, depth + 1, positions));
+  const minX = Math.min(...bounds.map(b => b.minX));
+  const maxX = Math.max(...bounds.map(b => b.maxX));
+  const x = (minX + maxX) / 2;
+  positions[node.hop_id] = { x, y: 36 + depth * TRACE_DEPTH_Y, node };
+  return { minX, maxX };
+}
+
+function escSvg(s) {
+  return esc(s).replace(/"/g, '&quot;');
+}
+
+function renderTraceGraph(tree) {
+  const wrap = document.getElementById('trace-graph-wrap');
+  if (!tree) {
+    wrap.innerHTML = '<div class="empty" style="padding:20px">No graph yet.</div>';
+    return;
+  }
+  traceLeafCursor = 0;
+  const positions = {};
+  layoutTraceNode(tree, 0, positions);
+  const vals = Object.values(positions);
+  if (!vals.length) {
+    wrap.innerHTML = '<div class="empty">Empty tree.</div>';
+    return;
+  }
+  let minX = Infinity, maxX = -Infinity, maxY = 0;
+  vals.forEach(p => {
+    minX = Math.min(minX, p.x - 80);
+    maxX = Math.max(maxX, p.x + 80);
+    maxY = Math.max(maxY, p.y + 40);
+  });
+  const pad = 24;
+  const W = Math.max(320, maxX - minX + pad * 2);
+  const H = Math.max(200, maxY + pad * 2);
+  const offX = pad - minX;
+  const edges = [];
+  function walk(n) {
+    const p = positions[n.hop_id];
+    (n.children || []).forEach(c => {
+      const ch = positions[c.hop_id];
+      if (p && ch)
+        edges.push({ x1: p.x + offX, y1: p.y + 28, x2: ch.x + offX, y2: ch.y - 8 });
+      walk(c);
+    });
+  }
+  walk(tree);
+  const nodeW = 150;
+  const nodeH = 36;
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+  edges.forEach(e => {
+    const mx = (e.x1 + e.x2) / 2;
+    svg += `<path class="edge" d="M${e.x1},${e.y1} C${mx},${e.y1} ${mx},${e.y2} ${e.x2},${e.y2}"/>`;
+  });
+  vals.forEach(p => {
+    const x = p.x + offX - nodeW / 2;
+    const y = p.y - nodeH / 2;
+    const label = (p.node.label || p.node.hop_id || '').slice(0, 42);
+    svg += `<rect class="node-box" x="${x}" y="${y}" width="${nodeW}" height="${nodeH}"/>`;
+    svg += `<text class="node-text" x="${p.x + offX}" y="${p.y + 4}" text-anchor="middle">${escSvg(label)}</text>`;
+  });
+  svg += '</svg>';
+  wrap.innerHTML = svg;
+}
+
+async function loadTraceList() {
+  showTraceErr('');
+  try {
+    const r = await CLSPPConfig.fetchApi(CLSPPConfig.memoryTracesUrl({ limit: 80 }));
+    if (!r.ok) throw new Error((await r.text()).slice(0, 200) || r.status);
+    const data = await r.json();
+    const traces = data.traces || [];
+    const list = document.getElementById('trace-side-list');
+    if (!traces.length) {
+      list.innerHTML = '<div class="empty" style="padding:16px;font-size:12px">No traces yet. Load memories or call the API, then refresh.</div>';
+      return;
+    }
+    list.innerHTML = traces.map(t => {
+      const dt = t.created_at ? new Date(t.created_at).toLocaleString() : '';
+      const id = String(t.trace_id || '').replace(/"/g, '');
+      return `<div class="trace-side-item" data-tid="${id}" role="button" tabindex="0">
+        <div class="op">${esc(t.operation || t.trace_id)}</div>
+        <div class="meta">${esc(dt)} · ${fmtTimeMs(t.total_ms)}</div>
+      </div>`;
+    }).join('');
+    list.querySelectorAll('.trace-side-item').forEach(el => {
+      const go = () => selectTrace(el.dataset.tid);
+      el.addEventListener('click', go);
+      el.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
+      });
+    });
+  } catch (e) {
+    showTraceErr('Could not load traces: ' + (e.message || e));
+    document.getElementById('trace-side-list').innerHTML = '<div class="empty" style="padding:16px">Failed to load.</div>';
+  }
+}
+
+async function selectTrace(id) {
+  if (!id) return;
+  showTraceErr('');
+  document.querySelectorAll('.trace-side-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.tid === id);
+  });
+  try {
+    const r = await CLSPPConfig.fetchApi(CLSPPConfig.memoryTracesUrl({ traceId: id }));
+    if (r.status === 404) {
+      showTraceErr('Trace missing or expired (buffers are finite).');
+      return;
+    }
+    if (!r.ok) throw new Error(await r.text());
+    const d = await r.json();
+    document.getElementById('trace-detail-title').textContent = d.operation || 'Trace';
+    document.getElementById('trace-detail-sub').textContent =
+      (d.trace_id || id) + ' · total ' + fmtTimeMs(d.total_ms);
+    renderTraceTimeline(d.tree);
+    renderTraceGraph(d.tree);
+    try { sessionStorage.setItem(LS_LAST_TRACE, id); } catch (_) {}
+    syncLastTraceBtn();
+    const q = new URLSearchParams(location.search);
+    q.set('view', 'traces');
+    q.set('trace', id);
+    history.replaceState(null, '', 'memory.html?' + q.toString());
+  } catch (e) {
+    showTraceErr('Could not load trace: ' + (e.message || e));
+  }
+}
+
+function setView(view, optTraceId, opts) {
+  opts = opts || {};
+  const isMem = view === 'memories';
+  document.getElementById('tab-memories').classList.toggle('active', isMem);
+  document.getElementById('tab-traces').classList.toggle('active', !isMem);
+  document.getElementById('main-panel-memories').classList.toggle('panel-hidden', !isMem);
+  document.getElementById('main-panel-traces').classList.toggle('panel-open', !isMem);
+  document.getElementById('sidebar-memories-panel').classList.toggle('panel-hidden', !isMem);
+  document.getElementById('sidebar-traces-panel').classList.toggle('panel-open', !isMem);
+  if (!opts.skipUrl) {
+    const q = new URLSearchParams();
+    if (!isMem) {
+      q.set('view', 'traces');
+      if (optTraceId) q.set('trace', optTraceId);
+    }
+    const s = q.toString();
+    history.replaceState(null, '', s ? 'memory.html?' + s : 'memory.html');
+  }
+  if (isMem) {
+    showTraceErr('');
+  } else {
+    loadTraceList().then(() => {
+      if (optTraceId) selectTrace(optTraceId);
+    });
+  }
+}
+
+document.getElementById('tab-memories').addEventListener('click', () => setView('memories'));
+document.getElementById('tab-traces').addEventListener('click', () => setView('traces'));
+document.getElementById('btn-refresh-traces').addEventListener('click', () => loadTraceList());
 
 const CAT_META = {
   'Identity':     {icon:'👤',color:'#a89cf7'},
@@ -316,32 +681,100 @@ function modelMeta(m) {
   return {label: m || 'AI', color:'var(--muted)'};
 }
 
+function mapEnterpriseItem(it) {
+  const level = String(it.store_level || 'L1');
+  const phaseMap = { L0: 'gas', L1: 'liquid', L2: 'solid', L3: 'glass' };
+  const phase = phaseMap[level] || 'liquid';
+  let ts = it.timestamp;
+  try {
+    ts = ts ? new Date(ts).toISOString() : new Date().toISOString();
+  } catch (e) {
+    ts = new Date().toISOString();
+  }
+  const meta = it.metadata || {};
+  const model = (meta.model != null && meta.model !== '') ? meta.model : (it.source || 'api');
+  const category = meta.category || 'General';
+  return {
+    id: it.id,
+    text: it.text,
+    fact: it.text,
+    source_model: model,
+    category,
+    strength: typeof it.confidence === 'number' ? it.confidence : 0.5,
+    ts,
+    phase,
+    source: it.source || 'user',
+  };
+}
+
+function buildSidebarFromMemories() {
+  const phaseToL = { gas: 'L0', liquid: 'L1', solid: 'L2', glass: 'L3' };
+  const d = {
+    count: allMemories.length,
+    available_models: [...new Set(allMemories.map(m => m.source_model))].sort(),
+    available_categories: [...new Set(allMemories.map(m => m.category))].sort(),
+    layers: { L0: 0, L1: 0, L2: 0, L3: 0 },
+  };
+  allMemories.forEach(m => {
+    const L = phaseToL[m.phase] || 'L1';
+    if (d.layers[L] !== undefined) d.layers[L]++;
+  });
+  buildSidebar(d);
+}
+
 async function loadMemories() {
   try {
-    let url = `${API}/api/memories`;
+    if (CLSPPConfig.uiBackend() === 'enterprise') {
+      const r = await CLSPPConfig.fetchApi('/v1/memory/read', {
+        method: 'POST',
+        body: JSON.stringify({
+          query: '*',
+          namespace: 'default',
+          limit: 100,
+        }),
+      });
+      if (!r.ok) throw new Error('read ' + r.status);
+      const data = await r.json();
+      rememberTraceFromResponse(r, data);
+      allMemories = (data.items || []).map(mapEnterpriseItem);
+      renderMemories();
+      buildSidebarFromMemories();
+      return;
+    }
+
+    let url = '/api/memories/' + encodeURIComponent(UID);
     const p = [];
     if (activeModel) p.push('model='+encodeURIComponent(activeModel));
     if (activeCat)   p.push('category='+encodeURIComponent(activeCat));
     if (p.length) url += '?'+p.join('&');
-    const r = await fetch(url);
+    const r = await CLSPPConfig.fetchApi(url);
     const d = await r.json();
+    rememberTraceFromResponse(r, d);
     allMemories = d.memories || [];
     renderMemories();
     buildSidebar(d);
-  } catch(e) { console.error('Server not reachable', e); }
+  } catch (e) {
+    console.error('Memory backend not reachable', e);
+  }
 }
 
 function renderMemories() {
   const q = document.getElementById('search').value.toLowerCase();
-  const mems = q ? allMemories.filter(m => (m.fact||m.text).toLowerCase().includes(q)) : allMemories;
+  let mems = allMemories;
+  if (activeModel) mems = mems.filter(m => m.source_model === activeModel);
+  if (activeCat) mems = mems.filter(m => m.category === activeCat);
+  if (q) mems = mems.filter(m => (m.fact||m.text).toLowerCase().includes(q));
   const grid = document.getElementById('mem-grid');
 
   if (!mems.length) {
+    const ent = CLSPPConfig.uiBackend() === 'enterprise';
+    const hint = ent
+      ? 'No memories for this key/namespace, or none match your filters. Use the Write API to add items.'
+      : 'Open ChatGPT, Claude, or Gemini in another tab and start chatting. Memories will appear here automatically.';
     grid.innerHTML = `<div class="empty">
       <div class="empty-icon">🧠</div>
-      <div style="font-size:15px;font-weight:600">Waiting for conversations…</div>
-      <div class="empty-hint">Open ChatGPT, Claude, or Gemini in another tab and start chatting.
-        Memories will appear here automatically.</div>
+      <div style="font-size:15px;font-weight:600">${ent ? 'No memories to show' : 'Waiting for conversations…'}</div>
+      <div class="empty-hint">${hint}</div>
     </div>`;
     document.getElementById('main-sub').textContent = 'Listening for conversations…';
     return;
@@ -447,7 +880,7 @@ document.getElementById('search').addEventListener('input', renderMemories);
 // ── Context log modal ──────────────────────────────────────
 async function loadContextLog() {
   try {
-    const r = await fetch(`${API}/api/context-log`);
+    const r = await CLSPPConfig.fetchApi('/api/context-log/' + encodeURIComponent(UID));
     const d = await r.json();
     const log = d.log || [];
     const el = document.getElementById('ctx-log');
@@ -495,18 +928,41 @@ document.getElementById('ctx-modal').addEventListener('click', e => {
     document.getElementById('ctx-modal').classList.add('hidden');
 });
 
-// ── WebSocket live push ────────────────────────────────────
+// ── WebSocket live push (prototype daemon only) ─────────────
 function connectWS() {
+  if (CLSPPConfig.uiBackend() !== 'prototype') return;
   try {
-    const ws = new WebSocket(`ws://localhost:8080/ws/memories`);
+    const u = new URL(CLSPPConfig.apiBase());
+    const wsProto = u.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(
+      wsProto + '//' + u.host + '/ws/memories/' + encodeURIComponent(UID));
     ws.onmessage = () => loadMemories();
     ws.onclose = () => setTimeout(connectWS, 3000);
-  } catch(_) {}
+  } catch (_) {}
 }
 
 function esc(s) {
   return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
+
+(function initMemoryPage(){
+  syncLastTraceBtn();
+  if (CLSPPConfig.uiBackend() === 'enterprise') {
+    const b = document.getElementById('btn-ctx-log');
+    if (b) b.style.display = 'none';
+    const sub = document.querySelector('.sidebar .total-label');
+    if (sub) sub.textContent = 'Enterprise API · default namespace';
+  }
+})();
+
+(function bootViewFromQuery() {
+  try {
+    const p = new URLSearchParams(location.search);
+    if (p.get('view') === 'traces') {
+      setView('traces', p.get('trace') || undefined, { skipUrl: true });
+    }
+  } catch (_) {}
+})();
 
 loadMemories();
 connectWS();

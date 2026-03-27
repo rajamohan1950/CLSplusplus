@@ -1,0 +1,15 @@
+# Full local CLS++ bundle: Phase Memory Engine (clsplusplus.memory_phase) + FastAPI proxy + macOS daemon.
+# Installed by "Install CLS++.command" from the macOS zip.
+
+# --- Memory server (server.py): FastAPI, Phase engine package import path ---
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+httpx>=0.26.0
+python-dotenv>=1.0.0
+pydantic>=2.5.0
+
+# --- macOS menubar (daemon.py) ---
+rumps>=0.4.0
+pyobjc-framework-Quartz>=10.0
+pyobjc-framework-ApplicationServices>=10.0
+requests>=2.31.0

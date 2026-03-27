@@ -22,15 +22,63 @@ echo "=== macOS ==="
 MAC_DIR="$DIST/_mac_build/CLS++"
 mkdir -p "$MAC_DIR/engine"
 
-# Copy engine source
+# Copy full Phase Memory Engine package (entire clsplusplus tree, including memory_phase.py)
 cp -r "$SRC/clsplusplus" "$MAC_DIR/engine/"
+while IFS= read -r d; do rm -rf "$d"; done < <(find "$MAC_DIR/engine" -type d -name __pycache__ 2>/dev/null)
+find "$MAC_DIR/engine" -name '*.pyc' -delete 2>/dev/null || true
 
-# Copy server + daemon
+# Copy server + daemon + one-file dependency list (engine + server + daemon)
 cp "$PROTO/server.py"    "$MAC_DIR/"
 cp "$PROTO/daemon.py"    "$MAC_DIR/"
 cp "$PROTO/daemon_requirements.txt" "$MAC_DIR/"
+cp "$PROTO/clspp_bundle_requirements.txt" "$MAC_DIR/"
 cp "$PROTO/memory.html"  "$MAC_DIR/"
+cp "$PROTO/memory-activate.html" "$MAC_DIR/"
 cp "$PROTO/index.html"   "$MAC_DIR/"
+cp -r "$ROOT/extension"  "$MAC_DIR/extension"
+
+# What this zip contains (for support / clarity)
+cat > "$MAC_DIR/README-BUNDLE.txt" << 'BUNDLE_README'
+CLS++ macOS bundle
+==================
+• Phase Memory Engine — full Python package in engine/clsplusplus/
+  (thermodynamic phase engine: memory_phase.py plus supporting modules).
+• Local API — server.py (FastAPI, default port 8080). No cloud required.
+• Menu bar — daemon.py (Accessibility permission needed to attach to browser chats).
+• Web UI — index.html (home), memory.html (viewer), memory-activate.html (Chrome extension helper) at http://127.0.0.1:8080/ui/
+• Chrome MV3 extension — extension/ (Load unpacked in chrome://extensions)
+
+From the web (recommended): open http://127.0.0.1:8080/ui/ and click the single "Install CLS++" button —
+the server installs in the background. Or read INSTALL-FROM-BROWSER.txt. Fallback: double-click "Install CLS++.command". Python 3.9+ required.
+Dependencies: see clspp_bundle_requirements.txt (installed automatically).
+BUNDLE_README
+
+cat > "$MAC_DIR/INSTALL-FROM-BROWSER.txt" << 'BROWSER_INSTALL'
+================================================================================
+  CLS++ — Install from your web browser (Mac)
+================================================================================
+
+RECOMMENDED (one click)
+-----------------------
+1. Start the CLS++ preview server (or open the page your team gives you at
+   http://127.0.0.1:8080/ui/ ).
+2. Click the single **Install CLS++** button. Everything else runs on your Mac
+   in the background (no Terminal, no double-clicking the zip).
+3. This tab may stop loading for a minute while the installer restarts the app.
+   Wait up to 3 minutes, then refresh:  http://127.0.0.1:8080/ui/
+
+If you opened the site from somewhere other than 127.0.0.1, the page may only
+offer a zip download — use that folder’s "Install CLS++.command" in that case.
+
+How to use CLS++ after install
+------------------------------
+• Chat in ChatGPT, Claude, or Gemini — memory is added in the background.
+• Click 🧠 in the menu bar for the CLS++ menu.
+• Open **Memories** from the web page (top right).
+• Optional: load the Chrome extension from the same page.
+
+More detail: README-BUNDLE.txt
+BROWSER_INSTALL
 
 # Copy .env if exists
 [ -f "$ROOT/.env" ] && cp "$ROOT/.env" "$MAC_DIR/"
@@ -69,17 +117,22 @@ mkdir -p "$APP_DIR"
 cp -r "$DIR"/* "$APP_DIR/"
 echo "  ✓ Files installed"
 
-# ── Install dependencies ─────────────────────────────────────
-echo "  Installing dependencies (one time, ~60s)..."
-REQ="$DIR/daemon_requirements.txt"
-if [ -f "$REQ" ]; then
-  "$PYTHON" -m pip install --quiet --upgrade -r "$REQ" \
-    fastapi "uvicorn[standard]" httpx python-dotenv 2>/dev/null || true
+# ── Install dependencies (full phase engine + server + daemon) ─
+echo "  Installing dependencies (one time, ~1–3 min; includes FastAPI + engine stack)..."
+BUNDLE_REQ="$DIR/clspp_bundle_requirements.txt"
+if [ -f "$BUNDLE_REQ" ]; then
+  "$PYTHON" -m pip install --quiet --upgrade -r "$BUNDLE_REQ" 2>/dev/null || true
 else
-  "$PYTHON" -m pip install --quiet --upgrade \
-    fastapi "uvicorn[standard]" httpx python-dotenv requests \
-    rumps "pyobjc-framework-Quartz>=10.0" "pyobjc-framework-ApplicationServices>=10.0" \
-    2>/dev/null || true
+  REQ="$DIR/daemon_requirements.txt"
+  if [ -f "$REQ" ]; then
+    "$PYTHON" -m pip install --quiet --upgrade -r "$REQ" \
+      fastapi "uvicorn[standard]" httpx python-dotenv pydantic 2>/dev/null || true
+  else
+    "$PYTHON" -m pip install --quiet --upgrade \
+      fastapi "uvicorn[standard]" httpx python-dotenv pydantic requests \
+      rumps "pyobjc-framework-Quartz>=10.0" "pyobjc-framework-ApplicationServices>=10.0" \
+      2>/dev/null || true
+  fi
 fi
 echo "  ✓ Dependencies installed"
 
@@ -141,6 +194,9 @@ echo "  ✓ Auto-start on login configured"
 echo "  Starting CLS++..."
 bash "$APP_DIR/launch.sh"
 sleep 2
+
+echo "  Opening CLS++ in your default browser (finish setup there)…"
+open "http://127.0.0.1:8080/ui/" 2>/dev/null || true
 
 echo ""
 echo "  ╔═══════════════════════════════════════════════════╗"
