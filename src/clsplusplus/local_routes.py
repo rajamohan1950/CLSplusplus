@@ -512,6 +512,27 @@ def create_local_router(memory_service: MemoryService, settings: Settings) -> AP
         loaded = ts is not None and (_time.time() - ts) < 300
         return {"loaded": loaded, "last_seen": ts}
 
+    # ── Extension download — zip up the extension/ dir on demand ────────────
+    _EXT_DIR_GLOBAL = Path(__file__).resolve().parent.parent.parent / "extension"
+
+    @router.get("/extension/download")
+    async def extension_download():
+        """Package the Chrome extension as a zip and serve it for download."""
+        import io, zipfile as _zipfile
+        if not _EXT_DIR_GLOBAL.is_dir():
+            return JSONResponse({"error": "extension_not_found"}, status_code=404)
+        buf = io.BytesIO()
+        with _zipfile.ZipFile(buf, "w", _zipfile.ZIP_DEFLATED) as zf:
+            for f in sorted(_EXT_DIR_GLOBAL.rglob("*")):
+                if f.is_file() and ".git" not in f.parts and "node_modules" not in f.parts:
+                    zf.write(f, f.relative_to(_EXT_DIR_GLOBAL.parent))
+        buf.seek(0)
+        return Response(
+            content=buf.read(),
+            media_type="application/zip",
+            headers={"Content-Disposition": 'attachment; filename="clsplusplus-extension.zip"'},
+        )
+
     # ── Install API — local-only, disabled in cloud containers ─────────────
     if os.getenv("CLS_ENABLE_INSTALLER"):
         _INSTALL_DIR = Path.home() / ".clspp"

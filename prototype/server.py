@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import httpx
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import Response, StreamingResponse, JSONResponse
+from fastapi.responses import Response, StreamingResponse, JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
@@ -24,6 +24,41 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 from clsplusplus.memory_phase import PhaseMemoryEngine
 
 engine = PhaseMemoryEngine()
+
+# ── Persistence ───────────────────────────────────────────────────────────
+_PERSIST_PATH = os.path.join(os.path.expanduser("~"), ".clspp", "memories.json")
+
+def _save_to_disk():
+    """Persist memory_log to disk so memories survive restarts."""
+    try:
+        os.makedirs(os.path.dirname(_PERSIST_PATH), exist_ok=True)
+        with open(_PERSIST_PATH, "w") as f:
+            json.dump(dict(memory_log), f)
+    except Exception:
+        pass
+
+def _load_from_disk():
+    """Reload memories from disk on startup."""
+    if not os.path.exists(_PERSIST_PATH):
+        return
+    try:
+        with open(_PERSIST_PATH) as f:
+            data = json.load(f)
+        for uid, entries in data.items():
+            for e in entries:
+                text = e.get("text", "")
+                if not text or len(text.strip()) < 6:
+                    continue
+                # Ensure ts is set (fix "Invalid Date" in UI)
+                if not e.get("ts"):
+                    e["ts"] = datetime.utcnow().isoformat()
+                item = engine.store(text, uid)
+                if item:
+                    # Update entry with fresh item ID but keep original metadata
+                    e["id"] = item.id
+                    memory_log[uid].append(e)
+    except Exception:
+        pass
 
 # ── Extended memory store (wraps engine items with metadata) ──────────────
 # { uid: [ {id, text, category, source_model, ts, strength} ] }
@@ -47,6 +82,10 @@ ANTHROPIC_BASE    = "https://api.anthropic.com"
 app = FastAPI(title="CLS++ Memory Proxy")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/ui", StaticFiles(directory=os.path.dirname(__file__), html=True), name="ui")
+
+@app.on_event("startup")
+async def _startup_load():
+    _load_from_disk()
 
 
 # ── Classification ─────────────────────────────────────────────────────────
@@ -143,6 +182,7 @@ async def _store(uid: str, text: str, model: str, source: str = "user"):
         "ts": datetime.utcnow().isoformat(),
     }
     memory_log[uid].append(entry)
+    _save_to_disk()
 
     payload = json.dumps({"type": "memory", **entry})
     dead = []
@@ -503,7 +543,30 @@ async def get_phase_stats(uid: str):
 # ── UID-less convenience routes (auto-resolve local user) ────────────────
 @app.get("/api/memories")
 async def get_memories_local(model: str = "", category: str = ""):
-    return await get_memories(_local_uid(), model, category)
+    # First try local machine UID; if empty, merge all namespaces
+    # so Chrome extension memories (different UID) show up too.
+    result = await get_memories(_local_uid(), model, category)
+    if result["count"] == 0 and engine._items:
+        # Merge all UIDs
+        from collections import ChainMap
+        all_entries = []
+        for uid in list(engine._items.keys()):
+            r = await get_memories(uid, model, category)
+            all_entries.extend(r.get("memories", []))
+        models = list({e["source_model"] for e in all_entries})
+        cats = list({e["category"] for e in all_entries})
+        layer_counts = {"L0": 0, "L1": 0, "L2": 0, "L3": 0}
+        for e in all_entries:
+            layer_counts[e.get("layer", "L1")] += 1
+        return {
+            "uid": "all",
+            "count": len(all_entries),
+            "memories": all_entries,
+            "models": models,
+            "categories": cats,
+            "layers": layer_counts,
+        }
+    return result
 
 @app.get("/api/context-log")
 async def get_context_log_local():
@@ -512,6 +575,10 @@ async def get_context_log_local():
 @app.websocket("/ws/memories")
 async def ws_memories_local(ws: WebSocket):
     await ws_memories(ws, _local_uid())
+
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/ui/index.html")
 
 @app.get("/health")
 async def health():
@@ -676,6 +743,32 @@ python3 "$DIR/daemon.py" >> "$LOG" 2>&1 &
             yield json.dumps({"error": str(e), "steps": steps}) + "\n"
 
     return StreamingResponse(_stream(), media_type="application/x-ndjson")
+
+@app.get("/api/detect-browsers")
+async def detect_browsers():
+    """Detect installed Chromium-based browsers for the activation page."""
+    import platform
+    browsers = [
+        {"id": "chrome",  "apple": "Google Chrome",  "path": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"},
+        {"id": "brave",   "apple": "Brave Browser",  "path": "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"},
+        {"id": "arc",     "apple": "Arc",             "path": "/Applications/Arc.app/Contents/MacOS/Arc"},
+        {"id": "edge",    "apple": "Microsoft Edge",  "path": "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"},
+        {"id": "chromium","apple": "Chromium",        "path": "/Applications/Chromium.app/Contents/MacOS/Chromium"},
+    ]
+    # Also check ~/Applications
+    home_apps = os.path.expanduser("~/Applications")
+    for b in list(browsers):
+        alt = os.path.join(home_apps, f"{b['apple']}.app", "Contents", "MacOS", b["apple"])
+        if not os.path.exists(b["path"]) and os.path.exists(alt):
+            b["path"] = alt
+    found = [b for b in browsers if os.path.exists(b["path"])]
+    ext_dir = str(_EXT_DIR) if _EXT_DIR.is_dir() else None
+    return {
+        "ok": len(found) > 0,
+        "browsers": found,
+        "os": platform.system().lower().replace("darwin", "darwin"),
+        "extension_dir": ext_dir,
+    }
 
 @app.get("/api/extension-status")
 async def extension_status():
