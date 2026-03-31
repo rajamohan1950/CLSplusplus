@@ -127,10 +127,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         }
 
     @app.get("/health")
-    async def health_redirect():
-        """Redirect /health to /v1/memory/health for convenience."""
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse(url="/v1/memory/health")
+    async def health_check():
+        """Quick health check for Render/load balancers — must return 200 fast."""
+        return {"status": "ok", "version": "1.5.0"}
 
     @app.get("/v1/health")
     async def v1_health():
