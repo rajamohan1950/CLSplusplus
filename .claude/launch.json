@@ -2,10 +2,14 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "prototype",
+      "name": "clsplusplus",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["prototype/server.py"],
-      "port": 8080
+      "runtimeArgs": ["-m", "clsplusplus.main"],
+      "port": 8080,
+      "env": {
+        "KMP_DUPLICATE_LIB_OK": "TRUE",
+        "PYTHONPATH": "src"
+      }
     }
   ]
 }

@@ -31,7 +31,9 @@ def _is_public(path: str, method: str) -> bool:
     if method == "OPTIONS":
         return True
     normalized = path.rstrip("/") or "/"
-    return normalized in _PUBLIC_PATHS or path.startswith("/docs") or path.startswith("/redoc")
+    return (normalized in _PUBLIC_PATHS
+            or path.startswith("/docs") or path.startswith("/redoc")
+            or path.startswith("/api/") or path.startswith("/ws/"))
 
 
 class AuthMiddleware(BaseHTTPMiddleware):

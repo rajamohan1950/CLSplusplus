@@ -613,11 +613,13 @@ body {
 
 .pricing-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 24px;
-  max-width: 1000px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  max-width: 1200px;
   margin: 0 auto;
 }
+@media (max-width: 1024px) { .pricing-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px)  { .pricing-grid { grid-template-columns: 1fr; } }
 
 .pricing-card {
   background: var(--bg);
@@ -685,7 +687,7 @@ body {
 }
 
 .pricing-card li::before {
-  content: "✓";
+  content: "\2713";
   position: absolute;
   left: -20px;
   color: var(--success);
@@ -694,6 +696,155 @@ body {
 .pricing-card .btn {
   margin-top: auto;
   text-align: center;
+}
+
+/* Tier accent colors */
+.pricing-card.pricing-silver  { border-top: 3px solid #c0c0c0 !important; }
+.pricing-card.pricing-gold    { border-top: 3px solid #ffd700 !important; }
+.pricing-card.pricing-platinum { border-top: 3px solid #e5e4e2 !important; }
+.pricing-card.pricing-enterprise { border-top: 3px solid var(--accent) !important; }
+
+.pricing-silver h3  { color: #c0c0c0; }
+.pricing-gold h3    { color: #ffd700; }
+.pricing-platinum h3 { color: #e5e4e2; }
+.pricing-enterprise h3 { color: var(--accent); }
+
+/* Highlight active tier */
+.pricing-card.pricing-highlight {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 24px rgba(124,110,240,0.15) !important;
+  transform: translateY(-4px) !important;
+  transition: all 0.3s ease;
+}
+
+/* Token calculator slider */
+.token-calc {
+  text-align: center;
+  margin: 0 auto 40px;
+  max-width: 520px;
+}
+.token-calc-label {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  margin-bottom: 16px;
+}
+.token-calc input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  height: 6px;
+  cursor: pointer;
+}
+.token-marks {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-top: 8px;
+}
+
+/* Architecture section */
+.architecture { background: var(--bg); }
+
+.arch-diagram {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  margin: 48px 0;
+}
+@media (max-width: 768px) {
+  .arch-diagram { flex-direction: column; }
+  .arch-connector { transform: rotate(90deg); }
+}
+
+.arch-node {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  flex: 1;
+  max-width: 360px;
+}
+.arch-node ul {
+  list-style: none;
+  margin-top: 16px;
+}
+.arch-node li {
+  padding: 6px 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  position: relative;
+  margin-left: 20px;
+}
+.arch-node li::before {
+  content: "\2713";
+  position: absolute;
+  left: -20px;
+  color: var(--success);
+}
+.arch-icon {
+  font-size: 2.5rem;
+  margin-bottom: 12px;
+}
+.arch-subtitle {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-top: 4px;
+}
+.arch-server { border-top: 3px solid var(--accent); }
+.arch-client { border-top: 3px solid var(--success); }
+
+.arch-connector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.arch-line {
+  width: 80px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--success));
+  animation: arch-pulse 2s ease-in-out infinite;
+}
+@keyframes arch-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.arch-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Install steps */
+.install-steps {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  margin: 48px 0 0;
+}
+@media (max-width: 600px) { .install-steps { flex-direction: column; align-items: center; } }
+
+.install-step {
+  text-align: center;
+  flex: 1;
+  max-width: 220px;
+}
+.install-step h4 { margin: 8px 0 4px; }
+.install-step p { color: var(--text-muted); font-size: 0.9rem; }
+
+.step-num {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1rem;
 }
 
 /* CTA */

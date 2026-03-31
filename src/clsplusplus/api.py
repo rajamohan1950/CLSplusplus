@@ -947,6 +947,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         except Exception:
             pass
 
+    # Register local/daemon routes (memory viewer, LLM proxies, WebSocket, installer)
+    from clsplusplus.local_routes import create_local_router
+    app.include_router(create_local_router(memory_service, settings))
+
     # Serve website static files if the directory exists
     if _website_dir and FilePath(_website_dir).is_dir():
         app.mount("/", StaticFiles(directory=_website_dir, html=True), name="website")

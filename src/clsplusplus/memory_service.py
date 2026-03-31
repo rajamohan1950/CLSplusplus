@@ -23,8 +23,9 @@ from clsplusplus.config import Settings
 from clsplusplus.embeddings import EmbeddingService
 from clsplusplus.memory_phase import Fact, PhaseMemoryEngine
 from clsplusplus.models import MemoryItem, ReadRequest, ReadResponse, StoreLevel, WriteRequest
+from clsplusplus.plasticity import PlasticityEngine
 from clsplusplus.reconsolidation import ReconsolidationGate
-from clsplusplus.stores import L1IndexingStore, L2SchemaGraph
+from clsplusplus.stores import L1IndexingStore, L2SchemaGraph, L3PostgresStore
 from clsplusplus.temporal import (
     annotate_relative_dates,
     extract_event_date,
@@ -52,9 +53,13 @@ class MemoryService:
         self.embedding_service = EmbeddingService(settings)
         self.l1 = L1IndexingStore(settings)
         self.l2 = L2SchemaGraph(settings)
+        self.l3 = L3PostgresStore(settings)
 
-        # Belief revision (used by adjudicate endpoint)
+        # Belief revision (used by adjudicate endpoint and _mark_superseded_async)
         self.reconsolidation = ReconsolidationGate(settings)
+
+        # Plasticity scoring — promotion and pruning decisions
+        self.plasticity = PlasticityEngine(settings)
 
         self._webhook_dispatcher = None  # Lazy init to avoid circular imports
         self._loaded_namespaces: set[str] = set()
@@ -604,13 +609,37 @@ class MemoryService:
                     continue
                 # Same subject + relation — check if older
                 old_event_at = getattr(item, "event_at", None)
+
+                # ReconsolidationGate: if the new and old items have high conflict
+                # (same topic, very different content), require evidence quorum before
+                # allowing supersession.  Temporal updates (same relation, newer event_at)
+                # with low conflict pass through without quorum.
+                _new_mem = MemoryItem(
+                    id=new_item.id,
+                    text=new_item.fact.raw_text or "",
+                    namespace=namespace,
+                    embedding=getattr(new_item, "embedding_dense", None),
+                )
+                _old_mem = MemoryItem(
+                    id=item.id,
+                    text=item.fact.raw_text or "",
+                    namespace=namespace,
+                    embedding=getattr(item, "embedding_dense", None),
+                )
+                conflict = self.reconsolidation.conflict_score(_new_mem, _old_mem)
+                if conflict > 0:
+                    # High-conflict contradiction: require evidence quorum — no blind overwrite
+                    if not self.reconsolidation.should_overwrite(_new_mem, _old_mem, evidence=[]):
+                        logger.debug(
+                            "ReconsolidationGate blocked supersession: %s vs %s (conflict=%.2f)",
+                            str(new_item.id)[:8], str(item.id)[:8], conflict,
+                        )
+                        continue
+
                 if old_event_at is None:
                     # No event_at on old item → supersede it (new fact wins by default)
                     item.superseded = True
                     asyncio.create_task(self.l1.update_superseded(item.id, namespace))
-                    # Record lineage: new item supersedes old
-                    if item.id not in new_item.fact.raw_text:
-                        pass  # lineage tracked at MemoryItem level, not here
                 else:
                     old_tz = old_event_at if old_event_at.tzinfo else old_event_at.replace(tzinfo=timezone.utc)
                     if old_tz < new_tz:
@@ -635,6 +664,14 @@ class MemoryService:
             await self.l1.write(item, trace_id=trace_id, parent_hop_id=parent_hop_id)
         except Exception as e:
             logger.warning("L1 persist failed (data safe in PhaseMemoryEngine): %s", e)
+
+    async def _fast_track_l2(self, item: MemoryItem) -> None:
+        """Fast-track a high-plasticity item to L2 without waiting for sleep cycle."""
+        try:
+            embedded = self.embedding_service.embed_item(item)
+            await self.l2.write(embedded)
+        except Exception as e:
+            logger.debug("L2 fast-track failed (non-fatal): %s", e)
 
     def _dispatch_webhook(self, event_type: str, item: MemoryItem) -> None:
         """Fire webhook event (fire-and-forget)."""
@@ -800,6 +837,19 @@ class MemoryService:
                              item_id=item.id, namespace=req.namespace) as l1_hop:
                 asyncio.create_task(self._persist_to_l1(item, trace_id=trace_id, parent_hop_id=l1_hop))
 
+            # 4b. Plasticity scoring + fast-track L2/L3 promotion (fire-and-forget)
+            with tracer.span(trace_id, "plasticity.score", "plasticity_engine",
+                             item_id=item.id) as plast_hop:
+                try:
+                    score = self.plasticity.compute_score(item)
+                    tracer.add_metadata(trace_id, plast_hop, output=f"score={round(score, 3)}")
+                    if self.plasticity.should_promote_to_l2(item):
+                        asyncio.create_task(self._fast_track_l2(item))
+                        tracer.add_metadata(trace_id, plast_hop, output=f"score={round(score, 3)}  fast-track→L2")
+                except Exception as _pl_err:
+                    logger.debug("Plasticity score failed (non-fatal): %s", _pl_err)
+                    tracer.add_metadata(trace_id, plast_hop, output=f"failed: {_pl_err}")
+
             # 5. Webhook (fire-and-forget)
             with tracer.span(trace_id, "webhook.dispatch", "webhook_dispatcher",
                              event="memory.created", item_id=item.id):
@@ -902,6 +952,31 @@ class MemoryService:
             thread_items = self._matching_threads(req.query, req.namespace, effective_tf)
             if thread_items:
                 items = thread_items + items
+
+            # 3c. Augment with L2 schema results — crystallized knowledge not in hot engine
+            with tracer.span(trace_id, "l2.read", "stores.l2",
+                             namespace=req.namespace, limit=req.limit) as l2_hop:
+                try:
+                    l2_query_emb = self.embedding_service.embed(req.query)
+                    l2_items = await self.l2.read(
+                        l2_query_emb, req.namespace,
+                        limit=req.limit, min_confidence=req.min_confidence,
+                    )
+                    existing_ids = {i.id for i in items}
+                    merged = 0
+                    for l2_item in l2_items:
+                        if l2_item.id in existing_ids:
+                            continue
+                        if not req.include_superseded and l2_item.superseded:
+                            continue
+                        items.append(l2_item)
+                        existing_ids.add(l2_item.id)
+                        merged += 1
+                    items = items[:req.limit]
+                    tracer.add_metadata(trace_id, l2_hop, output=f"merged {merged} L2 items")
+                except Exception as _l2_err:
+                    logger.debug("L2 read failed (non-fatal): %s", _l2_err)
+                    tracer.add_metadata(trace_id, l2_hop, output=f"failed: {_l2_err}")
 
             preview = " | ".join(i.text[:70] for i in items[:3]) if items else "no results"
             tracer.add_metadata(trace_id, ms_read_hop,

@@ -280,7 +280,7 @@
 </div>
 
 <script>
-const API = 'http://localhost:8080';
+const API = window.location.origin;
 
 let allMemories = [];
 let activeModel = '';
@@ -498,7 +498,8 @@ document.getElementById('ctx-modal').addEventListener('click', e => {
 // ── WebSocket live push ────────────────────────────────────
 function connectWS() {
   try {
-    const ws = new WebSocket(`ws://localhost:8080/ws/memories`);
+    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${wsProto}//${window.location.host}/ws/memories`);
     ws.onmessage = () => loadMemories();
     ws.onclose = () => setTimeout(connectWS, 3000);
   } catch(_) {}

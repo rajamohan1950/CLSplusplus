@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CLS++ · Chrome Web Store Submission</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#05050a;--accent:#7c6ef0;--accent2:#5de0c5;
+      --text:#f0f0f8;--muted:rgba(240,240,248,0.42);
+      --ok:#5de0c5;--err:#f06e9a;--warn:#f0c05d;
+      --chrome:#4285F4;
+    }
+    html,body{min-height:100%;background:var(--bg);color:var(--text);
+      font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;
+      -webkit-font-smoothing:antialiased}
+    #canvas{position:fixed;inset:0;pointer-events:none;z-index:0}
+
+    /* ── Layout ─────────────────────────────── */
+    .page{position:relative;z-index:10;max-width:660px;margin:0 auto;
+      padding:48px 24px 80px}
+
+    .nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:52px}
+    .logo{display:flex;align-items:center;gap:8px}
+    .logo-dot{width:8px;height:8px;border-radius:50%;background:var(--accent2);
+      box-shadow:0 0 8px var(--accent2);animation:blink 1.8s ease-in-out infinite}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+    .logo-text{font-size:14px;font-weight:700}
+    .nav-back{font-size:12px;color:var(--muted);text-decoration:none;
+      display:flex;align-items:center;gap:5px;transition:color .15s}
+    .nav-back:hover{color:var(--text)}
+
+    .headline{font-size:clamp(24px,3.5vw,36px);font-weight:800;letter-spacing:-.04em;
+      line-height:1.1;margin-bottom:8px;
+      background:linear-gradient(140deg,#fff 20%,var(--chrome) 55%,var(--accent2) 90%);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .sub-head{font-size:14px;color:var(--muted);margin-bottom:40px;line-height:1.5}
+
+    /* ── Overall progress bar ───────────────── */
+    .overall-bar{background:rgba(255,255,255,.06);border-radius:6px;
+      height:6px;margin-bottom:36px;overflow:hidden}
+    .overall-fill{height:100%;border-radius:6px;
+      background:linear-gradient(90deg,var(--accent),var(--accent2));
+      transition:width .5s ease;width:0%}
+    .overall-label{font-size:11px;color:var(--muted);margin-bottom:8px;
+      display:flex;justify-content:space-between}
+
+    /* ── Phase headers ──────────────────────── */
+    .phase{margin-bottom:32px}
+    .phase-header{display:flex;align-items:center;gap:10px;margin-bottom:14px;
+      padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.06)}
+    .phase-num{width:24px;height:24px;border-radius:50%;
+      background:rgba(124,110,240,.15);border:1px solid var(--accent);
+      display:flex;align-items:center;justify-content:center;
+      font-size:10px;font-weight:800;color:var(--accent);flex-shrink:0}
+    .phase-done .phase-num{background:rgba(93,224,197,.15);border-color:var(--ok);color:var(--ok)}
+    .phase-title{font-size:15px;font-weight:700}
+    .phase-badge{margin-left:auto;font-size:10px;padding:2px 8px;border-radius:10px;
+      background:rgba(255,255,255,.06);color:var(--muted)}
+    .phase-done .phase-badge{background:rgba(93,224,197,.1);color:var(--ok)}
+
+    /* ── Checklist items ────────────────────── */
+    .checklist{display:flex;flex-direction:column;gap:8px}
+    .item{display:flex;align-items:flex-start;gap:12px;padding:14px 14px;
+      border-radius:12px;border:1px solid rgba(255,255,255,.07);
+      background:rgba(255,255,255,.025);
+      cursor:pointer;transition:all .2s;user-select:none}
+    .item:hover{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.12)}
+    .item.checked{background:rgba(93,224,197,.05);border-color:rgba(93,224,197,.18)}
+    .item.required:not(.checked){border-color:rgba(124,110,240,.18)}
+
+    .check-box{width:22px;height:22px;border-radius:6px;flex-shrink:0;
+      border:2px solid rgba(255,255,255,.2);display:flex;align-items:center;
+      justify-content:center;transition:all .2s;margin-top:1px}
+    .item.checked .check-box{background:var(--ok);border-color:var(--ok);color:#000}
+    .item.required:not(.checked) .check-box{border-color:var(--accent)}
+    .check-mark{font-size:13px;display:none}
+    .item.checked .check-mark{display:block}
+
+    .item-body{flex:1;min-width:0}
+    .item-title{font-size:13px;font-weight:600;margin-bottom:3px;
+      display:flex;align-items:center;gap:7px}
+    .required-badge{font-size:9px;padding:1px 5px;border-radius:4px;
+      background:rgba(124,110,240,.15);color:var(--accent);font-weight:700}
+    .item-desc{font-size:11px;color:var(--muted);line-height:1.5}
+    .item-action{margin-top:8px;display:none}
+    .item.checked .item-action,.item.open .item-action{display:block}
+    .chip{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;
+      border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;
+      text-decoration:none;transition:all .18s}
+    .chip-primary{background:var(--accent);color:#fff}
+    .chip-primary:hover{background:#9085f5}
+    .chip-secondary{background:rgba(255,255,255,.08);color:var(--text);border:1px solid rgba(255,255,255,.12)}
+    .chip-secondary:hover{background:rgba(255,255,255,.12)}
+    .chip-chrome{background:var(--chrome);color:#fff}
+    .chip-chrome:hover{filter:brightness(1.1)}
+
+    /* ── Download card ──────────────────────── */
+    .download-card{display:flex;align-items:center;gap:14px;padding:16px;
+      border-radius:12px;background:rgba(124,110,240,.08);
+      border:1px solid rgba(124,110,240,.25);margin-top:10px}
+    .dl-icon{font-size:28px;flex-shrink:0}
+    .dl-name{font-size:13px;font-weight:700;margin-bottom:3px}
+    .dl-meta{font-size:11px;color:var(--muted)}
+    .dl-btn{margin-left:auto;padding:8px 16px;background:var(--accent);border:none;
+      border-radius:8px;color:#fff;font-size:12px;font-weight:700;
+      cursor:pointer;transition:all .18s;white-space:nowrap;text-decoration:none;
+      display:inline-block}
+    .dl-btn:hover{background:#9085f5}
+
+    /* ── Summary card ───────────────────────── */
+    .summary{margin-top:40px;padding:24px;border-radius:16px;
+      background:linear-gradient(135deg,rgba(124,110,240,.1),rgba(93,224,197,.06));
+      border:1px solid rgba(124,110,240,.25);display:none}
+    .summary.show{display:block}
+    .summary-title{font-size:18px;font-weight:800;margin-bottom:6px;color:var(--ok)}
+    .summary-sub{font-size:13px;color:var(--muted);margin-bottom:20px}
+    .summary-actions{display:flex;flex-wrap:wrap;gap:10px}
+
+    /* ── Tip box ────────────────────────────── */
+    .tip{padding:12px 14px;border-radius:9px;font-size:11px;line-height:1.6;
+      background:rgba(240,192,93,.08);border:1px solid rgba(240,192,93,.2);
+      color:rgba(240,240,248,.7);margin-top:10px;display:none}
+    .item.checked + .tip,.tip.show{display:block}
+
+    code{font-family:monospace;font-size:10px;padding:1px 5px;
+      background:rgba(255,255,255,.1);border-radius:4px;color:var(--accent2)}
+
+    /* Spin */
+    .spin{width:14px;height:14px;border:2px solid rgba(93,224,197,.3);
+      border-top-color:var(--accent2);border-radius:50%;
+      animation:spin .7s linear infinite;display:inline-block;vertical-align:middle}
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body>
+<canvas id="canvas" aria-hidden="true"></canvas>
+<div class="page">
+
+  <nav class="nav">
+    <div class="logo">
+      <div class="logo-dot"></div>
+      <span class="logo-text">CLS++ Memory</span>
+    </div>
+    <a class="nav-back" href="index.html">← Back to launcher</a>
+  </nav>
+
+  <h1 class="headline">Chrome Web Store Submission</h1>
+  <p class="sub-head">
+    Complete each step to publish CLS++ Memory to the Chrome Web Store.
+    Check items off as you go — progress is saved automatically.
+  </p>
+
+  <div class="overall-label">
+    <span>Submission progress</span>
+    <span id="overall-pct">0 of 14 complete</span>
+  </div>
+  <div class="overall-bar">
+    <div class="overall-fill" id="overall-fill"></div>
+  </div>
+
+  <!-- ─────────────────────────────────────────── -->
+  <!-- PHASE 1: Developer Account                  -->
+  <!-- ─────────────────────────────────────────── -->
+  <div class="phase" id="phase1">
+    <div class="phase-header">
+      <div class="phase-num" id="pn1">1</div>
+      <div class="phase-title">Developer Account</div>
+      <div class="phase-badge" id="pb1">0 / 2</div>
+    </div>
+    <div class="checklist">
+
+      <div class="item required" id="i-account" onclick="toggle('i-account')">
+        <div class="check-box"><span class="check-mark">✓</span></div>
+        <div class="item-body">
+          <div class="item-title">
+            Chrome Web Store Developer Account
+            <span class="required-badge">Required</span>
+          </div>
+          <div class="item-desc">One-time $5 registration fee. Sign in with your Google account.</div>
+          <div class="item-action">
+            <a class="chip chip-chrome" href="https://chrome.google.com/webstore/devconsole" target="_blank">
+              Open Developer Console →
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div class="item required" id="i-2fa" onclick="toggle('i-2fa')">
+        <div class="check-box"><span class="check-mark">✓</span></div>
+        <div class="item-body">
+          <div class="item-title">
+            2-Step Verification enabled
+            <span class="required-badge">Required</span>
+          </div>
+          <div class="item-desc">Google requires 2FA on the account used to publish extensions.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────── -->
+  <!-- PHASE 2: Extension Package                  -->
+  <!-- ─────────────────────────────────────────── -->
+  <div class="phase" id="phase2">
+    <div class="phase-header">
+      <div class="phase-num" id="pn2">2</div>
+      <div class="phase-title">Extension Package</div>
+      <div class="phase-badge" id="pb2">0 / 4</div>
+    </div>
+    <div class="checklist">
+
+      <div class="item required" id="i-manifest" onclick="toggle('i-manifest')">
+        <div class="check-box"><span class="check-mark">✓</span></div>
+        <div class="item-body">
+          <div class="item-title">
+            manifest.json — Manifest V3
+            <span class="required-badge">Required</span>
+          </div>
+          <div class="item-desc">
+            Already MV3 ✓ &nbsp;·&nbsp; version <code>1.1.0</code> &nbsp;·&nbsp;
+            name <code>CLS++ Memory</code>
+          </div>
+        </div>
+      </div>
+
+      <div class="item required" id="i-icons" onclick="toggle('i-icons')">
+        <div class="check-box"><span class="check-mark">✓</span></div>
+        <div class="item-body">
+          <div class="item-title">
+            Icons (16 · 48 · 128 px)
+            <span class="required-badge">Required</span>
+          </div>
+          <div class="item-desc">All three icon sizes are present in <code>extension/icons/</code></div>
+        </div>
+      </div>
+
+      <div class="item required" id="i-zip" onclick="toggle('i-zip')">
+        <div class="check-box"><span class="check-mark">✓</span></div>
+        <div class="item-body">
+          <div class="item-title">
+            Extension ZIP packaged
+            <span class="required-badge">Required</span>
+          </div>
+          <div class="item-desc">
+            Download the ready-to-upload ZIP. Do <strong>not</strong> use Chrome's "Pack extension" — upload the folder ZIP directly.
+          </div>
+          <div class="item-action">
+            <div class="download-card">
+              <div class="dl-icon">📦</div>
+              <div>
+                <div class="dl-name">CLS++-Extension-v1.4.0.zip</div>
+                <div class="dl-meta" id="zip-meta">Building package… <span class="spin"></span></div>
+              </div>
+              <a class="dl-btn" id="zip-dl" href="downloads/CLS++-Extension-v1.4.0.zip" download>
+                Download
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="item" id="i-privacy" onclick="toggle('i-privacy')">
+        <div class="check-box"><span class="check-mark">✓</span></div>
+        <div class="item-body">
+          <div class="item-title">Privacy policy URL</div>
+          <div class="item-desc">
+            Required if your extension handles personal data (it does).
+            Host a privacy policy page and paste the URL in the store listing.
+          </div>
+          <div class="item-action">
+            <a class="chip chip-secondary" href="https://clsplusplus.onrender.com/privacy" target="_blank">
+              View privacy policy →
+            </a>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────── -->
+  <!-- PHASE 3: Store Listing Assets               -->
+  <!-- ─────────────────────────────────────────── -->
+  <div class="phase" id="phase3">
+    <div class="phase-header">
+      <div class="phase-num" id="pn3">3</div>
+      <div class="phase-title">Store Listing Assets</div>
+      <div class="phase-badge" id="pb3">0 / 4</div>
+    </div>
+    <div class="checklist">
+
+      <div class="item required" id="i-desc" onclick="toggle('i-desc')">
+        <div class="check-box"><span class="check-mark">✓</span></div>
+        <div class="item-body">
+          <div class="item-title">
+            Short description (132 chars max)
+            <span class="required-badge">Required</span>
+          </div>
+          <div class="item-desc">
+            Suggested: <em>"Every AI remembers you. Silent cross-model memory for ChatGPT, Claude, Gemini, Copilot and more."</em>
+          </div>
+          <div class="item-action">
+            <button class="chip chip-secondary" onclick="copyDesc(event)">Copy description</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="item required" id="i-longdesc" onclick="toggle('i-longdesc')">
+        <div class="check-box"><span class="check-mark">✓</span></div>
+        <div class="item-body">
+          <div class="item-title">
+            Long description
+            <span class="required-badge">Required</span>
+          </div>
+          <div class="item-desc">
+            Detailed description explaining memory injection, model support (ChatGPT, Claude, Gemini), and local-first privacy. Paste from below.
+          </div>
+          <div class="item-action">
+            <button class="chip chip-secondary" onclick="copyLong(event)">Copy long description</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="item required" id="i-screenshots" onclick="toggle('i-screenshots')">
+        <div class="check-box"><span class="check-mark">✓</span></div>
+        <div class="item-body">
+          <div class="item-title">
+            Screenshots (1280×800 or 640×400)
+            <span class="required-badge">Required</span>
+          </div>
+          <div class="item-desc">
+            At least 1 screenshot required. Recommended: 3–5 showing the popup, memory viewer, and memory injected into ChatGPT/Claude.
+          </div>
+          <div class="item-action">
+            <a class="chip chip-secondary" href="memory.html" target="_blank">Open memory viewer to screenshot →</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="item" id="i-promo" onclick="toggle('i-promo')">
+        <div class="check-box"><span class="check-mark">✓</span></div>
+        <div class="item-body">
+          <div class="item-title">Promotional tile (440×280 px)</div>
+          <div class="item-desc">Optional but improves discoverability. Dark background with CLS++ branding recommended.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────── -->
+  <!-- PHASE 4: Review & Submit                    -->
+  <!-- ─────────────────────────────────────────── -->
+  <div class="phase" id="phase4">
+    <div class="phase-header">
+      <div class="phase-num" id="pn4">4</div>
+      <div class="phase-title">Review &amp; Submit</div>
+      <div class="phase-badge" id="pb4">0 / 4</div>
+    </div>
+    <div class="checklist">
+
+      <div class="item required" id="i-upload" onclick="toggle('i-upload')">
+        <div class="check-box"><span class="check-mark">✓</span></div>
+        <div class="item-body">
+          <div class="item-title">
+            Upload ZIP to Developer Console
+            <span class="required-badge">Required</span>
+          </div>
+          <div class="item-desc">
+            In the Chrome Developer Console → New Item → Upload the ZIP you downloaded above.
+          </div>
+          <div class="item-action">
+            <a class="chip chip-chrome" href="https://chrome.google.com/webstore/devconsole" target="_blank">
+              Open Developer Console →
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div class="item required" id="i-listing" onclick="toggle('i-listing')">
+        <div class="check-box"><span class="check-mark">✓</span></div>
+        <div class="item-body">
+          <div class="item-title">
+            Fill store listing (description + screenshots)
+            <span class="required-badge">Required</span>
+          </div>
+          <div class="item-desc">Paste description and upload screenshots in the "Store listing" tab of the Developer Console.</div>
+        </div>
+      </div>
+
+      <div class="item required" id="i-justify" onclick="toggle('i-justify')">
+        <div class="check-box"><span class="check-mark">✓</span></div>
+        <div class="item-body">
+          <div class="item-title">
+            Justify host_permissions
+            <span class="required-badge">Required</span>
+          </div>
+          <div class="item-desc">
+            Chrome will ask why the extension accesses ChatGPT, Claude, and Gemini URLs.
+            Explain: <em>"To inject user memory context into AI conversation payloads."</em>
+          </div>
+          <div class="item-action">
+            <button class="chip chip-secondary" onclick="copyJustify(event)">Copy justification</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="item required" id="i-submit" onclick="toggle('i-submit')">
+        <div class="check-box"><span class="check-mark">✓</span></div>
+        <div class="item-body">
+          <div class="item-title">
+            Submit for review
+            <span class="required-badge">Required</span>
+          </div>
+          <div class="item-desc">
+            Click "Submit for review". Google's review typically takes 1–7 business days.
+            You'll receive an email when approved or if changes are needed.
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────── -->
+  <!-- Summary                                     -->
+  <!-- ─────────────────────────────────────────── -->
+  <div class="summary" id="summary">
+    <div class="summary-title">🎉 All requirements met — ready to submit!</div>
+    <div class="summary-sub">
+      Your extension package is ready. Head to the Chrome Web Store Developer Console
+      and upload the ZIP to complete submission.
+    </div>
+    <div class="summary-actions">
+      <a class="chip chip-chrome" href="https://chrome.google.com/webstore/devconsole" target="_blank">
+        Open Developer Console →
+      </a>
+      <a class="chip chip-secondary" href="downloads/CLS++-Extension-v1.4.0.zip" download>
+        ⬇ Download Extension ZIP
+      </a>
+      <a class="chip chip-secondary" href="index.html">← Back to Launcher</a>
+    </div>
+  </div>
+
+</div>
+
+<!-- Hidden copy buffers -->
+<textarea id="buf-short" style="position:absolute;left:-9999px" readonly>Every AI remembers you. Silent cross-model memory for ChatGPT, Claude, Gemini, Copilot and more.</textarea>
+<textarea id="buf-long" style="position:absolute;left:-9999px" readonly>CLS++ Memory — Every AI. Always remembers.
+
+Switch between ChatGPT, Claude, Gemini, and Copilot without losing context. CLS++ silently injects your personal memory into every AI conversation — automatically.
+
+HOW IT WORKS
+• When you chat with any AI, CLS++ retrieves relevant facts from your memory store and prepends them to your message — invisibly, at the API level.
+• When the AI responds about you, CLS++ captures new facts and stores them for future sessions.
+• Your memory builds over time, moving through phases: Gas (new) → Liquid (episodic) → Solid (schema) → Glass (long-term archive).
+
+WHAT IT REMEMBERS
+• Your name, location, profession, and background
+• Preferences (dark mode, language, frameworks you use)
+• Projects and goals you've mentioned
+• Relationships and context you've shared
+
+PRIVACY FIRST
+• All memory is stored locally on your machine (localhost:8080)
+• No data is sent to any cloud without your consent
+• You can view, search, and delete all memories at any time
+• Works completely offline
+
+SUPPORTED AIs
+• ChatGPT (chat.openai.com + chatgpt.com)
+• Claude (claude.ai)
+• Google Gemini (gemini.google.com)
+• Microsoft Copilot (copilot.microsoft.com)
+
+REQUIREMENTS
+• CLS++ local server must be running (free macOS installer at clsplusplus.onrender.com)
+• Works with Chrome 88+
+
+Open source · Apache 2.0 · github.com/anthropics/CLSplusplus</textarea>
+<textarea id="buf-justify" style="position:absolute;left:-9999px" readonly>CLS++ Memory requires access to ChatGPT (chat.openai.com, chatgpt.com), Claude (claude.ai), and Gemini (gemini.google.com) to inject user memory context into AI conversation API payloads. The extension intercepts outbound fetch requests to these AI services, prepends a [CLS++ Memory] system prompt block containing the user's personal context, and captures assistant responses to extract new facts for storage. Access to localhost is required to communicate with the local CLS++ memory server running on the user's machine. No data is sent to third-party servers — all memory is stored and retrieved locally.</textarea>
+
+<script>
+// ── Particles ───────────────────────────────────────────
+const cv=document.getElementById('canvas'),cx=cv.getContext('2d');
+let W,H;
+function rsz(){W=cv.width=innerWidth;H=cv.height=innerHeight;}
+rsz(); addEventListener('resize',rsz);
+const pts=Array.from({length:50},()=>({
+  x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.1+.3,
+  vx:(Math.random()-.5)*.1,vy:(Math.random()-.5)*.1,a:Math.random()*.2+.04
+}));
+(function draw(){
+  cx.clearRect(0,0,W,H);
+  pts.forEach(p=>{
+    cx.beginPath();cx.arc(p.x,p.y,p.r,0,Math.PI*2);
+    cx.fillStyle=`rgba(66,133,244,${p.a})`;cx.fill();
+    p.x+=p.vx;p.y+=p.vy;
+    if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;
+  });
+  requestAnimationFrame(draw);
+})();
+
+// ── State ────────────────────────────────────────────────
+const STORAGE_KEY = 'clspp_submit_checks';
+const PHASES = {
+  phase1: ['i-account','i-2fa'],
+  phase2: ['i-manifest','i-icons','i-zip','i-privacy'],
+  phase3: ['i-desc','i-longdesc','i-screenshots','i-promo'],
+  phase4: ['i-upload','i-listing','i-justify','i-submit'],
+};
+const TOTAL = Object.values(PHASES).flat().length;
+
+let state = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+
+function toggle(id) {
+  state[id] = !state[id];
+  save();
+  render();
+}
+
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function render() {
+  let totalDone = 0;
+
+  for(const [phaseId, items] of Object.entries(PHASES)) {
+    let phaseDone = 0;
+    items.forEach(id => {
+      const el = document.getElementById(id);
+      if(!el) return;
+      if(state[id]) { el.classList.add('checked'); phaseDone++; totalDone++; }
+      else el.classList.remove('checked');
+    });
+    const badge = document.getElementById('pb' + phaseId.replace('phase',''));
+    const num   = document.getElementById('pn' + phaseId.replace('phase',''));
+    const phase = document.getElementById(phaseId);
+    if(badge) badge.textContent = `${phaseDone} / ${items.length}`;
+    if(phaseDone === items.length) {
+      if(num) num.textContent = '✓';
+      if(phase) phase.querySelector('.phase-header').classList.add('phase-done');
+    } else {
+      if(num) num.textContent = phaseId.replace('phase','');
+      if(phase) phase.querySelector('.phase-header').classList.remove('phase-done');
+    }
+  }
+
+  // Overall bar
+  const pct = Math.round((totalDone / TOTAL) * 100);
+  document.getElementById('overall-fill').style.width = pct + '%';
+  document.getElementById('overall-pct').textContent =
+    `${totalDone} of ${TOTAL} complete (${pct}%)`;
+
+  // Summary
+  const requiredItems = ['i-account','i-2fa','i-manifest','i-icons','i-zip',
+    'i-desc','i-longdesc','i-screenshots','i-upload','i-listing','i-justify','i-submit'];
+  const allRequired = requiredItems.every(id => state[id]);
+  document.getElementById('summary').classList.toggle('show', allRequired);
+}
+
+// ── Copy helpers ─────────────────────────────────────────
+function copyText(bufId, btn) {
+  const text = document.getElementById(bufId).value;
+  navigator.clipboard.writeText(text).then(()=>{
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(()=>btn.textContent=orig, 1800);
+  }).catch(()=> alert(text));
+}
+function copyDesc(e){e.stopPropagation();copyText('buf-short',e.target)}
+function copyLong(e){e.stopPropagation();copyText('buf-long',e.target)}
+function copyJustify(e){e.stopPropagation();copyText('buf-justify',e.target)}
+
+// ── Check extension zip availability ─────────────────────
+async function checkZip() {
+  const meta = document.getElementById('zip-meta');
+  try {
+    const r = await fetch('downloads/CLS++-Extension-v1.4.0.zip', {method:'HEAD'});
+    if(r.ok) {
+      const size = r.headers.get('content-length');
+      const kb = size ? Math.round(parseInt(size)/1024) + ' KB' : 'ready';
+      meta.textContent = `MV3 · ${kb} · Ready to upload`;
+    } else {
+      meta.innerHTML = 'Run <code>./build_installer.sh</code> to generate ZIP';
+    }
+  } catch(_) {
+    meta.innerHTML = 'Run <code>./build_installer.sh</code> to generate ZIP';
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────
+render();
+checkZip();
+</script>
+</body>
+</html>

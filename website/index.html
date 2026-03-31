@@ -27,9 +27,11 @@
         <a href="benchmark.html">Benchmarks</a>
         <a href="tests.html">Tests</a>
         <a href="trace.html">Traces</a>
+        <a href="memory.html">Memory</a>
+        <a href="install.html">Install</a>
         <a href="/docs" target="_blank" rel="noopener">API</a>
         <a href="https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener">GitHub</a>
-        <a href="#" onclick="clsppInstallExtension(event)" class="btn btn-primary">Get Started</a>
+        <a href="#pricing" class="btn btn-primary">Get Started</a>
       </div>
       <button class="nav-toggle" aria-label="Menu">☰</button>
     </div>
@@ -195,53 +197,181 @@
     </div>
   </section>
 
+  <section id="architecture" class="section architecture">
+    <div class="container">
+      <h2>Server + Client. <span class="gradient-text">Lightning Fast Setup.</span></h2>
+      <p class="section-lead">Your memory server runs in the cloud. A thin Chrome extension does the rest.</p>
+
+      <div class="arch-diagram">
+        <div class="arch-node arch-server">
+          <div class="arch-icon">&#9729;</div>
+          <h3>Memory Server</h3>
+          <p class="arch-subtitle">Hosted on Render</p>
+          <ul>
+            <li>Phase memory engine</li>
+            <li>Zero-LLM retrieval</li>
+            <li>Sub-microsecond lookup</li>
+            <li>4-layer thermodynamics</li>
+          </ul>
+        </div>
+        <div class="arch-connector">
+          <div class="arch-line"></div>
+          <span class="arch-label">Encrypted sync</span>
+        </div>
+        <div class="arch-node arch-client">
+          <div class="arch-icon">&#129513;</div>
+          <h3>Chrome Extension</h3>
+          <p class="arch-subtitle">Thin client &middot; 47 KB</p>
+          <ul>
+            <li>Auto-detects ChatGPT, Claude, Gemini</li>
+            <li>Silent memory capture</li>
+            <li>Context injection on send</li>
+            <li>Active indicator on LLM tabs</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="install-steps">
+        <div class="install-step">
+          <span class="step-num">1</span>
+          <h4>Install Extension</h4>
+          <p>One click from Chrome Web Store</p>
+        </div>
+        <div class="install-step">
+          <span class="step-num">2</span>
+          <h4>Connect Server</h4>
+          <p>Auto-connects to your Render instance</p>
+        </div>
+        <div class="install-step">
+          <span class="step-num">3</span>
+          <h4>Chat Normally</h4>
+          <p>Memories captured automatically</p>
+        </div>
+      </div>
+
+      <div style="text-align:center;margin-top:32px;">
+        <a href="install.html" class="btn btn-large btn-primary">Install Now &mdash; 30 seconds</a>
+      </div>
+    </div>
+  </section>
+
   <section id="pricing" class="section pricing">
     <div class="container">
-      <h2>Simple Pricing</h2>
-      <p class="section-lead">Start free. Scale as you grow.</p>
+      <h2>Memory That <span class="gradient-text">Scales With You</span></h2>
+      <p class="section-lead">Pay for the memory tokens you need. Every plan includes the Chrome extension.</p>
+
+      <div class="token-calc">
+        <p class="token-calc-label">How many memory tokens do you need?</p>
+        <input type="range" min="0" max="3" step="1" value="0" id="token-slider">
+        <div class="token-marks">
+          <span>10K</span>
+          <span>100K</span>
+          <span>1M</span>
+          <span>Unlimited</span>
+        </div>
+      </div>
+
       <div class="pricing-grid">
-        <div class="pricing-card">
-          <h3>Developer</h3>
+        <div class="pricing-card pricing-silver pricing-highlight" id="tier-0">
+          <h3>Silver</h3>
           <div class="price"><span class="price-amount">$0</span><span class="price-period">/month</span></div>
-          <p class="price-desc">For individuals and side projects</p>
+          <p class="price-desc">For individuals exploring AI memory</p>
           <ul>
-            <li>10K reads / 5K writes per month</li>
-            <li>100 MB storage</li>
+            <li><strong>10,000</strong> memory tokens/month</li>
+            <li>3 LLM models (ChatGPT, Claude, Gemini)</li>
+            <li>L0 Gas + L1 Liquid layers</li>
             <li>1 namespace</li>
+            <li>Chrome extension included</li>
+            <li>Memory viewer dashboard</li>
+            <li>Basic context injection (5 memories)</li>
+            <li>Read-only API access</li>
+            <li>30-day data retention</li>
             <li>Community support</li>
           </ul>
-          <a href="#" onclick="clsppInstallExtension(event)" class="btn btn-outline">Get Started Free</a>
+          <a href="install.html" class="btn btn-outline">Get Started Free</a>
         </div>
-        <div class="pricing-card">
-          <h3>Team</h3>
+
+        <div class="pricing-card pricing-gold" id="tier-1">
+          <h3>Gold</h3>
+          <div class="price"><span class="price-amount">$29</span><span class="price-period">/month</span></div>
+          <p class="price-desc">For power users who live in AI</p>
+          <ul>
+            <li><strong>100,000</strong> memory tokens/month</li>
+            <li>5 LLM models (+Copilot, Perplexity)</li>
+            <li>All 4 memory layers</li>
+            <li>5 namespaces</li>
+            <li>Chrome extension included</li>
+            <li>Memory viewer dashboard</li>
+            <li>Standard context injection (15 memories)</li>
+            <li>Full API access</li>
+            <li>Sleep cycle (memory consolidation)</li>
+            <li>1-year data retention</li>
+            <li>Email support</li>
+          </ul>
+          <a href="mailto:contact@alphaforge.ai?subject=CLS++%20Gold%20Plan" class="btn btn-primary">Start Free Trial</a>
+        </div>
+
+        <div class="pricing-card pricing-platinum pricing-card-featured" id="tier-2">
+          <span class="badge">Most Popular</span>
+          <h3>Platinum</h3>
           <div class="price"><span class="price-amount">$99</span><span class="price-period">/month</span></div>
           <p class="price-desc">For teams switching models daily</p>
           <ul>
-            <li>500K reads / 100K writes per month</li>
-            <li>1 GB storage</li>
+            <li><strong>1,000,000</strong> memory tokens/month</li>
+            <li>Unlimited LLM models</li>
+            <li>All 4 memory layers</li>
             <li>Unlimited namespaces</li>
-            <li>Email support</li>
-            <li>Sleep cycle included</li>
+            <li>Chrome extension included</li>
+            <li>Memory viewer dashboard</li>
+            <li>Advanced context injection (50 memories)</li>
+            <li>Full API + webhook events</li>
+            <li>Sleep cycle (memory consolidation)</li>
+            <li>Unlimited data retention</li>
+            <li>Priority support</li>
           </ul>
-          <a href="#" onclick="clsppInstallExtension(event)" class="btn btn-primary">Start Free Trial</a>
+          <a href="mailto:contact@alphaforge.ai?subject=CLS++%20Platinum%20Plan" class="btn btn-primary">Start Free Trial</a>
         </div>
-        <div class="pricing-card pricing-card-featured">
-          <span class="badge">Popular</span>
+
+        <div class="pricing-card pricing-enterprise" id="tier-3">
           <h3>Enterprise</h3>
           <div class="price"><span class="price-amount">Custom</span></div>
           <p class="price-desc">For orgs with strict compliance</p>
           <ul>
-            <li>Unlimited reads & writes</li>
-            <li>Custom storage</li>
+            <li><strong>Unlimited</strong> memory tokens</li>
+            <li>Unlimited LLM models</li>
+            <li>All 4 memory layers</li>
+            <li>Unlimited namespaces</li>
+            <li>Chrome extension + custom build</li>
+            <li>Memory viewer dashboard</li>
+            <li>Custom context injection</li>
+            <li>Full API + webhook events</li>
+            <li>Sleep cycle (memory consolidation)</li>
+            <li>Custom data retention</li>
             <li>SSO, SAML, HIPAA BAA</li>
-            <li>Dedicated support</li>
             <li>Self-hosted option</li>
+            <li>Dedicated support + SLA</li>
           </ul>
           <a href="mailto:contact@alphaforge.ai?subject=CLS++%20Enterprise%20Inquiry" class="btn btn-primary">Contact Sales</a>
         </div>
       </div>
     </div>
   </section>
+
+  <script>
+    (function(){
+      var slider = document.getElementById('token-slider');
+      if (!slider) return;
+      slider.addEventListener('input', function(){
+        var v = parseInt(this.value);
+        for (var i = 0; i < 4; i++) {
+          var card = document.getElementById('tier-' + i);
+          if (card) {
+            card.classList.toggle('pricing-highlight', i === v);
+          }
+        }
+      });
+    })();
+  </script>
 
   <section class="section cta">
     <div class="container">
@@ -264,6 +394,8 @@
         <div class="footer-links">
           <a href="docs.html">Docs</a>
           <a href="/docs" target="_blank" rel="noopener">API</a>
+          <a href="memory.html">Memory</a>
+          <a href="install.html">Install</a>
           <a href="https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener">GitHub</a>
           <a href="mailto:contact@alphaforge.ai">Contact</a>
         </div>
@@ -278,18 +410,6 @@
     // Default: always hit the Render production API
     if (window.location.search.includes('local=1')) {
       window.CLS_API_URL = 'http://localhost:8090';
-    }
-
-    const CLSPP_CLOUD = 'https://clsplusplus.onrender.com';
-    function clsppInstallExtension(e) {
-      if (e) e.preventDefault();
-      const a = document.createElement('a');
-      a.href = CLSPP_CLOUD + '/extension/download';
-      a.download = 'CLS++-Extension.zip';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.open(CLSPP_CLOUD + '/ui/install.html', '_blank');
     }
   </script>
   <!-- namespace.js must load before demo.js — sets window.CLS_USER_NAMESPACE -->

@@ -13,7 +13,7 @@ from clsplusplus.config import Settings
 from clsplusplus.embeddings import EmbeddingService
 from clsplusplus.memory_phase import PhaseMemoryEngine
 from clsplusplus.models import MemoryItem, StoreLevel
-from clsplusplus.stores import L2SchemaGraph
+from clsplusplus.stores import L2SchemaGraph, L3PostgresStore
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,7 @@ class SleepOrchestrator:
         self.settings = settings or Settings()
         self.embedding_service = EmbeddingService(settings)
         self.l2 = L2SchemaGraph(settings)
+        self.l3 = L3PostgresStore(settings)
         # Use shared engine if provided (from MemoryService), else create own
         self.engine = engine or PhaseMemoryEngine()
 
@@ -36,6 +37,7 @@ class SleepOrchestrator:
             "phase": "REM",
             "rehearsed": 0,
             "schemas_exported": 0,
+            "archived_to_l3": 0,
             "error": None,
         }
 
@@ -70,6 +72,34 @@ class SleepOrchestrator:
                     report["schemas_exported"] += 1
                 except Exception as e:
                     logger.warning("Schema export to L2 failed for %s: %s", phase_item.id, e)
+
+            # REM-3: Deep archive — engrave glass-phase items into L3
+            # Glass threshold: consolidation_strength >= 0.85 with a crystallized schema.
+            _GLASS_THRESHOLD = 0.85
+            for phase_item in items:
+                if phase_item.consolidation_strength < _GLASS_THRESHOLD:
+                    continue
+                if phase_item.schema_meta is None:
+                    continue
+                try:
+                    l3_item = MemoryItem(
+                        id=phase_item.id,
+                        text=phase_item.fact.raw_text,
+                        namespace=phase_item.namespace,
+                        store_level=StoreLevel.L3,
+                        confidence=min(1.0, phase_item.consolidation_strength),
+                        salience=phase_item.surprise_at_birth,
+                        usage_count=phase_item.retrieval_count,
+                        surprise=phase_item.surprise_at_birth,
+                        subject=phase_item.fact.subject or None,
+                        predicate=phase_item.fact.relation or None,
+                        object=(phase_item.fact.value[:256] if phase_item.fact.value else None),
+                    )
+                    l3_item = self.embedding_service.embed_item(l3_item)
+                    await self.l3.write(l3_item)
+                    report["archived_to_l3"] += 1
+                except Exception as e:
+                    logger.warning("L3 archival failed for %s: %s", phase_item.id, e)
 
         except Exception as e:
             logger.error("Sleep cycle error for namespace '%s': %s", namespace, e)
