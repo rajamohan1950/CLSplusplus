@@ -756,6 +756,87 @@ async def launch_browser():
 
     return {"ok": True, "browser": launched}
 
+# ── Mock echo endpoints for E2E injection testing ────────────────────────────
+# The Chrome extension intercept.js rewrites fetch bodies so the AI site's
+# request includes CLS++ context.  These mock endpoints validate that the
+# rewritten body still has the expected shape and that the memory text is present.
+
+@app.post("/backend-api/conversation")
+async def mock_chatgpt_echo(request: Request):
+    """Mock ChatGPT backend — checks that CLS++ injection is present."""
+    body = await request.json()
+    messages = body.get("messages", [])
+    injection_ok = False
+    for m in messages:
+        content = m.get("content", {})
+        parts = content.get("parts", []) if isinstance(content, dict) else []
+        for p in parts:
+            if isinstance(p, str) and "previous conversations" in p.lower():
+                injection_ok = True
+                break
+    return {"injection_ok": injection_ok, "messages_count": len(messages)}
+
+
+@app.post("/api/e2e/chat_conversations/{conversation_id}/completion")
+async def mock_claude_echo(conversation_id: str, request: Request):
+    """Mock Claude API — checks that CLS++ injection is present."""
+    body = await request.json()
+    prompt = body.get("prompt", "")
+    injection_ok = "previous conversations" in prompt.lower()
+    return {"injection_ok": injection_ok, "conversation_id": conversation_id}
+
+
+# ── macOS installer routes ───────────────────────────────────────────────────
+
+_DOWNLOADS_DIR = Path(__file__).resolve().parent.parent / "downloads"
+
+
+def _workspace_repo_with_engine() -> Optional[str]:
+    """Return project root if we're running inside the dev repo with the engine."""
+    root = Path(__file__).resolve().parent.parent
+    if (root / "src" / "clsplusplus" / "memory_phase.py").is_file():
+        return str(root)
+    return None
+
+
+@app.get("/install/macos")
+async def install_macos_download():
+    """Serve the macOS installer zip if it exists in downloads/."""
+    zips = sorted(_DOWNLOADS_DIR.glob("*.zip")) if _DOWNLOADS_DIR.is_dir() else []
+    if not zips:
+        return JSONResponse({"error": "no_installer"}, status_code=404)
+    latest = zips[-1]
+    return Response(
+        content=latest.read_bytes(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{latest.name}"'},
+    )
+
+
+@app.get("/install/macos/status")
+async def install_macos_status():
+    """Return current install phase."""
+    installed = (_INSTALL_DIR / "server.py").exists()
+    daemon_running = False
+    try:
+        r = _sp.run(["pgrep", "-f", "daemon.py"], capture_output=True, timeout=2)
+        daemon_running = r.returncode == 0
+    except Exception:
+        pass
+    phase = "running" if daemon_running else ("installed" if installed else "fresh")
+    return {"phase": phase, "installed": installed, "daemon_running": daemon_running}
+
+
+@app.post("/install/macos/apply")
+async def install_macos_apply():
+    """One-click install — only allowed when running from the dev repo."""
+    repo = _workspace_repo_with_engine()
+    if not repo:
+        return JSONResponse({"error": "not_in_dev_repo"}, status_code=404)
+    # Delegate to the existing install flow
+    return JSONResponse({"ok": True, "repo": repo, "message": "Use /api/install/run for full install."})
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=8080, reload=False, log_level="info")

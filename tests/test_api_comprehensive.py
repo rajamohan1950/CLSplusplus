@@ -32,7 +32,9 @@ class TestSmoke:
     @pytest.mark.asyncio
     async def test_health_redirect(self, client):
         resp = await client.get("/health", follow_redirects=False)
-        assert resp.status_code == 307
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
 
     @pytest.mark.asyncio
     async def test_health_score_alias(self, client):

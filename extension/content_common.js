@@ -2,11 +2,15 @@
 // This file is loaded by each site-specific content script
 
 const MEMORY_PREFIX = '[CLS++ Memory]\n';
-// E2E tests run on localhost — route API there; production AI sites hit the cloud.
-const CLSPP_API =
-  typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(location.hostname)
-    ? `http://${location.hostname}:${location.port || '8080'}`
-    : 'https://clsplusplus.onrender.com';
+// Detect API endpoint: localStorage pages use localhost, AI sites check storage flag.
+let CLSPP_API = 'https://clsplusplus.onrender.com';
+if (typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) {
+  CLSPP_API = `http://${location.hostname}:${location.port || '8080'}`;
+}
+// Override to localhost if user toggled "Local mode" in popup
+chrome.storage.local.get('cls_local', (r) => {
+  if (r.cls_local) CLSPP_API = 'http://localhost:8080';
+});
 
 // ── Share UID with MAIN world (intercept.js) ─────────────────────────────
 let _clsppUID = null;

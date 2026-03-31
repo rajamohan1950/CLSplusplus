@@ -1,7 +1,11 @@
 // CLS++ Background Service Worker
 // Handles identity, memory API calls, and cross-tab state
 
-const API = 'https://clsplusplus.onrender.com';
+// Use local server when CLS_LOCAL is set in storage, otherwise cloud
+let API = 'https://clsplusplus.onrender.com';
+chrome.storage.local.get('cls_local', (r) => {
+  if (r.cls_local) API = 'http://localhost:8080';
+});
 
 // ── User identity ──────────────────────────────────────────────────────────
 // Stable per-browser UID stored in chrome.storage.local (no local server).
@@ -83,7 +87,9 @@ setInterval(updateBadge, 10000);
 // ── On install: open welcome page ──────────────────────────────────────────
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
-    chrome.tabs.create({ url: `${API}/ui/install.html` });
+    // Cloud serves at root; local prototype serves under /ui/
+    const path = API.includes('localhost') ? '/ui/install.html' : '/install.html';
+    chrome.tabs.create({ url: `${API}${path}` });
   }
 });
 
