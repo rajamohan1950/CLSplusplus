@@ -49,7 +49,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app = FastAPI(
         title="CLS++ API",
         description="Brain-inspired, model-agnostic persistent memory for LLMs",
-        version="0.1.0",
+        version="1.5.0",
         docs_url="/docs",
         redoc_url="/redoc",
     )

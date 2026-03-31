@@ -512,100 +512,98 @@ def create_local_router(memory_service: MemoryService, settings: Settings) -> AP
         loaded = ts is not None and (_time.time() - ts) < 300
         return {"loaded": loaded, "last_seen": ts}
 
-    # ── Install API — in-browser installer ────────────────────────────────
-    _INSTALL_DIR = Path.home() / ".clspp"
-    _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-    _ENGINE_DIR = _PROJECT_ROOT / "src"
-    _EXT_DIR = _PROJECT_ROOT / "extension"
-    _PROTO_DIR = _PROJECT_ROOT / "prototype"
-    _WEBSITE_DIR = _PROJECT_ROOT / "website"
+    # ── Install API — local-only, disabled in cloud containers ─────────────
+    if os.getenv("CLS_ENABLE_INSTALLER"):
+        _INSTALL_DIR = Path.home() / ".clspp"
+        _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+        _ENGINE_DIR = _PROJECT_ROOT / "src"
+        _EXT_DIR = _PROJECT_ROOT / "extension"
+        _PROTO_DIR = _PROJECT_ROOT / "prototype"
+        _WEBSITE_DIR = _PROJECT_ROOT / "website"
 
-    @router.get("/api/install/status")
-    async def install_status():
-        installed = (_INSTALL_DIR / "server.py").exists()
-        daemon_running = False
-        try:
-            r = _sp.run(["pgrep", "-f", "daemon.py"], capture_output=True, timeout=2)
-            daemon_running = r.returncode == 0
-        except Exception:
-            pass
-        return {
-            "installed": installed,
-            "daemon_running": daemon_running,
-            "install_dir": str(_INSTALL_DIR),
-            "os": "macos" if sys.platform == "darwin" else sys.platform,
-        }
-
-    @router.post("/api/install/run")
-    async def install_run():
-        """Server-side install: copy files, install deps, set up LaunchAgent.
-        Returns streaming JSON lines for progress updates."""
-        import asyncio
-
-        async def _stream():
-            steps = []
+        @router.get("/api/install/status")
+        async def install_status():
+            installed = (_INSTALL_DIR / "server.py").exists()
+            daemon_running = False
             try:
-                yield json.dumps({"step": 1, "msg": "Creating install directory..."}) + "\n"
-                _INSTALL_DIR.mkdir(parents=True, exist_ok=True)
-                steps.append("directory")
+                r = _sp.run(["pgrep", "-f", "daemon.py"], capture_output=True, timeout=2)
+                daemon_running = r.returncode == 0
+            except Exception:
+                pass
+            return {
+                "installed": installed,
+                "daemon_running": daemon_running,
+                "install_dir": str(_INSTALL_DIR),
+                "os": "macos" if sys.platform == "darwin" else sys.platform,
+            }
 
-                yield json.dumps({"step": 2, "msg": "Copying memory engine..."}) + "\n"
-                dst_engine = _INSTALL_DIR / "engine" / "clsplusplus"
-                if dst_engine.exists():
-                    shutil.rmtree(dst_engine)
-                shutil.copytree(_ENGINE_DIR / "clsplusplus", dst_engine)
-                steps.append("engine")
+        @router.post("/api/install/run")
+        async def install_run():
+            """Server-side install: copy files, install deps, set up LaunchAgent.
+            Returns streaming JSON lines for progress updates."""
+            import asyncio
 
-                yield json.dumps({"step": 3, "msg": "Copying server and UI files..."}) + "\n"
-                # Copy server files from prototype
-                for f in ["server.py", "daemon.py"]:
-                    src = _PROTO_DIR / f
-                    if src.exists():
-                        shutil.copy2(src, _INSTALL_DIR / f)
-                # Copy UI files from website
-                for f in ["memory.html", "install.html", "index.html"]:
-                    src = _WEBSITE_DIR / f
-                    if src.exists():
-                        shutil.copy2(src, _INSTALL_DIR / f)
-                # Patch server.py paths for installed location
-                srv = _INSTALL_DIR / "server.py"
-                if srv.exists():
-                    txt = srv.read_text()
-                    txt = txt.replace(
-                        "sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))",
-                        "sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'engine'))"
+            async def _stream():
+                steps = []
+                try:
+                    yield json.dumps({"step": 1, "msg": "Creating install directory..."}) + "\n"
+                    _INSTALL_DIR.mkdir(parents=True, exist_ok=True)
+                    steps.append("directory")
+
+                    yield json.dumps({"step": 2, "msg": "Copying memory engine..."}) + "\n"
+                    dst_engine = _INSTALL_DIR / "engine" / "clsplusplus"
+                    if dst_engine.exists():
+                        shutil.rmtree(dst_engine)
+                    shutil.copytree(_ENGINE_DIR / "clsplusplus", dst_engine)
+                    steps.append("engine")
+
+                    yield json.dumps({"step": 3, "msg": "Copying server and UI files..."}) + "\n"
+                    for f in ["server.py", "daemon.py"]:
+                        src = _PROTO_DIR / f
+                        if src.exists():
+                            shutil.copy2(src, _INSTALL_DIR / f)
+                    for f in ["memory.html", "install.html", "index.html"]:
+                        src = _WEBSITE_DIR / f
+                        if src.exists():
+                            shutil.copy2(src, _INSTALL_DIR / f)
+                    srv = _INSTALL_DIR / "server.py"
+                    if srv.exists():
+                        txt = srv.read_text()
+                        txt = txt.replace(
+                            "sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))",
+                            "sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'engine'))"
+                        )
+                        txt = txt.replace(
+                            "load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))",
+                            "load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))"
+                        )
+                        srv.write_text(txt)
+                    env_src = _PROJECT_ROOT / ".env"
+                    if env_src.exists():
+                        shutil.copy2(env_src, _INSTALL_DIR / ".env")
+                    steps.append("files")
+
+                    yield json.dumps({"step": 4, "msg": "Bundling Chrome extension..."}) + "\n"
+                    dst_ext = _INSTALL_DIR / "extension"
+                    if dst_ext.exists():
+                        shutil.rmtree(dst_ext)
+                    shutil.copytree(_EXT_DIR, dst_ext)
+                    steps.append("extension")
+
+                    yield json.dumps({"step": 5, "msg": "Installing dependencies (this may take a minute)..."}) + "\n"
+                    deps = [
+                        "fastapi", "uvicorn[standard]", "httpx", "python-dotenv", "requests",
+                        "rumps", "pyobjc-framework-Quartz>=10.0", "pyobjc-framework-ApplicationServices>=10.0",
+                    ]
+                    _sp.run(
+                        [sys.executable, "-m", "pip", "install", "--quiet", "--upgrade"] + deps,
+                        capture_output=True, text=True, timeout=120
                     )
-                    txt = txt.replace(
-                        "load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))",
-                        "load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))"
-                    )
-                    srv.write_text(txt)
-                env_src = _PROJECT_ROOT / ".env"
-                if env_src.exists():
-                    shutil.copy2(env_src, _INSTALL_DIR / ".env")
-                steps.append("files")
+                    steps.append("deps")
 
-                yield json.dumps({"step": 4, "msg": "Bundling Chrome extension..."}) + "\n"
-                dst_ext = _INSTALL_DIR / "extension"
-                if dst_ext.exists():
-                    shutil.rmtree(dst_ext)
-                shutil.copytree(_EXT_DIR, dst_ext)
-                steps.append("extension")
-
-                yield json.dumps({"step": 5, "msg": "Installing dependencies (this may take a minute)..."}) + "\n"
-                deps = [
-                    "fastapi", "uvicorn[standard]", "httpx", "python-dotenv", "requests",
-                    "rumps", "pyobjc-framework-Quartz>=10.0", "pyobjc-framework-ApplicationServices>=10.0",
-                ]
-                _sp.run(
-                    [sys.executable, "-m", "pip", "install", "--quiet", "--upgrade"] + deps,
-                    capture_output=True, text=True, timeout=120
-                )
-                steps.append("deps")
-
-                yield json.dumps({"step": 6, "msg": "Creating launcher..."}) + "\n"
-                launch_sh = _INSTALL_DIR / "launch.sh"
-                launch_sh.write_text(f"""#!/bin/bash
+                    yield json.dumps({"step": 6, "msg": "Creating launcher..."}) + "\n"
+                    launch_sh = _INSTALL_DIR / "launch.sh"
+                    launch_sh.write_text(f"""#!/bin/bash
 DIR="$HOME/.clspp"
 LOG="$DIR/.clspp.log"
 lsof -ti:8080 2>/dev/null | xargs kill -9 2>/dev/null
@@ -617,14 +615,14 @@ for i in $(seq 1 20); do
 done
 python3 "$DIR/daemon.py" >> "$LOG" 2>&1 &
 """)
-                launch_sh.chmod(0o755)
-                steps.append("launcher")
+                    launch_sh.chmod(0o755)
+                    steps.append("launcher")
 
-                yield json.dumps({"step": 7, "msg": "Setting up auto-start on login..."}) + "\n"
-                plist_dir = Path.home() / "Library" / "LaunchAgents"
-                plist_dir.mkdir(parents=True, exist_ok=True)
-                plist = plist_dir / "com.clspp.daemon.plist"
-                plist.write_text(f"""<?xml version="1.0" encoding="UTF-8"?>
+                    yield json.dumps({"step": 7, "msg": "Setting up auto-start on login..."}) + "\n"
+                    plist_dir = Path.home() / "Library" / "LaunchAgents"
+                    plist_dir.mkdir(parents=True, exist_ok=True)
+                    plist = plist_dir / "com.clspp.daemon.plist"
+                    plist.write_text(f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -646,82 +644,82 @@ python3 "$DIR/daemon.py" >> "$LOG" 2>&1 &
 </dict>
 </plist>
 """)
-                steps.append("launchagent")
+                    steps.append("launchagent")
 
-                yield json.dumps({"step": 8, "msg": "Done!", "ok": True, "steps": steps}) + "\n"
+                    yield json.dumps({"step": 8, "msg": "Done!", "ok": True, "steps": steps}) + "\n"
 
+                except Exception as e:
+                    yield json.dumps({"error": str(e), "steps": steps}) + "\n"
+
+            return StreamingResponse(_stream(), media_type="application/x-ndjson")
+
+        @router.post("/api/install/start")
+        async def install_start():
+            """Start the daemon process."""
+            try:
+                daemon_path = _INSTALL_DIR / "daemon.py" if (_INSTALL_DIR / "daemon.py").exists() else _PROTO_DIR / "daemon.py"
+                proc = _sp.Popen(
+                    [sys.executable, str(daemon_path)],
+                    stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
+                    start_new_session=True
+                )
+                return {"ok": True, "pid": proc.pid}
             except Exception as e:
-                yield json.dumps({"error": str(e), "steps": steps}) + "\n"
+                return {"ok": False, "error": str(e)}
 
-        return StreamingResponse(_stream(), media_type="application/x-ndjson")
+        @router.get("/api/install/browser-check")
+        async def browser_check():
+            """Return which Chromium-based browser is installed, if any."""
+            browsers = [
+                ("Google Chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+                ("Brave Browser", "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"),
+                ("Arc", "/Applications/Arc.app/Contents/MacOS/Arc"),
+                ("Microsoft Edge", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
+                ("Chromium", "/Applications/Chromium.app/Contents/MacOS/Chromium"),
+            ]
+            for name, path in browsers:
+                if os.path.exists(path):
+                    return {"found": True, "browser": name}
+            return {"found": False, "browser": None}
 
-    @router.post("/api/install/start")
-    async def install_start():
-        """Start the daemon process."""
-        try:
-            daemon_path = _INSTALL_DIR / "daemon.py" if (_INSTALL_DIR / "daemon.py").exists() else _PROTO_DIR / "daemon.py"
-            proc = _sp.Popen(
-                [sys.executable, str(daemon_path)],
-                stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
-                start_new_session=True
-            )
-            return {"ok": True, "pid": proc.pid}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
+        @router.post("/api/install/launch-browser")
+        async def launch_browser():
+            """Quit the user's Chromium browser and relaunch with CLS++ extension."""
+            import asyncio
 
-    @router.get("/api/install/browser-check")
-    async def browser_check():
-        """Return which Chromium-based browser is installed, if any."""
-        browsers = [
-            ("Google Chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
-            ("Brave Browser", "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"),
-            ("Arc", "/Applications/Arc.app/Contents/MacOS/Arc"),
-            ("Microsoft Edge", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
-            ("Chromium", "/Applications/Chromium.app/Contents/MacOS/Chromium"),
-        ]
-        for name, path in browsers:
-            if os.path.exists(path):
-                return {"found": True, "browser": name}
-        return {"found": False, "browser": None}
+            ext_path = str(_INSTALL_DIR / "extension")
+            if not (_INSTALL_DIR / "extension" / "manifest.json").exists():
+                ext_path = str(_EXT_DIR)
 
-    @router.post("/api/install/launch-browser")
-    async def launch_browser():
-        """Quit the user's Chromium browser and relaunch with CLS++ extension."""
-        import asyncio
+            memory_url = "http://localhost:8080/memory.html"
 
-        ext_path = str(_INSTALL_DIR / "extension")
-        if not (_INSTALL_DIR / "extension" / "manifest.json").exists():
-            ext_path = str(_EXT_DIR)
+            browsers = [
+                ("Google Chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+                ("Brave Browser", "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"),
+                ("Arc", "/Applications/Arc.app/Contents/MacOS/Arc"),
+                ("Microsoft Edge", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
+                ("Chromium", "/Applications/Chromium.app/Contents/MacOS/Chromium"),
+            ]
 
-        memory_url = "http://localhost:8080/memory.html"
+            launched = None
+            for name, path in browsers:
+                if not os.path.exists(path):
+                    continue
+                _sp.run(["osascript", "-e", f'tell application "{name}" to quit'],
+                        capture_output=True, timeout=6)
+                await asyncio.sleep(2)
+                _sp.Popen([path,
+                           f"--load-extension={ext_path}",
+                           "--no-first-run",
+                           memory_url])
+                launched = name
+                break
 
-        browsers = [
-            ("Google Chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
-            ("Brave Browser", "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"),
-            ("Arc", "/Applications/Arc.app/Contents/MacOS/Arc"),
-            ("Microsoft Edge", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
-            ("Chromium", "/Applications/Chromium.app/Contents/MacOS/Chromium"),
-        ]
+            if not launched:
+                _sp.Popen(["open", memory_url])
+                return {"ok": False, "browser": None,
+                        "message": "No Chrome/Brave/Arc found. Opened memory page in default browser."}
 
-        launched = None
-        for name, path in browsers:
-            if not os.path.exists(path):
-                continue
-            _sp.run(["osascript", "-e", f'tell application "{name}" to quit'],
-                    capture_output=True, timeout=6)
-            await asyncio.sleep(2)
-            _sp.Popen([path,
-                       f"--load-extension={ext_path}",
-                       "--no-first-run",
-                       memory_url])
-            launched = name
-            break
-
-        if not launched:
-            _sp.Popen(["open", memory_url])
-            return {"ok": False, "browser": None,
-                    "message": "No Chrome/Brave/Arc found. Opened memory page in default browser."}
-
-        return {"ok": True, "browser": launched}
+            return {"ok": True, "browser": launched}
 
     return router

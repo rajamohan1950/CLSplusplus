@@ -7,3 +7,16 @@ services:
     dockerfilePath: ./Dockerfile
     plan: free
     healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: CLS_DATABASE_URL
+        sync: false
+      - key: CLS_REDIS_URL
+        sync: false
+      - key: CLS_ANTHROPIC_API_KEY
+        sync: false
+      - key: CLS_OPENAI_API_KEY
+        sync: false
+      - key: CLS_GOOGLE_API_KEY
+        sync: false

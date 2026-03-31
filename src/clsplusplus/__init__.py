@@ -13,7 +13,7 @@ Embedded installs (e.g. local server) can import the phase engine without pullin
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "1.5.0"
 
 __all__ = ["CLS", "CLSClient", "MemoriesClient", "__version__"]
 
