@@ -1,7 +1,7 @@
 // CLS++ — shared logic injected into every AI site
 // This file is loaded by each site-specific content script
 
-const MEMORY_PREFIX = '[CLS++ Memory]\n';
+const MEMORY_PREFIX = 'The following facts were learned';
 // Detect API endpoint: localStorage pages use localhost, AI sites check storage flag.
 let CLSPP_API = 'https://clsplusplus.onrender.com';
 if (typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) {
@@ -73,9 +73,12 @@ function storeMessage(text, source, model) {
 // ── Format memory context block ────────────────────────────────────────────
 function buildContext(memories) {
   if (!memories || !memories.length) return '';
-  const lines = [MEMORY_PREFIX];
-  memories.forEach(m => lines.push('• ' + m.text));
-  lines.push(''); // blank line before user message
+  const lines = [
+    'The following facts were learned about this user from prior conversations.',
+    'Integrate them naturally — reference only when relevant, never repeat verbatim unless asked:'
+  ];
+  memories.forEach(m => lines.push('- ' + m.text));
+  lines.push('');
   return lines.join('\n');
 }
 

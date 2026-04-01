@@ -5,7 +5,7 @@ DEPRECATED: All routes have been merged into src/clsplusplus/local_routes.py
 and are served by the unified server (python3 -m clsplusplus.main).
 This file is kept for reference and for the standalone installer.
 """
-import sys, os, json, re, hashlib
+import sys, os, json, re, hashlib, time as _time, asyncio
 from collections import defaultdict
 from datetime import datetime
 from typing import Optional
@@ -76,8 +76,15 @@ _extension_last_seen: Optional[float] = None
 
 OPENAI_API_KEY    = os.getenv("CLS_OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("CLS_ANTHROPIC_API_KEY", "")
+GOOGLE_API_KEY    = os.getenv("CLS_GOOGLE_API_KEY", "")
 OPENAI_BASE       = "https://api.openai.com"
 ANTHROPIC_BASE    = "https://api.anthropic.com"
+
+# ── Canonical context prompt ──────────────────────────────────────────────
+CONTEXT_PREFIX = (
+    "The following facts were learned about this user from prior conversations. "
+    "Integrate them naturally — reference only when relevant, never repeat verbatim unless asked:"
+)
 
 app = FastAPI(title="CLS++ Memory Proxy")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -126,7 +133,7 @@ def _user_text(messages: list) -> str:
 
 def _inject(messages: list, memories: list) -> list:
     if not memories: return messages
-    block = "[CLS++ Memory]\n" + "\n".join(f"• {i.fact.raw_text}" for _, i in memories)
+    block = CONTEXT_PREFIX + "\n" + "\n".join(f"- {i.fact.raw_text}" for _, i in memories)
     msgs = list(messages)
     if msgs and msgs[0].get("role") == "system":
         msgs[0] = {**msgs[0], "content": block + "\n\n" + msgs[0]["content"]}
@@ -182,7 +189,7 @@ async def _store(uid: str, text: str, model: str, source: str = "user"):
         "ts": datetime.utcnow().isoformat(),
     }
     memory_log[uid].append(entry)
-    _save_to_disk()
+    asyncio.get_event_loop().call_soon(lambda: asyncio.ensure_future(asyncio.to_thread(_save_to_disk)))
 
     payload = json.dumps({"type": "memory", **entry})
     dead = []
@@ -239,7 +246,7 @@ async def anthropic_messages(request: Request):
 
     _log_context(uid, model_name, query, mems)
     if mems:
-        mem_block = "[CLS++ Memory]\n" + "\n".join(f"• {i.fact.raw_text}" for _, i in mems)
+        mem_block = CONTEXT_PREFIX + "\n" + "\n".join(f"- {i.fact.raw_text}" for _, i in mems)
         body["system"] = (mem_block + "\n\n" + body.get("system", "")).strip()
 
     auth_key = (request.headers.get("x-api-key")
@@ -259,6 +266,19 @@ async def anthropic_messages(request: Request):
     return Response(content=resp.content, media_type="application/json", status_code=resp.status_code)
 
 
+# ── Gemini helper ─────────────────────────────────────────────────────────
+def _gemini_call(system: str, user_msg: str, model_name: str = "gemini-2.0-flash") -> str:
+    """Synchronous Gemini call — run via asyncio.to_thread."""
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=GOOGLE_API_KEY)
+        gm = genai.GenerativeModel(model_name, system_instruction=system)
+        resp = gm.generate_content(user_msg)
+        return resp.text or "No response from Gemini."
+    except Exception as e:
+        return f"Gemini error: {e}"
+
+
 # ── Demo chat (powers memory.html live chat) ────────────────────────────────
 @app.post("/api/chat/{uid}")
 async def demo_chat(uid: str, request: Request):
@@ -271,32 +291,36 @@ async def demo_chat(uid: str, request: Request):
     _log_context(uid, model, message, mems)
     await _store(uid, message, model, "user")
 
-    system = "You are a helpful AI assistant with memory about this user. Be concise."
+    system = "You are a helpful AI assistant. Be concise."
     if mems:
-        system = "[What you remember about this user]\n" + \
-                 "\n".join(f"• {i.fact.raw_text}" for _, i in mems) + "\n\n" + system
+        mem_block = CONTEXT_PREFIX + "\n" + "\n".join(f"- {i.fact.raw_text}" for _, i in mems)
+        system = mem_block + "\n\n" + system
 
     reply = "Error reaching AI."
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            if model.startswith("gpt") or model.startswith("o1") or model.startswith("o3"):
-                # ── OpenAI route ──────────────────────────────────────────
-                resp = await client.post(f"{OPENAI_BASE}/v1/chat/completions",
-                    json={"model": model, "max_tokens": 512,
-                          "messages": [{"role": "system", "content": system},
-                                       {"role": "user",   "content": message}]},
-                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}",
-                             "Content-Type": "application/json"})
-                reply = resp.json()["choices"][0]["message"]["content"]
-            else:
-                # ── Anthropic route ───────────────────────────────────────
-                resp = await client.post(f"{ANTHROPIC_BASE}/v1/messages",
-                    json={"model": model, "max_tokens": 512, "system": system,
-                          "messages": [{"role": "user", "content": message}]},
-                    headers={"x-api-key": ANTHROPIC_API_KEY,
-                             "anthropic-version": "2023-06-01",
-                             "Content-Type": "application/json"})
-                reply = resp.json()["content"][0]["text"]
+        if model.startswith("gemini"):
+            # ── Gemini route ──────────────────────────────────────────
+            reply = await asyncio.to_thread(_gemini_call, system, message, model)
+        else:
+            async with httpx.AsyncClient(timeout=60) as client:
+                if model.startswith("gpt") or model.startswith("o1") or model.startswith("o3"):
+                    # ── OpenAI route ──────────────────────────────────────
+                    resp = await client.post(f"{OPENAI_BASE}/v1/chat/completions",
+                        json={"model": model, "max_tokens": 512,
+                              "messages": [{"role": "system", "content": system},
+                                           {"role": "user",   "content": message}]},
+                        headers={"Authorization": f"Bearer {OPENAI_API_KEY}",
+                                 "Content-Type": "application/json"})
+                    reply = resp.json()["choices"][0]["message"]["content"]
+                else:
+                    # ── Anthropic route ───────────────────────────────────
+                    resp = await client.post(f"{ANTHROPIC_BASE}/v1/messages",
+                        json={"model": model, "max_tokens": 512, "system": system,
+                              "messages": [{"role": "user", "content": message}]},
+                        headers={"x-api-key": ANTHROPIC_API_KEY,
+                                 "anthropic-version": "2023-06-01",
+                                 "Content-Type": "application/json"})
+                    reply = resp.json()["content"][0]["text"]
     except Exception as e:
         reply = f"Error reaching AI: {e}"
 
@@ -314,17 +338,15 @@ async def demo_chat(uid: str, request: Request):
 # ── REST: memories with full metadata ─────────────────────────────────────
 
 @app.get("/api/memories/{uid}")
-async def get_memories(uid: str, model: str = "", category: str = ""):
-    """Return all memories for the UI viewer.
-    Trusts the engine for phase/strength — no external fact filters needed.
-    The engine already handles contradiction suppression and phase decay.
-    """
+async def get_memories(uid: str, model: str = "", category: str = "",
+                       label: str = "", layer: str = "",
+                       sort: str = "ts", order: str = "desc"):
+    """Return all memories for the UI viewer with filtering and sorting."""
     items = engine._items.get(uid, [])
     log_map = {e["id"]: e for e in memory_log.get(uid, [])}
 
     entries = []
     for item in items:
-        # Skip gas-phase items (decayed/forgotten)
         phase = _item_phase(item)
         if phase == "gas":
             continue
@@ -343,25 +365,60 @@ async def get_memories(uid: str, model: str = "", category: str = ""):
             "layer": _phase_layer(phase),
             "tau": round(getattr(item, 'tau', 0), 2),
             "retrieval_count": getattr(item, 'retrieval_count', 0),
+            "labels": log_entry.get("labels", []),
             "ts": log_entry.get("ts", ""),
         }
         entries.append(entry)
 
     if model:    entries = [e for e in entries if e["source_model"] == model]
     if category: entries = [e for e in entries if e["category"] == category]
+    if label:    entries = [e for e in entries if label in e.get("labels", [])]
+    if layer:    entries = [e for e in entries if e.get("layer") == layer]
+
+    sort_keys = {
+        "ts":       lambda x: x.get("ts", ""),
+        "strength": lambda x: x.get("strength", 0),
+        "category": lambda x: x.get("category", ""),
+        "model":    lambda x: x.get("source_model", ""),
+        "phase":    lambda x: {"gas":0,"liquid":1,"solid":2,"glass":3}.get(x.get("phase","liquid"),1),
+    }
+    key_fn = sort_keys.get(sort, sort_keys["ts"])
+    entries.sort(key=key_fn, reverse=(order == "desc"))
+
     models = list({e["source_model"] for e in entries})
     cats   = list({e["category"]     for e in entries})
+    all_labels = sorted({l for e in entries for l in e.get("labels", [])})
     layer_counts = {"L0": 0, "L1": 0, "L2": 0, "L3": 0}
     for e in entries:
         layer_counts[e.get("layer", "L1")] += 1
     return {
         "uid": uid,
         "count": len(entries),
-        "memories": sorted(entries, key=lambda x: x.get("ts",""), reverse=True),
+        "memories": entries,
         "available_models": models,
         "available_categories": cats,
+        "available_labels": all_labels,
         "layers": layer_counts,
     }
+
+@app.patch("/api/memories/{uid}/{memory_id}/labels")
+async def update_labels(uid: str, memory_id: str, request: Request):
+    """Add or update labels on a memory."""
+    body = await request.json()
+    labels = [str(l).strip()[:30] for l in body.get("labels", [])[:10] if str(l).strip()]
+    for entry in memory_log.get(uid, []):
+        if entry.get("id") == memory_id:
+            entry["labels"] = labels
+            _save_to_disk()
+            return {"ok": True, "labels": labels}
+    # Also check all UIDs (merged namespace case)
+    for u, entries in memory_log.items():
+        for entry in entries:
+            if entry.get("id") == memory_id:
+                entry["labels"] = labels
+                _save_to_disk()
+                return {"ok": True, "labels": labels}
+    return JSONResponse({"error": "memory not found"}, 404)
 
 @app.get("/api/context-log")
 async def get_context_log_local():
@@ -421,8 +478,6 @@ async def get_context(request: Request):
         if key in seen:
             continue
         seen.add(key)
-        print(f"[context] score={score:.3f} phase={_item_phase(item)} "
-              f"s={item.fact.subject} r={item.fact.relation} → {fact_text[:60]}")
         facts.append(fact_text)
         if len(facts) >= 5:
             break
@@ -430,15 +485,8 @@ async def get_context(request: Request):
     if not facts:
         return {"context": "", "count": 0}
 
-    # Natural system instruction — the LLM sees this as authoritative context
-    ctx = (
-        "The user has shared the following about themselves in previous conversations. "
-        "Use this as background context — do not repeat it back unless asked:\n"
-        + "\n".join(f"- {f}" for f in facts)
-    )
+    ctx = CONTEXT_PREFIX + "\n" + "\n".join(f"- {f}" for f in facts)
 
-    # Mark extension as active
-    import time as _time
     global _extension_last_seen
     _extension_last_seen = _time.time()
 
@@ -542,17 +590,16 @@ async def get_phase_stats(uid: str):
 
 # ── UID-less convenience routes (auto-resolve local user) ────────────────
 @app.get("/api/memories")
-async def get_memories_local(model: str = "", category: str = ""):
-    # First try local machine UID; if empty, merge all namespaces
-    # so Chrome extension memories (different UID) show up too.
-    result = await get_memories(_local_uid(), model, category)
+async def get_memories_local(model: str = "", category: str = "", label: str = "",
+                             layer: str = "", sort: str = "ts", order: str = "desc"):
+    result = await get_memories(_local_uid(), model, category, label, layer, sort, order)
     if result["count"] == 0 and engine._items:
-        # Merge all UIDs
-        from collections import ChainMap
         all_entries = []
+        all_labels_set = set()
         for uid in list(engine._items.keys()):
-            r = await get_memories(uid, model, category)
+            r = await get_memories(uid, model, category, label, layer, sort, order)
             all_entries.extend(r.get("memories", []))
+            all_labels_set.update(r.get("available_labels", []))
         models = list({e["source_model"] for e in all_entries})
         cats = list({e["category"] for e in all_entries})
         layer_counts = {"L0": 0, "L1": 0, "L2": 0, "L3": 0}
@@ -562,8 +609,9 @@ async def get_memories_local(model: str = "", category: str = ""):
             "uid": "all",
             "count": len(all_entries),
             "memories": all_entries,
-            "models": models,
-            "categories": cats,
+            "available_models": models,
+            "available_categories": cats,
+            "available_labels": sorted(all_labels_set),
             "layers": layer_counts,
         }
     return result

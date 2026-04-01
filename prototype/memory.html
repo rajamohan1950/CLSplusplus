@@ -107,6 +107,19 @@
       display:flex;align-items:center;gap:5px;margin-left:auto}
     .mbdot{width:5px;height:5px;border-radius:50%}
     .mem-text{font-size:13px;color:var(--text);line-height:1.5;margin-bottom:10px}
+    .label-row{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+    .label-pill{font-size:9px;font-weight:600;padding:2px 8px;border-radius:12px;
+      background:rgba(124,110,240,.12);color:#a89cf7;border:1px solid rgba(124,110,240,.2);
+      cursor:pointer;transition:all .15s}
+    .label-pill:hover{background:rgba(124,110,240,.25)}
+    .label-add{font-size:9px;padding:2px 8px;border-radius:12px;cursor:pointer;
+      background:rgba(255,255,255,.05);color:var(--muted);border:1px dashed rgba(255,255,255,.15);
+      transition:all .15s}
+    .label-add:hover{background:rgba(255,255,255,.1);color:var(--text)}
+    #sort-select{background:var(--surface2);border:1px solid var(--border);
+      border-radius:9px;padding:8px 10px;font-size:12px;color:var(--text);
+      outline:none;cursor:pointer}
+    #sort-select:focus{border-color:rgba(124,110,240,.5)}
     .mem-footer{display:flex;align-items:center;gap:12px}
     .mem-ts{font-size:10px;color:var(--muted)}
     .strength-bar{flex:1;height:3px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden}
@@ -245,6 +258,13 @@
       </div>
       <div class="search-row">
         <input id="search" type="text" placeholder="Search memories…" autocomplete="off"/>
+        <select id="sort-select">
+          <option value="ts-desc">Newest</option>
+          <option value="ts-asc">Oldest</option>
+          <option value="strength-desc">Strongest</option>
+          <option value="category-asc">Category</option>
+          <option value="phase-desc">Phase</option>
+        </select>
         <button class="btn-ctx-log" id="btn-ctx-log">
           <span style="width:6px;height:6px;border-radius:50%;background:#5de0c5;box-shadow:0 0 6px #5de0c5;display:inline-block;animation:blink 1.8s ease-in-out infinite"></span>
           Context Log
@@ -285,6 +305,9 @@ const API = 'http://localhost:8080';
 let allMemories = [];
 let activeModel = '';
 let activeCat   = '';
+let activeLabel = '';
+let activeLayer = '';
+let currentUid  = '';
 
 const CAT_META = {
   'Identity':     {icon:'👤',color:'#a89cf7'},
@@ -322,9 +345,15 @@ async function loadMemories() {
     const p = [];
     if (activeModel) p.push('model='+encodeURIComponent(activeModel));
     if (activeCat)   p.push('category='+encodeURIComponent(activeCat));
+    if (activeLabel) p.push('label='+encodeURIComponent(activeLabel));
+    if (activeLayer) p.push('layer='+encodeURIComponent(activeLayer));
+    const sortVal = document.getElementById('sort-select').value;
+    const [sortKey, sortOrder] = sortVal.split('-');
+    p.push('sort='+sortKey, 'order='+sortOrder);
     if (p.length) url += '?'+p.join('&');
     const r = await fetch(url);
     const d = await r.json();
+    currentUid = d.uid || '';
     allMemories = d.memories || [];
     renderMemories();
     buildSidebar(d);
@@ -362,6 +391,9 @@ function renderMemories() {
     card.style.animationDelay = (i * 0.04) + 's';
     const phase = m.phase || 'liquid';
     const phaseLabels = {gas:'L0 Gas',liquid:'L1 Liquid',solid:'L2 Solid',glass:'L3 Glass'};
+    const lblHtml = (m.labels||[]).map(l =>
+      `<span class="label-pill" onclick="filterLabel('${esc(l)}')">${esc(l)}</span>`).join('') +
+      `<span class="label-add" onclick="addLabel('${m.id}')">+ label</span>`;
     card.innerHTML = `
       <div class="mem-card-head">
         <span class="cat-badge cat-${m.category}">${cm.icon} ${m.category}</span>
@@ -371,6 +403,7 @@ function renderMemories() {
           <span class="mbdot" style="background:${mm.color}"></span>${mm.label}
         </span>
       </div>
+      <div class="label-row">${lblHtml}</div>
       <div class="mem-text">${esc(m.fact || m.text)}</div>
       <div class="mem-footer">
         <span class="mem-ts">${dt} ${ts}</span>
@@ -424,6 +457,33 @@ function buildSidebar(d) {
     const el = document.getElementById('cnt-'+l);
     if (el) el.textContent = layers[l] || 0;
   });
+
+  // Labels section (dynamic)
+  const lbls = d.available_labels || [];
+  let lblSection = document.getElementById('label-section');
+  if (!lblSection) {
+    lblSection = document.createElement('div');
+    lblSection.id = 'label-section';
+    lblSection.className = 'sidebar-section';
+    const layerSection = document.querySelector('.sidebar-section:last-of-type');
+    if (layerSection && layerSection.parentNode) {
+      layerSection.parentNode.insertBefore(lblSection, layerSection);
+    }
+  }
+  if (lbls.length) {
+    lblSection.innerHTML = '<div class="sec-label">Labels</div><div class="cat-list">' +
+      `<div class="cat-item${!activeLabel?' active':''}" onclick="activeLabel='';loadMemories();">
+        <span class="cat-icon">🏷️</span><span class="cat-name">All Labels</span>
+        <span class="cat-cnt">${d.count}</span></div>` +
+      lbls.map(l => {
+        const cnt = allMemories.filter(m => (m.labels||[]).includes(l)).length;
+        return `<div class="cat-item${activeLabel===l?' active':''}" onclick="filterLabel('${esc(l)}')">
+          <span class="cat-icon">🏷️</span><span class="cat-name">${esc(l)}</span>
+          <span class="cat-cnt">${cnt}</span></div>`;
+      }).join('') + '</div>';
+  } else {
+    lblSection.innerHTML = '';
+  }
 }
 
 function refreshFilters() {
@@ -443,6 +503,47 @@ document.querySelector('.cat-item[data-cat=""]').addEventListener('click', () =>
   activeCat=''; refreshFilters();
 });
 document.getElementById('search').addEventListener('input', renderMemories);
+document.getElementById('sort-select').addEventListener('change', loadMemories);
+
+// ── Labels ──────────────────────────────────────────────
+async function addLabel(memId) {
+  const label = prompt('Enter label:');
+  if (!label || !label.trim()) return;
+  const mem = allMemories.find(m => m.id === memId);
+  const labels = [...new Set([...(mem.labels || []), label.trim()])];
+  const uid = currentUid || 'all';
+  // Try all UIDs since we may have merged namespaces
+  for (const u of (uid === 'all' ? Object.keys(window._allUids || {[uid]:1}) : [uid])) {
+    await fetch(`${API}/api/memories/${u}/${memId}/labels`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({labels})
+    });
+  }
+  // Also try without UID prefix for each known namespace
+  await fetch(`${API}/api/memories/_/${memId}/labels`, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({labels})
+  }).catch(() => {});
+  loadMemories();
+}
+
+function filterLabel(lbl) {
+  activeLabel = activeLabel === lbl ? '' : lbl;
+  loadMemories();
+}
+
+// ── Layer click filtering ────────────────────────────────
+document.querySelectorAll('.layer-item').forEach(el => {
+  el.addEventListener('click', () => {
+    const l = el.dataset.layer;
+    activeLayer = activeLayer === l ? '' : l;
+    document.querySelectorAll('.layer-item').forEach(x =>
+      x.classList.toggle('active', x.dataset.layer === activeLayer));
+    loadMemories();
+  });
+});
 
 // ── Context log modal ──────────────────────────────────────
 async function loadContextLog() {
