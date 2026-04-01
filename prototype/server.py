@@ -341,7 +341,7 @@ async def demo_chat(uid: str, request: Request):
     else:
         mems = engine.search(message, uid, limit=10)
         mems = [(s, i) for s, i in mems if not i.fact.raw_text.strip().startswith("[Schema:")]
-    mems = mems[:20]  # LLMs handle 20 facts easily in system prompt
+    mems = mems[:40]  # Modern LLMs handle 40 facts easily (~2K tokens)
     _log_context(uid, model, message, mems)
     await _store(uid, message, model, "user")
 
@@ -378,8 +378,9 @@ async def demo_chat(uid: str, request: Request):
     except Exception as e:
         reply = f"Error reaching AI: {e}"
 
-    for f in _assistant_facts(reply):
-        await _store(uid, f, model, "assistant")
+    # Don't store AI replies in demo chat — they pollute the memory store
+    # with noise like "I don't have information" and push real facts down.
+    # User facts are already stored above.
 
     return {
         "reply": reply,
@@ -527,7 +528,7 @@ async def get_context(request: Request):
         mems = [(s, item) for s, item in mems
                 if s > 0.001 and not item.fact.raw_text.strip().startswith("[Schema:")]
         mems.sort(key=lambda x: x[0], reverse=True)
-    mems = mems[:15]  # Up to 15 facts in context injection
+    mems = mems[:30]  # Up to 30 facts in extension context injection
     if not mems:
         return {"context": "", "count": 0}
 
@@ -546,7 +547,7 @@ async def get_context(request: Request):
             continue
         seen.add(key)
         facts.append(fact_text)
-        if len(facts) >= 5:
+        if len(facts) >= 30:
             break
 
     if not facts:
