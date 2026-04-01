@@ -133,7 +133,9 @@ def _user_text(messages: list) -> str:
 
 def _inject(messages: list, memories: list) -> list:
     if not memories: return messages
-    block = CONTEXT_PREFIX + "\n" + "\n".join(f"- {i.fact.raw_text}" for _, i in memories)
+    clean = [(s, i) for s, i in memories if not i.fact.raw_text.strip().startswith("[Schema:")]
+    if not clean: return messages
+    block = CONTEXT_PREFIX + "\n" + "\n".join(f"- {i.fact.raw_text}" for _, i in clean)
     msgs = list(messages)
     if msgs and msgs[0].get("role") == "system":
         msgs[0] = {**msgs[0], "content": block + "\n\n" + msgs[0]["content"]}
@@ -145,8 +147,17 @@ def _assistant_facts(text: str) -> list[str]:
     sentences = re.split(r'(?<=[.!?])\s+', text)
     kw = ["you ", "your ", "you've", "you are", "you were", "you like",
           "you prefer", "you work", "you use", "you have", "you're"]
-    return [s.strip() for s in sentences
-            if any(k in s.lower() for k in kw) and len(s.strip()) > 20][:3]
+    skip = ["i don't", "i do not", "however", "if you'd like", "let me know",
+            "feel free", "i can help", "is there anything"]
+    facts = []
+    for s in sentences:
+        sl = s.lower().strip()
+        if len(sl) < 20: continue
+        if not any(k in sl for k in kw): continue
+        if any(k in sl for k in skip): continue
+        facts.append(s.strip())
+        if len(facts) >= 3: break
+    return facts
 
 def _item_phase(item) -> str:
     """Determine thermodynamic phase of a PhaseMemoryItem."""
@@ -171,7 +182,20 @@ _NOISE = [
     "the following facts were learned", "use this as background context",
     "the user has shared the following", "to monitor your current usage",
     "[cls++ memory]", "[schema:",
+    "how can i help you", "is there anything else", "let me know if",
+    "do you have any", "feel free to", "i'd be happy to",
+    "i don't have details", "i don't have specific", "i don't have information",
+    "if you'd like to share", "i can help you with",
+    "what would you like", "is there something specific",
 ]
+
+def _is_question_only(text: str) -> bool:
+    """Detect pure questions with no factual content worth storing."""
+    t = text.strip().lower()
+    q_starts = ["what is my", "what's my", "where do i", "where am i",
+                "who am i", "do you know my", "tell me my", "what do you know",
+                "can you tell me", "do you remember"]
+    return any(t.startswith(q) for q in q_starts) and len(t) < 80
 
 def _normalize_model(m: str) -> str:
     """Collapse model variants to display names: gemini-2.0-flash → gemini."""
@@ -188,6 +212,7 @@ async def _store(uid: str, text: str, model: str, source: str = "user"):
     if len(t) < 6: return None
     tl = t.lower()
     if any(n in tl for n in _NOISE): return None
+    if _is_question_only(t): return None
     item = engine.store(text, uid)
     if item is None: return None
     cat = classify(text)
@@ -307,7 +332,16 @@ async def demo_chat(uid: str, request: Request):
     model   = body.get("model", "claude-haiku-4-5")
     if not message: return JSONResponse({"error":"message required"}, 400)
 
-    mems = engine.search(message, uid, limit=6)
+    # For small memory sets (<= 15 items), inject ALL facts for 100% recall.
+    # For larger sets, use search-based retrieval.
+    all_items = [i for i in (engine._items.get(uid, []))
+                 if not i.fact.raw_text.strip().startswith("[Schema:")]
+    if len(all_items) <= 15:
+        mems = [(1.0, i) for i in all_items]
+    else:
+        mems = engine.search(message, uid, limit=10)
+        mems = [(s, i) for s, i in mems if not i.fact.raw_text.strip().startswith("[Schema:")]
+    mems = mems[:10]
     _log_context(uid, model, message, mems)
     await _store(uid, message, model, "user")
 
@@ -369,6 +403,9 @@ async def get_memories(uid: str, model: str = "", category: str = "",
     for item in items:
         phase = _item_phase(item)
         if phase == "gas":
+            continue
+        # Skip raw schema items from display — internal engine artifacts
+        if item.fact.raw_text.strip().startswith("[Schema:"):
             continue
         log_entry = log_map.get(item.id, {})
         entry = {
@@ -474,15 +511,23 @@ async def get_context(request: Request):
     if not query or len(query) < 4:
         return {"context": "", "count": 0}
 
-    # Search across ALL namespaces — multiple browser profiles share one machine
-    mems = []
+    # For small memory sets, inject ALL facts for perfect recall at launch.
+    # For larger sets, use search-based retrieval.
+    all_items = []
     for ns in list(engine._items.keys()):
-        mems.extend(engine.search(query, ns, limit=5))
+        all_items.extend([(1.0, i) for i in engine._items.get(ns, [])
+                          if not i.fact.raw_text.strip().startswith("[Schema:")])
 
-    # Sort by relevance score descending, filter out zero-score noise
-    mems = [(s, item) for s, item in mems if s > 0.001]
-    mems.sort(key=lambda x: x[0], reverse=True)
-    mems = mems[:5]  # Top 5 across all namespaces
+    if len(all_items) <= 20:
+        mems = all_items
+    else:
+        mems = []
+        for ns in list(engine._items.keys()):
+            mems.extend(engine.search(query, ns, limit=8))
+        mems = [(s, item) for s, item in mems
+                if s > 0.001 and not item.fact.raw_text.strip().startswith("[Schema:")]
+        mems.sort(key=lambda x: x[0], reverse=True)
+    mems = mems[:8]
     if not mems:
         return {"context": "", "count": 0}
 
@@ -490,9 +535,11 @@ async def get_context(request: Request):
     facts = []
     seen = set()
     for score, item in mems:
-        # The engine already extracted subject/relation/value at store time
         fact_text = item.fact.raw_text.strip()
         if not fact_text or len(fact_text) < 8:
+            continue
+        # Skip raw schema representations — they confuse LLMs
+        if fact_text.startswith("[Schema:"):
             continue
         key = fact_text.lower()
         if key in seen:
