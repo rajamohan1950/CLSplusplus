@@ -82,8 +82,10 @@ ANTHROPIC_BASE    = "https://api.anthropic.com"
 
 # ── Canonical context prompt ──────────────────────────────────────────────
 CONTEXT_PREFIX = (
-    "The following facts were learned about this user from prior conversations. "
-    "Integrate them naturally — reference only when relevant, never repeat verbatim unless asked:"
+    "[MEMORY — VERIFIED USER FACTS]\n"
+    "These are confirmed facts about this user from their own prior statements. "
+    "Treat them as ground truth. If the user's current message contradicts a stored fact, "
+    "gently remind them of what they previously said. Always prefer these facts over assumptions:"
 )
 
 app = FastAPI(title="CLS++ Memory Proxy")
@@ -181,7 +183,8 @@ _NOISE = [
     "personalization in progress", "connecting…", "try again",
     "the following facts were learned", "use this as background context",
     "the user has shared the following", "to monitor your current usage",
-    "[cls++ memory]", "[schema:",
+    "[cls++ memory]", "[schema:", "[memory — verified",
+    "treat them as ground truth", "verified user facts",
     "how can i help you", "is there anything else", "let me know if",
     "do you have any", "feel free to", "i'd be happy to",
     "i don't have details", "i don't have specific", "i don't have information",
