@@ -724,11 +724,28 @@ async def ws_memories(ws: WebSocket, uid: str):
     except WebSocketDisconnect:
         if ws in _ws_clients[uid]: _ws_clients[uid].remove(ws)
 
-# ── Install API — in-browser installer ────────────────────────────────────
-
+# ── Extension download ────────────────────────────────────────────────────
 import shutil
 import subprocess as _sp
 from pathlib import Path
+import zipfile as _zipfile, io as _io
+
+@app.get("/extension/download")
+async def extension_download():
+    """Package the Chrome extension as a zip."""
+    ext = Path(__file__).resolve().parent.parent / "extension"
+    if not ext.is_dir():
+        return JSONResponse({"error": "extension_not_found"}, 404)
+    buf = _io.BytesIO()
+    with _zipfile.ZipFile(buf, "w", _zipfile.ZIP_DEFLATED) as zf:
+        for f in sorted(ext.rglob("*")):
+            if f.is_file() and "node_modules" not in f.parts and ".git" not in f.parts:
+                zf.write(f, f.relative_to(ext.parent))
+    buf.seek(0)
+    return Response(content=buf.read(), media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="clsplusplus-extension.zip"'})
+
+# ── Install API — in-browser installer ────────────────────────────────────
 
 _INSTALL_DIR = Path.home() / ".clspp"
 _SRC_DIR = Path(__file__).parent          # prototype/
