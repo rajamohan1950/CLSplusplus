@@ -230,56 +230,75 @@
     return null;
   }
 
+  // ── Quick URL check (synchronous, no async overhead) ────────────────────
+  function _isTargetUrl(rawUrl) {
+    const u = typeof rawUrl === 'string' ? rawUrl : (rawUrl instanceof Request ? rawUrl.url : '');
+    if (site === 'chatgpt' || site === 'e2e') return u.includes('/backend-api/conversation') || u.includes('/backend-api/f/conversation');
+    if (site === 'claude') return u.includes('/api/') && (u.includes('/chat_conversations/') || u.includes('/completion'));
+    if (site === 'gemini') return u.includes('batchexecute') || u.includes('BardFrontendService');
+    if (site === 'e2e') return u.includes('/chat_conversations/') || u.includes('/backend-api/');
+    return false;
+  }
+
   // ── Main fetch hook ──────────────────────────────────────────────────────
-  window.fetch = async function (...args) {
-    const { url: urlStr, method, body } = await normalizeFetchArgs(args);
-
-    if (method === 'POST' && body) {
-      try {
-        // ChatGPT (+ local E2E uses same payload shape)
-        if ((site === 'chatgpt' || site === 'e2e') && isChatGPTConversation(urlStr)) {
-          const ex = extractChatGPTQuery(body);
-          if (ex) {
-            const ctx = await getContext(ex.query);
-            if (ctx) {
-              ex.parts[0] = ctx + '\n\n' + ex.query;
-              args = rebuildFetchArgs(args, JSON.stringify(ex.parsed));
-              console.log('[CLS++] context injected into ChatGPT');
-            }
-          }
-        }
-
-        // Claude (+ local E2E)
-        if ((site === 'claude' || site === 'e2e') && isClaudeConversation(urlStr)) {
-          const ex = extractClaudeQuery(body);
-          if (ex) {
-            const ctx = await getContext(ex.query);
-            if (ctx) {
-              const newBody = injectClaudeContext(ex, ctx);
-              args = rebuildFetchArgs(args, newBody);
-              console.log('[CLS++] context injected into Claude (' + ex.field + ')');
-            }
-          }
-        }
-
-        // Gemini
-        if (site === 'gemini' && isGeminiConversation(urlStr)) {
-          const ex = extractGeminiQuery(body);
-          if (ex) {
-            const ctx = await getContext(ex.query);
-            if (ctx) {
-              const newBody = ex.body.replace(ex.query, ctx + '\n\n' + ex.query);
-              args = rebuildFetchArgs(args, newBody);
-              console.log('[CLS++] context injected into Gemini');
-            }
-          }
-        }
-      } catch (e) {
-        console.log('[CLS++] intercept error:', e);
-      }
+  window.fetch = function (...args) {
+    // Fast path: if URL doesn't match our targets, pass through immediately
+    // This avoids async wrapping for ads, analytics, images, etc.
+    if (!_isTargetUrl(args[0])) {
+      return _origFetch.apply(this, args);
     }
 
-    return _origFetch.apply(this, args);
+    // Slow path: only for LLM API calls — async intercept
+    return (async () => {
+      const { url: urlStr, method, body } = await normalizeFetchArgs(args);
+
+      if (method === 'POST' && body) {
+        try {
+          // ChatGPT (+ local E2E uses same payload shape)
+          if ((site === 'chatgpt' || site === 'e2e') && isChatGPTConversation(urlStr)) {
+            const ex = extractChatGPTQuery(body);
+            if (ex) {
+              const ctx = await getContext(ex.query);
+              if (ctx) {
+                ex.parts[0] = ctx + '\n\n' + ex.query;
+                args = rebuildFetchArgs(args, JSON.stringify(ex.parsed));
+                console.log('[CLS++] context injected into ChatGPT');
+              }
+            }
+          }
+
+          // Claude (+ local E2E)
+          if ((site === 'claude' || site === 'e2e') && isClaudeConversation(urlStr)) {
+            const ex = extractClaudeQuery(body);
+            if (ex) {
+              const ctx = await getContext(ex.query);
+              if (ctx) {
+                const newBody = injectClaudeContext(ex, ctx);
+                args = rebuildFetchArgs(args, newBody);
+                console.log('[CLS++] context injected into Claude (' + ex.field + ')');
+              }
+            }
+          }
+
+          // Gemini
+          if (site === 'gemini' && isGeminiConversation(urlStr)) {
+            const ex = extractGeminiQuery(body);
+            if (ex) {
+              const ctx = await getContext(ex.query);
+              if (ctx) {
+                const newBody = ex.body.replace(ex.query, ctx + '\n\n' + ex.query);
+                args = rebuildFetchArgs(args, newBody);
+                console.log('[CLS++] context injected into Gemini');
+              }
+            }
+          }
+        } catch (e) {
+          console.log('[CLS++] intercept error:', e);
+        }
+      }
+
+      return _origFetch.apply(this, args);
+    })();
   };
 
   console.log('[CLS++] fetch interceptor active on', site);
