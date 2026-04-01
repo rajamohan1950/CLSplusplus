@@ -738,10 +738,24 @@ def _capture_loop():
 
 class CLSPPMenuBar(rumps.App):
     def __init__(self):
+        # Use the brain icon in the macOS menu bar
+        # Prefer the menubar-sized icon (22pt), fall back to full size
+        _icon_path = os.path.join(os.path.dirname(__file__), "brain-menubar.png")
+        if not os.path.exists(_icon_path):
+            _icon_path = os.path.join(os.path.dirname(__file__), "brain-icon.png")
+        if not os.path.exists(_icon_path):
+            # Fallback: check in extension/icons
+            _alt = os.path.join(os.path.dirname(__file__), "..", "extension", "icons", "icon128.png")
+            if os.path.exists(_alt):
+                _icon_path = _alt
+            else:
+                _icon_path = None
         super().__init__(
             name="CLS++",
-            title="🧠",
+            title=None if _icon_path else "🧠",
+            icon=_icon_path,
             quit_button=None,
+            template=True,  # Makes icon adapt to dark/light menu bar
         )
         self._status_item   = rumps.MenuItem("● Memory Active",        callback=None)
         self._toggle_item   = rumps.MenuItem("Auto-prepend: ON  ✓",    callback=self.toggle)
