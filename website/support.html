@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CLS++ Support</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#06060c;color:#f0f0f8;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif;
+      -webkit-font-smoothing:antialiased;padding:40px 20px;line-height:1.7}
+    .container{max-width:720px;margin:0 auto}
+    h1{font-size:28px;font-weight:800;margin-bottom:8px;color:#7c6ef0}
+    .sub{font-size:14px;color:rgba(240,240,248,0.5);margin-bottom:32px}
+    h2{font-size:18px;font-weight:700;margin:28px 0 12px;color:#5de0c5}
+    p,li{font-size:14px;color:rgba(240,240,248,0.8);margin-bottom:12px}
+    ul{padding-left:24px;margin-bottom:16px}
+    a{color:#7c6ef0}
+    code{background:rgba(124,110,240,0.1);padding:2px 6px;border-radius:4px;font-size:13px}
+    .contact{background:rgba(93,224,197,0.08);border:1px solid rgba(93,224,197,0.2);
+      border-radius:12px;padding:20px;margin:20px 0}
+    .footer{margin-top:40px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08);
+      font-size:12px;color:rgba(240,240,248,0.3)}
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>CLS++ Support</h1>
+  <div class="sub">Get help with CLS++ Memory extension and server</div>
+
+  <div class="contact">
+    <strong>Email:</strong> <a href="mailto:rajamohan1950@gmail.com">rajamohan1950@gmail.com</a><br/>
+    <strong>GitHub:</strong> <a href="https://github.com/rajamohan1950/CLSplusplus/issues">Report an issue</a>
+  </div>
+
+  <h2>Frequently Asked Questions</h2>
+
+  <h2>How do I install CLS++?</h2>
+  <p>Load the extension in Chrome via <code>chrome://extensions</code> → Developer mode → Load unpacked. Point it to the extension folder. Then start the local server and you're ready to go.</p>
+
+  <h2>The extension popup says "Server unreachable"</h2>
+  <p>Make sure the CLS++ server is running on port 8080. Check:</p>
+  <ul>
+    <li>Open <code>http://localhost:8080/health</code> in your browser — it should return <code>{"status":"ok"}</code></li>
+    <li>If not running, start it: <code>cd prototype && PYTHONPATH=../src python3 -m uvicorn server:app --host 0.0.0.0 --port 8080</code></li>
+    <li>Make sure "Local mode" is ON in the extension popup</li>
+  </ul>
+
+  <h2>Memories are not being captured</h2>
+  <ul>
+    <li>Check that "Auto-inject" is ON in the extension popup</li>
+    <li>Check that "Local mode" is ON if running locally</li>
+    <li>Open the Chrome DevTools console on the AI site — you should see <code>[CLS++] fetch interceptor active on chatgpt/claude/gemini</code></li>
+    <li>Check <code>http://localhost:8080/ui/memory.html</code> to see if memories appear</li>
+  </ul>
+
+  <h2>How do I delete all my memories?</h2>
+  <p>Delete the file <code>~/.clspp/memories.json</code> and restart the server. Or use the API: <code>curl -X DELETE http://localhost:8080/api/memories/YOUR_UID</code></p>
+
+  <h2>Which AI sites are supported?</h2>
+  <ul>
+    <li><strong>ChatGPT</strong> — chatgpt.com and chat.openai.com</li>
+    <li><strong>Claude</strong> — claude.ai</li>
+    <li><strong>Gemini</strong> — gemini.google.com</li>
+  </ul>
+
+  <h2>Is my data private?</h2>
+  <p>In local mode (default), all data stays on your machine. Nothing is sent to any external server. See our <a href="privacy.html">Privacy Policy</a> for details.</p>
+
+  <h2>The brain icon doesn't appear in the menu bar</h2>
+  <p>The menu bar daemon needs Accessibility permission. Go to <strong>System Settings → Privacy & Security → Accessibility</strong> and enable Python or Terminal.</p>
+
+  <div class="footer">
+    AlphaForge AI Labs &middot; CLS++ Memory &middot; <a href="index.html">Back to CLS++</a>
+  </div>
+</div>
+</body>
+</html>

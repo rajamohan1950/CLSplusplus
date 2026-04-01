@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CLS++ Privacy Policy</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#06060c;color:#f0f0f8;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif;
+      -webkit-font-smoothing:antialiased;padding:40px 20px;line-height:1.7}
+    .container{max-width:720px;margin:0 auto}
+    h1{font-size:28px;font-weight:800;margin-bottom:8px;color:#7c6ef0}
+    .updated{font-size:12px;color:rgba(240,240,248,0.4);margin-bottom:32px}
+    h2{font-size:18px;font-weight:700;margin:28px 0 12px;color:#5de0c5}
+    p,li{font-size:14px;color:rgba(240,240,248,0.8);margin-bottom:12px}
+    ul{padding-left:24px;margin-bottom:16px}
+    a{color:#7c6ef0}
+    .footer{margin-top:40px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08);
+      font-size:12px;color:rgba(240,240,248,0.3)}
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>Privacy Policy</h1>
+  <div class="updated">Last updated: April 1, 2026</div>
+
+  <p>CLS++ Memory ("CLS++", "we", "our") is a browser extension and local memory server that provides cross-model memory for AI chatbots. This privacy policy explains how we handle your data.</p>
+
+  <h2>Data We Collect</h2>
+  <p>CLS++ stores the following data to provide its memory functionality:</p>
+  <ul>
+    <li><strong>Conversation snippets</strong> — Short facts extracted from your messages to ChatGPT, Claude, and Gemini (e.g., "My name is Alex", "I work at Acme Corp").</li>
+    <li><strong>User preferences</strong> — Settings like auto-inject toggle and local mode toggle, stored in Chrome's local storage.</li>
+    <li><strong>A random user identifier</strong> — A randomly generated ID stored locally to associate your memories. This is not linked to your real identity.</li>
+  </ul>
+
+  <h2>Where Data Is Stored</h2>
+  <ul>
+    <li><strong>Local mode (default)</strong> — All data stays on your computer at <code>~/.clspp/memories.json</code>. Nothing is sent to any external server.</li>
+    <li><strong>Cloud mode</strong> — If you enable cloud mode, data is sent to our server hosted on Render (clsplusplus.onrender.com) over HTTPS. Data is stored in server memory and is not persisted to a database.</li>
+  </ul>
+
+  <h2>Data We Do NOT Collect</h2>
+  <ul>
+    <li>We do not collect your name, email, or any personally identifiable information.</li>
+    <li>We do not track your browsing history.</li>
+    <li>We do not sell or share your data with third parties.</li>
+    <li>We do not use analytics or tracking scripts in the extension.</li>
+    <li>We do not store your full conversation history — only short factual snippets.</li>
+  </ul>
+
+  <h2>How Data Is Used</h2>
+  <p>Your stored memories are used solely to provide context to AI chatbots when you send messages. When you type a message on ChatGPT, Claude, or Gemini, the extension prepends relevant memories so the AI can respond with awareness of your prior conversations.</p>
+
+  <h2>Data Sharing</h2>
+  <p>We do not share your data with any third parties. Your memories are only sent to the AI chatbot you are actively using (ChatGPT, Claude, or Gemini) as part of your message, so the AI can provide personalized responses.</p>
+
+  <h2>Data Deletion</h2>
+  <p>You can delete all your memories at any time:</p>
+  <ul>
+    <li><strong>Local mode:</strong> Delete the file <code>~/.clspp/memories.json</code></li>
+    <li><strong>Via the API:</strong> Send a DELETE request to <code>/api/memories/{your-uid}</code></li>
+    <li><strong>Uninstall:</strong> Removing the extension stops all data collection immediately.</li>
+  </ul>
+
+  <h2>Permissions</h2>
+  <p>The extension requests these Chrome permissions:</p>
+  <ul>
+    <li><strong>storage</strong> — To save your preferences (auto-inject, local mode toggle).</li>
+    <li><strong>Host permissions for AI sites</strong> — To inject memory context into your messages on ChatGPT, Claude, and Gemini.</li>
+    <li><strong>Host permissions for localhost</strong> — To communicate with the local memory server.</li>
+  </ul>
+
+  <h2>Children's Privacy</h2>
+  <p>CLS++ is not directed at children under 13. We do not knowingly collect data from children.</p>
+
+  <h2>Changes to This Policy</h2>
+  <p>We may update this policy from time to time. Changes will be posted on this page with an updated date.</p>
+
+  <h2>Contact</h2>
+  <p>For questions about this privacy policy, contact us at <a href="mailto:rajamohan1950@gmail.com">rajamohan1950@gmail.com</a>.</p>
+
+  <div class="footer">
+    AlphaForge AI Labs &middot; CLS++ Memory &middot; <a href="index.html">Back to CLS++</a>
+  </div>
+</div>
+</body>
+</html>
