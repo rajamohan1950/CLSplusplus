@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CLS++ Memory",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Every AI remembers you. Silent cross-model memory for ChatGPT, Claude, Gemini and more.",
 
   "permissions": ["storage"],
@@ -82,8 +82,19 @@
     }
   ],
 
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+
   "action": {
     "default_popup": "popup.html",
-    "default_title": "CLS++ Memory"
+    "default_title": "CLS++ Memory",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   }
 }

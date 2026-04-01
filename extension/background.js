@@ -87,9 +87,13 @@ setInterval(updateBadge, 10000);
 // ── On install: open welcome page ──────────────────────────────────────────
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
-    // Cloud serves at root; local prototype serves under /ui/
-    const path = API.includes('localhost') ? '/ui/install.html' : '/install.html';
-    chrome.tabs.create({ url: `${API}${path}` });
+    // Check if local server is running first, prefer local
+    fetch('http://localhost:8080/health').then(r => {
+      if (r.ok) chrome.tabs.create({ url: 'http://localhost:8080/ui/memory.html' });
+      else chrome.tabs.create({ url: 'https://clsplusplus.onrender.com/install.html' });
+    }).catch(() => {
+      chrome.tabs.create({ url: 'https://clsplusplus.onrender.com/install.html' });
+    });
   }
 });
 
