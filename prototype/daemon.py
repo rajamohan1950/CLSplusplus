@@ -752,7 +752,7 @@ class CLSPPMenuBar(rumps.App):
                 _icon_path = None
         super().__init__(
             name="CLS++",
-            title=None if _icon_path else "🧠",
+            title="",
             icon=_icon_path,
             quit_button=None,
             template=True,  # Makes icon adapt to dark/light menu bar
