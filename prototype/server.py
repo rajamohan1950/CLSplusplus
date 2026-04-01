@@ -336,12 +336,12 @@ async def demo_chat(uid: str, request: Request):
     # For larger sets, use search-based retrieval.
     all_items = [i for i in (engine._items.get(uid, []))
                  if not i.fact.raw_text.strip().startswith("[Schema:")]
-    if len(all_items) <= 15:
+    if len(all_items) <= 100:
         mems = [(1.0, i) for i in all_items]
     else:
         mems = engine.search(message, uid, limit=10)
         mems = [(s, i) for s, i in mems if not i.fact.raw_text.strip().startswith("[Schema:")]
-    mems = mems[:10]
+    mems = mems[:20]  # LLMs handle 20 facts easily in system prompt
     _log_context(uid, model, message, mems)
     await _store(uid, message, model, "user")
 
@@ -518,7 +518,7 @@ async def get_context(request: Request):
         all_items.extend([(1.0, i) for i in engine._items.get(ns, [])
                           if not i.fact.raw_text.strip().startswith("[Schema:")])
 
-    if len(all_items) <= 20:
+    if len(all_items) <= 100:
         mems = all_items
     else:
         mems = []
@@ -527,7 +527,7 @@ async def get_context(request: Request):
         mems = [(s, item) for s, item in mems
                 if s > 0.001 and not item.fact.raw_text.strip().startswith("[Schema:")]
         mems.sort(key=lambda x: x[0], reverse=True)
-    mems = mems[:8]
+    mems = mems[:15]  # Up to 15 facts in context injection
     if not mems:
         return {"context": "", "count": 0}
 
