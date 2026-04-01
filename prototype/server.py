@@ -449,9 +449,15 @@ async def get_memories(uid: str, model: str = "", category: str = "",
     models = list({e["source_model"] for e in entries})
     cats   = list({e["category"]     for e in entries})
     all_labels = sorted({l for e in entries for l in e.get("labels", [])})
+    # Visible layer counts (user facts only)
     layer_counts = {"L0": 0, "L1": 0, "L2": 0, "L3": 0}
     for e in entries:
         layer_counts[e.get("layer", "L1")] += 1
+    # Engine-level counts (includes schemas — shows true thermodynamic state)
+    engine_layers = {"L0": 0, "L1": 0, "L2": 0, "L3": 0}
+    for item in items:
+        p = _item_phase(item)
+        engine_layers[_phase_layer(p)] += 1
     return {
         "uid": uid,
         "count": len(entries),
@@ -459,7 +465,7 @@ async def get_memories(uid: str, model: str = "", category: str = "",
         "available_models": models,
         "available_categories": cats,
         "available_labels": all_labels,
-        "layers": layer_counts,
+        "layers": engine_layers,  # Show engine truth, not just visible entries
     }
 
 @app.patch("/api/memories/{uid}/{memory_id}/labels")
@@ -673,9 +679,12 @@ async def get_memories_local(model: str = "", category: str = "", label: str = "
             all_labels_set.update(r.get("available_labels", []))
         models = list({e["source_model"] for e in all_entries})
         cats = list({e["category"] for e in all_entries})
-        layer_counts = {"L0": 0, "L1": 0, "L2": 0, "L3": 0}
-        for e in all_entries:
-            layer_counts[e.get("layer", "L1")] += 1
+        # Engine-level layer counts (includes schemas for true thermodynamic state)
+        engine_layers = {"L0": 0, "L1": 0, "L2": 0, "L3": 0}
+        for ns_uid in list(engine._items.keys()):
+            for item in engine._items.get(ns_uid, []):
+                p = _item_phase(item)
+                engine_layers[_phase_layer(p)] += 1
         return {
             "uid": "all",
             "count": len(all_entries),
@@ -683,7 +692,7 @@ async def get_memories_local(model: str = "", category: str = "", label: str = "
             "available_models": models,
             "available_categories": cats,
             "available_labels": sorted(all_labels_set),
-            "layers": layer_counts,
+            "layers": engine_layers,
         }
     return result
 
