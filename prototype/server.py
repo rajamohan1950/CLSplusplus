@@ -166,8 +166,28 @@ def _item_phase(item) -> str:
 def _phase_layer(phase: str) -> str:
     return {"gas": "L0", "liquid": "L1", "solid": "L2", "glass": "L3"}.get(phase, "L1")
 
+_NOISE = [
+    "personalization in progress", "connecting…", "try again",
+    "the following facts were learned", "use this as background context",
+    "the user has shared the following", "to monitor your current usage",
+    "[cls++ memory]", "[schema:",
+]
+
+def _normalize_model(m: str) -> str:
+    """Collapse model variants to display names: gemini-2.0-flash → gemini."""
+    ml = m.lower()
+    if "gemini" in ml: return "gemini"
+    if "gpt" in ml or "chatgpt" in ml or "openai" in ml: return "chatgpt"
+    if "claude" in ml or "anthropic" in ml: return "claude"
+    if "copilot" in ml: return "copilot"
+    return m
+
 async def _store(uid: str, text: str, model: str, source: str = "user"):
-    if len(text.strip()) < 6: return None
+    model = _normalize_model(model)
+    t = text.strip()
+    if len(t) < 6: return None
+    tl = t.lower()
+    if any(n in tl for n in _NOISE): return None
     item = engine.store(text, uid)
     if item is None: return None
     cat = classify(text)
@@ -358,7 +378,7 @@ async def get_memories(uid: str, model: str = "", category: str = "",
             "relation": item.fact.relation,
             "value": item.fact.value,
             "category": log_entry.get("category", classify(item.fact.raw_text)),
-            "source_model": log_entry.get("source_model", "unknown"),
+            "source_model": _normalize_model(log_entry.get("source_model", "unknown")),
             "source": log_entry.get("source", "user"),
             "strength": round(item.consolidation_strength, 3),
             "phase": phase,
@@ -455,14 +475,14 @@ async def get_context(request: Request):
         return {"context": "", "count": 0}
 
     # Search across ALL namespaces — multiple browser profiles share one machine
-    MIN_RELEVANCE = 0.15  # Engine scores are well-calibrated; this just drops noise floor
     mems = []
     for ns in list(engine._items.keys()):
         mems.extend(engine.search(query, ns, limit=5))
 
-    # Filter by engine's relevance score, sort descending
-    mems = [(s, item) for s, item in mems if s >= MIN_RELEVANCE]
+    # Sort by relevance score descending, filter out zero-score noise
+    mems = [(s, item) for s, item in mems if s > 0.001]
     mems.sort(key=lambda x: x[0], reverse=True)
+    mems = mems[:5]  # Top 5 across all namespaces
     if not mems:
         return {"context": "", "count": 0}
 
