@@ -183,7 +183,7 @@
   <!-- ── LEFT SIDEBAR ──────────────────────────────────── -->
   <aside class="sidebar">
     <div class="sidebar-head">
-      <div class="logo"><div class="logo-dot"></div>CLS++ Memory</div>
+      <div class="logo"><img src="brain-icon.svg" width="20" height="20" alt="brain" style="filter:drop-shadow(0 0 4px rgba(93,224,197,0.5))"/> CLS++ Memory</div>
       <div class="total-count" id="total-count">0</div>
       <div class="total-label">memories stored</div>
     </div>
@@ -273,7 +273,7 @@
     </div>
     <div class="mem-grid" id="mem-grid">
       <div class="empty">
-        <div class="empty-icon">🧠</div>
+        <div class="empty-icon"><img src="brain-icon.svg" width="48" height="48" alt="brain"/></div>
         <div style="font-size:15px;font-weight:600">Waiting for conversations…</div>
         <div class="empty-hint">
           Open ChatGPT, Claude, or Gemini in another tab and start chatting.
@@ -367,7 +367,7 @@ function renderMemories() {
 
   if (!mems.length) {
     grid.innerHTML = `<div class="empty">
-      <div class="empty-icon">🧠</div>
+      <div class="empty-icon"><img src="brain-icon.svg" width="48" height="48" alt="brain"/></div>
       <div style="font-size:15px;font-weight:600">Waiting for conversations…</div>
       <div class="empty-hint">Open ChatGPT, Claude, or Gemini in another tab and start chatting.
         Memories will appear here automatically.</div>

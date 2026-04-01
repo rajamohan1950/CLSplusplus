@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <radialGradient id="g1" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#c084fc"/>
+      <stop offset="50%" stop-color="#7c6ef0"/>
+      <stop offset="100%" stop-color="#4a3da8"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="40%" r="50%">
+      <stop offset="0%" stop-color="#5de0c5" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#5de0c5" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <!-- Background circle -->
+  <circle cx="64" cy="64" r="60" fill="url(#g1)"/>
+  <circle cx="64" cy="64" r="60" fill="url(#glow)"/>
+  <!-- Brain shape - simplified anatomical -->
+  <g transform="translate(64,66) scale(0.75)" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Left hemisphere -->
+    <path d="M-4,-35 C-20,-35 -35,-25 -38,-10 C-42,5 -35,18 -28,25 C-22,32 -15,38 -4,38" fill="rgba(255,255,255,0.12)"/>
+    <!-- Right hemisphere -->
+    <path d="M4,-35 C20,-35 35,-25 38,-10 C42,5 35,18 28,25 C22,32 15,38 4,38" fill="rgba(255,255,255,0.12)"/>
+    <!-- Center line -->
+    <line x1="0" y1="-35" x2="0" y2="38" stroke-width="2.5"/>
+    <!-- Left folds -->
+    <path d="M-6,-20 C-18,-18 -28,-10 -30,-2"/>
+    <path d="M-6,-5 C-16,-3 -26,5 -28,14"/>
+    <path d="M-6,12 C-14,15 -22,22 -20,28"/>
+    <!-- Right folds -->
+    <path d="M6,-20 C18,-18 28,-10 30,-2"/>
+    <path d="M6,-5 C16,-3 26,5 28,14"/>
+    <path d="M6,12 C14,15 22,22 20,28"/>
+    <!-- Stem -->
+    <path d="M-3,38 L-3,44 Q0,48 3,44 L3,38" stroke-width="3" fill="rgba(255,255,255,0.15)"/>
+  </g>
+</svg>
