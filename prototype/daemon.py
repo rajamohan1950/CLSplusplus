@@ -755,7 +755,7 @@ class CLSPPMenuBar(rumps.App):
             title="",
             icon=_icon_path,
             quit_button=None,
-            template=True,  # Makes icon adapt to dark/light menu bar
+            template=False,  # Keep natural brain colors in menu bar
         )
         self._status_item   = rumps.MenuItem("● Memory Active",        callback=None)
         self._toggle_item   = rumps.MenuItem("Auto-prepend: ON  ✓",    callback=self.toggle)
