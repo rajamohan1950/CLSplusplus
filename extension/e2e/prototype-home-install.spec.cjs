@@ -54,7 +54,8 @@ test.describe('prototype home (new user)', () => {
     expect(memJson.count).toBeGreaterThan(0);
 
     await page.goto(`${BASE}/ui/memory.html`, { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.mem-text').first()).toContainText('E2E install flow', { timeout: 20_000 });
+    // Memory grid may contain data from prior runs; look for our text anywhere in the grid
+    await expect(page.locator('#mem-grid')).toContainText('E2E install flow', { timeout: 20_000 });
 
     await context.close();
   });

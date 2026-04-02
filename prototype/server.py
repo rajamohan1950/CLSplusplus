@@ -1009,7 +1009,7 @@ async def mock_chatgpt_echo(request: Request):
         content = m.get("content", {})
         parts = content.get("parts", []) if isinstance(content, dict) else []
         for p in parts:
-            if isinstance(p, str) and "previous conversations" in p.lower():
+            if isinstance(p, str) and "verified user facts" in p.lower():
                 injection_ok = True
                 break
     return {"injection_ok": injection_ok, "messages_count": len(messages)}
@@ -1020,7 +1020,7 @@ async def mock_claude_echo(conversation_id: str, request: Request):
     """Mock Claude API — checks that CLS++ injection is present."""
     body = await request.json()
     prompt = body.get("prompt", "")
-    injection_ok = "previous conversations" in prompt.lower()
+    injection_ok = "verified user facts" in prompt.lower()
     return {"injection_ok": injection_ok, "conversation_id": conversation_id}
 
 

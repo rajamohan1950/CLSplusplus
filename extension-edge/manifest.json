@@ -1,0 +1,100 @@
+{
+  "manifest_version": 3,
+  "name": "CLS++ Memory",
+  "version": "2.1.0",
+  "description": "Every AI remembers you. Silent cross-model memory for ChatGPT, Claude, Gemini and more.",
+
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://clsplusplus.onrender.com/*",
+    "https://chat.openai.com/*",
+    "https://chatgpt.com/*",
+    "https://claude.ai/*",
+    "https://gemini.google.com/*",
+    "https://copilot.microsoft.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chat.openai.com/*",
+        "https://chatgpt.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*"
+      ],
+      "js": ["intercept.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*"],
+      "js": ["content_common.js", "content_chatgpt.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["content_common.js", "content_claude.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["content_common.js", "content_gemini.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "http://localhost:8080/ui/extension-e2e.html",
+        "http://127.0.0.1:8080/ui/extension-e2e.html",
+        "http://localhost:9876/ui/extension-e2e.html",
+        "http://127.0.0.1:9876/ui/extension-e2e.html"
+      ],
+      "js": ["intercept.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "http://localhost:8080/ui/extension-e2e.html",
+        "http://127.0.0.1:8080/ui/extension-e2e.html",
+        "http://localhost:9876/ui/extension-e2e.html",
+        "http://127.0.0.1:9876/ui/extension-e2e.html"
+      ],
+      "js": ["content_common.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://clsplusplus.onrender.com/*", "http://localhost/*", "http://127.0.0.1/*"],
+      "js": ["content_marker.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "CLS++ Memory",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  }
+}

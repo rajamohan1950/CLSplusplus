@@ -300,7 +300,7 @@
 </div>
 
 <script>
-const API = 'http://localhost:8080';
+const API = localStorage.getItem('clspp_api_base') || `${location.protocol}//${location.host}`;
 
 let allMemories = [];
 let activeModel = '';

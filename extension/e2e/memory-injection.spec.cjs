@@ -25,20 +25,6 @@ async function clearAndStore(uid, text) {
   if (!r.ok) throw new Error(`seed store failed: ${r.status} ${await r.text()}`);
 }
 
-async function getExtensionUid(page) {
-  return page.evaluate(() => new Promise((resolve) => {
-    const check = () => {
-      if (window.__clspp_uid_value) return resolve(window.__clspp_uid_value);
-      setTimeout(check, 200);
-    };
-    window.addEventListener('__clspp_uid', (e) => {
-      window.__clspp_uid_value = e.detail;
-      resolve(e.detail);
-    });
-    check();
-  }));
-}
-
 test('memory injection: ChatGPT + Claude shaped requests', async () => {
   const userDataDir = path.join(os.tmpdir(), `clspp-ext-e2e-${Date.now()}`);
   const context = await chromium.launchPersistentContext(userDataDir, {
@@ -48,18 +34,43 @@ test('memory injection: ChatGPT + Claude shaped requests', async () => {
   });
 
   try {
-    const page = await context.newPage();
+    // Wait for extension's onInstalled handler to settle
+    await new Promise(r => setTimeout(r, 5000));
+
+    // Use first existing page
+    let page = context.pages()[0];
+    if (!page) page = await context.newPage();
+
+    // Register UID capture BEFORE navigation so we don't miss the event.
+    // The content script dispatches __clspp_uid on window at document_idle.
+    await page.addInitScript(() => {
+      window.__clspp_uid_value = null;
+      window.addEventListener('__clspp_uid', (e) => {
+        window.__clspp_uid_value = e.detail;
+      });
+    });
+
+    // Navigate to the E2E harness
     await page.goto(`${BASE}/ui/extension-e2e.html`, { waitUntil: 'load' });
-    await page.waitForSelector('#btn-chatgpt', { state: 'attached', timeout: 20_000 });
+    await page.waitForSelector('#btn-chatgpt', { state: 'attached', timeout: 10_000 });
 
-    const uid = await getExtensionUid(page);
-    if (!uid) throw new Error('extension did not provide UID');
+    // Wait for content script UID (with retry via reload)
+    let uid = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await new Promise(r => setTimeout(r, 2000));
+      uid = await page.evaluate(() => window.__clspp_uid_value);
+      if (uid) break;
+      if (attempt < 3) await page.reload({ waitUntil: 'load' });
+    }
+    if (!uid) throw new Error('extension did not provide UID after 4 attempts');
 
+    // --- ChatGPT-shaped injection test ---
     await clearAndStore(uid, 'My secret codename is BLUEBADGER');
     await page.locator('#btn-chatgpt').click({ force: true });
     await expect(page.locator('#result')).toContainText('"injection_ok": true', { timeout: 30_000 });
     await expect(page.locator('#status')).toContainText('PASS');
 
+    // --- Claude-shaped injection test ---
     await clearAndStore(uid, 'I live in Springfield');
     await page.locator('#btn-claude').click({ force: true });
     await expect(page.locator('#result')).toContainText('"injection_ok": true', { timeout: 30_000 });
