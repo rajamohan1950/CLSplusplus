@@ -378,6 +378,164 @@
     </div>
   </footer>
 
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- DEMO OVERLAY — auto-plays on first visit, shows product value   -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <div id="demo-overlay" style="position:fixed;inset:0;z-index:9999;background:rgba(6,6,12,0.97);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);">
+    <div style="width:900px;max-width:92vw;position:relative;">
+
+      <!-- Skip button -->
+      <button onclick="dismissDemo()" style="position:absolute;top:-40px;right:0;background:none;border:none;color:#8b8b9a;font-size:0.9rem;cursor:pointer;font-family:inherit;">Skip intro →</button>
+
+      <!-- Slides -->
+      <div class="ds" id="ds0">
+        <div style="text-align:center;margin-bottom:24px;">
+          <div style="font-size:3rem;font-weight:800;line-height:1.1;">Every AI <span style="background:linear-gradient(135deg,#818cf8,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">forgets you.</span></div>
+          <p style="color:#8b8b9a;font-size:1.1rem;margin-top:12px;">Tell ChatGPT your name. Switch to Claude. It has no idea.</p>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:20px;">
+            <div style="font-size:0.7rem;text-transform:uppercase;color:#19c37d;margin-bottom:10px;">GPT-4</div>
+            <div style="background:#6366f1;color:#fff;padding:8px 12px;border-radius:8px;font-size:0.85rem;margin:6px 0;max-width:85%;margin-left:auto;text-align:right;">I'm Raj, a Python dev at AlphaForge</div>
+            <div style="background:#1a1a2e;padding:8px 12px;border-radius:8px;font-size:0.85rem;margin:6px 0;max-width:85%;">Nice to meet you, Raj! How can I help?</div>
+          </div>
+          <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:20px;">
+            <div style="font-size:0.7rem;text-transform:uppercase;color:#cc785c;margin-bottom:10px;">Claude</div>
+            <div style="background:#6366f1;color:#fff;padding:8px 12px;border-radius:8px;font-size:0.85rem;margin:6px 0;max-width:85%;margin-left:auto;text-align:right;">What's my name?</div>
+            <div style="background:#1a1a2e;padding:8px 12px;border-radius:8px;font-size:0.85rem;margin:6px 0;max-width:85%;color:#ef4444;">I don't have any information about you.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ds" id="ds1" style="display:none;">
+        <div style="font-size:2rem;font-weight:700;margin-bottom:8px;">Fix it in <span style="color:#6366f1;">one line.</span></div>
+        <p style="color:#8b8b9a;margin-bottom:16px;">No SDK. No install. Just change the base URL.</p>
+        <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:24px;font-family:'JetBrains Mono',monospace;font-size:0.82rem;line-height:2;">
+          <span style="color:#8b8b9a;"># Before:</span><br>
+          <span style="color:#ef4444;text-decoration:line-through;opacity:0.6;">client = OpenAI()</span><br><br>
+          <span style="color:#8b8b9a;"># After:</span><br>
+          <span style="color:#22c55e;font-weight:500;">client = OpenAI(base_url="https://your-cls-server/v1")</span><br><br>
+          <span style="color:#8b8b9a;"># That's it. Every user remembered forever.</span>
+        </div>
+        <p style="color:#8b8b9a;text-align:center;margin-top:12px;font-size:0.85rem;">Works with OpenAI, Anthropic, LangChain, CrewAI — anything with base_url.</p>
+      </div>
+
+      <div class="ds" id="ds2" style="display:none;">
+        <div style="font-size:2rem;font-weight:700;margin-bottom:12px;">Memory <span style="color:#6366f1;">crosses models.</span></div>
+        <div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:10px;padding:14px;margin:12px 0;font-size:0.82rem;">
+          <div style="font-size:0.65rem;text-transform:uppercase;color:#22c55e;font-weight:600;margin-bottom:4px;">CLS++ auto-injects into every LLM call</div>
+          Known facts: Raj Jabbala · Founder, AlphaForge · Python + FastAPI · Hyderabad · Vegetarian
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div style="background:#12121a;border:1px solid #2a2a35;border-radius:10px;padding:16px;">
+            <div style="font-size:0.65rem;text-transform:uppercase;color:#19c37d;margin-bottom:8px;">GPT-4 with memory</div>
+            <div style="background:#6366f1;color:#fff;padding:6px 10px;border-radius:6px;font-size:0.8rem;margin:4px 0;max-width:80%;margin-left:auto;text-align:right;">Suggest a tech stack</div>
+            <div style="background:#1a1a2e;padding:6px 10px;border-radius:6px;font-size:0.8rem;margin:4px 0;">Since you prefer <b>Python and FastAPI</b>, I'd recommend PostgreSQL + Redis...</div>
+          </div>
+          <div style="background:#12121a;border:1px solid #2a2a35;border-radius:10px;padding:16px;">
+            <div style="font-size:0.65rem;text-transform:uppercase;color:#cc785c;margin-bottom:8px;">Claude with same memory</div>
+            <div style="background:#6366f1;color:#fff;padding:6px 10px;border-radius:6px;font-size:0.8rem;margin:4px 0;max-width:80%;margin-left:auto;text-align:right;">Suggest dinner</div>
+            <div style="background:#1a1a2e;padding:6px 10px;border-radius:6px;font-size:0.8rem;margin:4px 0;">Hi <b>Raj</b>! Since you're <b>vegetarian in Hyderabad</b>, try Dal Biryani at Paradise...</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ds" id="ds3" style="display:none;">
+        <div style="font-size:2rem;font-weight:700;margin-bottom:8px;">The <span style="color:#6366f1;">Brain SDK.</span></div>
+        <p style="color:#8b8b9a;margin-bottom:12px;">4 methods. 0 config. Every LLM.</p>
+        <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:24px;font-family:'JetBrains Mono',monospace;font-size:0.82rem;line-height:2;">
+          from clsplusplus import Brain<br><br>
+          brain = Brain("alice")<br>
+          brain.learn("Prefers dark mode") &nbsp;<span style="color:#8b8b9a;"># Store</span><br>
+          brain.ask("What theme?") &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#8b8b9a;"># Recall</span><br>
+          brain.context("UI help") &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#8b8b9a;"># LLM prompt</span><br>
+          brain.forget("old fact") &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#8b8b9a;"># GDPR</span>
+        </div>
+      </div>
+
+      <div class="ds" id="ds4" style="display:none;">
+        <div style="text-align:center;">
+          <div style="font-size:3rem;font-weight:800;">CLS<span style="color:#6366f1;">++</span></div>
+          <p style="color:#8b8b9a;font-size:1.2rem;margin:12px 0 24px;">Switch AI Models. Never Lose Context.</p>
+          <div style="display:flex;gap:16px;justify-content:center;margin-bottom:24px;">
+            <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:14px 24px;text-align:center;"><div style="font-size:1.8rem;font-weight:700;">1</div><div style="font-size:0.7rem;color:#8b8b9a;">Line to integrate</div></div>
+            <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:14px 24px;text-align:center;"><div style="font-size:1.8rem;font-weight:700;">4</div><div style="font-size:0.7rem;color:#8b8b9a;">SDK methods</div></div>
+            <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:14px 24px;text-align:center;"><div style="font-size:1.8rem;font-weight:700;">40+</div><div style="font-size:0.7rem;color:#8b8b9a;">Admin metrics</div></div>
+            <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:14px 24px;text-align:center;"><div style="font-size:1.8rem;font-weight:700;">Free</div><div style="font-size:0.7rem;color:#8b8b9a;">1K ops/month</div></div>
+          </div>
+          <a href="integrate.html" onclick="dismissDemo()" style="display:inline-block;padding:14px 32px;background:#6366f1;color:#fff;border-radius:12px;font-size:1rem;font-weight:600;text-decoration:none;">Start Integrating →</a>
+        </div>
+      </div>
+
+      <!-- Navigation dots + progress -->
+      <div style="display:flex;justify-content:center;gap:8px;margin-top:20px;" id="demo-dots"></div>
+      <div style="position:absolute;bottom:-12px;left:0;right:0;height:3px;background:#1a1a2e;border-radius:2px;"><div id="demo-progress" style="height:100%;background:#6366f1;border-radius:2px;transition:width 0.3s;width:20%;"></div></div>
+    </div>
+  </div>
+
+  <script>
+  (function() {
+    // Don't show overlay if user already dismissed it
+    if (localStorage.getItem('cls_demo_seen')) {
+      document.getElementById('demo-overlay').style.display = 'none';
+    }
+
+    var slides = document.querySelectorAll('.ds');
+    var total = slides.length;
+    var cur = 0;
+    var timer;
+
+    // Build dots
+    var dotsEl = document.getElementById('demo-dots');
+    for (var i = 0; i < total; i++) {
+      var d = document.createElement('div');
+      d.style.cssText = 'width:8px;height:8px;border-radius:50%;cursor:pointer;background:' + (i === 0 ? '#6366f1' : '#2a2a35');
+      d.onclick = (function(idx) { return function() { goSlide(idx); }; })(i);
+      dotsEl.appendChild(d);
+    }
+
+    function goSlide(idx) {
+      slides[cur].style.display = 'none';
+      cur = idx;
+      slides[cur].style.display = 'block';
+      slides[cur].style.animation = 'none';
+      slides[cur].offsetHeight; // trigger reflow
+      slides[cur].style.animation = 'fadeIn 0.5s ease';
+      document.getElementById('demo-progress').style.width = ((cur + 1) / total * 100) + '%';
+      var dots = dotsEl.children;
+      for (var i = 0; i < dots.length; i++) dots[i].style.background = i === cur ? '#6366f1' : '#2a2a35';
+      resetTimer();
+    }
+
+    function nextSlide() {
+      if (cur < total - 1) goSlide(cur + 1);
+      else dismissDemo(); // auto-dismiss after last slide
+    }
+
+    function resetTimer() { clearInterval(timer); timer = setInterval(nextSlide, 5000); }
+
+    document.addEventListener('keydown', function(e) {
+      if (document.getElementById('demo-overlay').style.display === 'none') return;
+      if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); nextSlide(); }
+      if (e.key === 'ArrowLeft') goSlide((cur - 1 + total) % total);
+      if (e.key === 'Escape') dismissDemo();
+    });
+
+    resetTimer();
+
+    window.dismissDemo = function() {
+      document.getElementById('demo-overlay').style.display = 'none';
+      localStorage.setItem('cls_demo_seen', '1');
+      clearInterval(timer);
+    };
+
+    // Add fadeIn animation
+    var style = document.createElement('style');
+    style.textContent = '@keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}';
+    document.head.appendChild(style);
+  })();
+  </script>
+
   <script src="script.js"></script>
   <script>
     // Only use local API when explicitly requested via ?local=1
