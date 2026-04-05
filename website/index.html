@@ -17,6 +17,7 @@
       <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
       <div class="nav-links">
         <a href="/">Home</a>
+        <a href="/demo.html">Demo</a>
         <a href="/docs.html">Docs</a>
         <a href="/integrate.html">Integrate</a>
         <a href="/chat.html">Chat</a>
@@ -35,7 +36,7 @@
       <p class="hero-sub">Claude today. GPT-4 tomorrow. Gemini next week. Your preferences, corrections, and established facts follow you—because memory lives outside the model.</p>
       <div class="hero-cta">
         <a href="integrate.html" class="btn btn-large btn-primary">Start Integrating</a>
-        <a href="https://render.com/deploy?repo=https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener" class="btn btn-large btn-outline">Deploy Free on Render</a>
+        <a href="#" onclick="localStorage.removeItem('cls_demo_seen');location.reload();return false;" class="btn btn-large btn-outline">▶ Watch Demo</a>
         <a href="#tryit" class="btn btn-large btn-outline">Try It Live</a>
         <a href="#pricing" class="btn btn-large btn-outline">View Pricing</a>
       </div>
@@ -475,8 +476,8 @@
 
   <script>
   (function() {
-    // Don't show overlay if user already dismissed it
-    if (localStorage.getItem('cls_demo_seen')) {
+    // Don't show overlay if user already dismissed it (unless ?demo in URL)
+    if (localStorage.getItem('cls_demo_seen') && !location.search.includes('demo')) {
       document.getElementById('demo-overlay').style.display = 'none';
     }
 
