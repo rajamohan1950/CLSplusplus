@@ -28,6 +28,110 @@
     </div>
   </nav>
 
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- PRODUCT DEMO — always visible at top, auto-playing carousel     -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <section style="background:#06060c;padding:80px 0 40px;border-bottom:1px solid #1a1a2e;">
+    <div style="max-width:900px;margin:0 auto;padding:0 24px;position:relative;min-height:380px;">
+
+      <!-- Slide 0: Problem -->
+      <div class="vslide" id="vs0">
+        <div style="text-align:center;margin-bottom:20px;">
+          <div style="font-size:2.5rem;font-weight:800;line-height:1.1;">Every AI <span style="background:linear-gradient(135deg,#818cf8,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">forgets you.</span></div>
+          <p style="color:#8b8b9a;margin-top:8px;">Tell ChatGPT your name. Switch to Claude. It has no idea.</p>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:18px;">
+            <div style="font-size:0.7rem;text-transform:uppercase;color:#19c37d;margin-bottom:8px;">GPT-4</div>
+            <div style="background:#6366f1;color:#fff;padding:7px 11px;border-radius:8px;font-size:0.82rem;margin:5px 0;max-width:85%;margin-left:auto;text-align:right;">I'm Raj, a Python dev at AlphaForge</div>
+            <div style="background:#1a1a2e;padding:7px 11px;border-radius:8px;font-size:0.82rem;margin:5px 0;max-width:85%;">Nice to meet you, Raj! How can I help?</div>
+          </div>
+          <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:18px;">
+            <div style="font-size:0.7rem;text-transform:uppercase;color:#cc785c;margin-bottom:8px;">Claude</div>
+            <div style="background:#6366f1;color:#fff;padding:7px 11px;border-radius:8px;font-size:0.82rem;margin:5px 0;max-width:85%;margin-left:auto;text-align:right;">What's my name?</div>
+            <div style="background:#1a1a2e;padding:7px 11px;border-radius:8px;font-size:0.82rem;margin:5px 0;max-width:85%;color:#ef4444;">I don't have any information about you.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Slide 1: One Line Fix -->
+      <div class="vslide" id="vs1" style="display:none;">
+        <div style="font-size:2rem;font-weight:700;margin-bottom:6px;">Fix it in <span style="color:#6366f1;">one line.</span></div>
+        <p style="color:#8b8b9a;margin-bottom:14px;">No SDK. No install. Just change the base URL.</p>
+        <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:22px;font-family:'JetBrains Mono',monospace;font-size:0.82rem;line-height:2;">
+          <span style="color:#8b8b9a;"># Before:</span><br>
+          <span style="color:#ef4444;text-decoration:line-through;opacity:0.6;">client = OpenAI()</span><br><br>
+          <span style="color:#8b8b9a;"># After:</span><br>
+          <span style="color:#22c55e;font-weight:500;">client = OpenAI(base_url="https://your-cls-server/v1")</span><br><br>
+          <span style="color:#8b8b9a;"># That's it. Every user remembered forever.</span>
+        </div>
+      </div>
+
+      <!-- Slide 2: Cross-Model -->
+      <div class="vslide" id="vs2" style="display:none;">
+        <div style="font-size:2rem;font-weight:700;margin-bottom:10px;">Memory <span style="color:#6366f1;">crosses models.</span></div>
+        <div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:10px;padding:12px;margin-bottom:12px;font-size:0.8rem;">
+          <span style="font-size:0.65rem;text-transform:uppercase;color:#22c55e;font-weight:600;">CLS++ auto-injects</span><br>
+          Raj Jabbala · Founder, AlphaForge · Python + FastAPI · Hyderabad · Vegetarian
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div style="background:#12121a;border:1px solid #2a2a35;border-radius:10px;padding:14px;">
+            <div style="font-size:0.65rem;text-transform:uppercase;color:#19c37d;margin-bottom:6px;">GPT-4 with memory</div>
+            <div style="background:#6366f1;color:#fff;padding:5px 9px;border-radius:6px;font-size:0.78rem;margin:3px 0;max-width:75%;margin-left:auto;text-align:right;">Suggest a tech stack</div>
+            <div style="background:#1a1a2e;padding:5px 9px;border-radius:6px;font-size:0.78rem;margin:3px 0;">Since you prefer <b>Python + FastAPI</b>...</div>
+          </div>
+          <div style="background:#12121a;border:1px solid #2a2a35;border-radius:10px;padding:14px;">
+            <div style="font-size:0.65rem;text-transform:uppercase;color:#cc785c;margin-bottom:6px;">Claude with same memory</div>
+            <div style="background:#6366f1;color:#fff;padding:5px 9px;border-radius:6px;font-size:0.78rem;margin:3px 0;max-width:75%;margin-left:auto;text-align:right;">Suggest dinner</div>
+            <div style="background:#1a1a2e;padding:5px 9px;border-radius:6px;font-size:0.78rem;margin:3px 0;">Hi <b>Raj</b>! <b>Vegetarian in Hyderabad</b> — try Dal Biryani...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Slide 3: Brain SDK -->
+      <div class="vslide" id="vs3" style="display:none;">
+        <div style="font-size:2rem;font-weight:700;margin-bottom:6px;">The <span style="color:#6366f1;">Brain SDK.</span></div>
+        <p style="color:#8b8b9a;margin-bottom:12px;">4 methods. 0 config. Every LLM.</p>
+        <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:22px;font-family:'JetBrains Mono',monospace;font-size:0.82rem;line-height:2;">
+          from clsplusplus import Brain<br><br>
+          brain = Brain("alice")<br>
+          brain.learn("Prefers dark mode") &nbsp;<span style="color:#8b8b9a;"># Store</span><br>
+          brain.ask("What theme?") &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#8b8b9a;"># Recall</span><br>
+          brain.context("UI help") &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#8b8b9a;"># LLM prompt</span><br>
+          brain.forget("old fact") &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#8b8b9a;"># GDPR</span>
+        </div>
+      </div>
+
+      <!-- Slide 4: CTA -->
+      <div class="vslide" id="vs4" style="display:none;">
+        <div style="text-align:center;">
+          <div style="font-size:3rem;font-weight:800;">CLS<span style="color:#6366f1;">++</span></div>
+          <p style="color:#8b8b9a;font-size:1.15rem;margin:10px 0 20px;">Switch AI Models. Never Lose Context.</p>
+          <div style="display:flex;gap:14px;justify-content:center;margin-bottom:20px;">
+            <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:12px 22px;text-align:center;"><div style="font-size:1.6rem;font-weight:700;">1</div><div style="font-size:0.7rem;color:#8b8b9a;">Line to integrate</div></div>
+            <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:12px 22px;text-align:center;"><div style="font-size:1.6rem;font-weight:700;">4</div><div style="font-size:0.7rem;color:#8b8b9a;">SDK methods</div></div>
+            <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:12px 22px;text-align:center;"><div style="font-size:1.6rem;font-weight:700;">40+</div><div style="font-size:0.7rem;color:#8b8b9a;">Admin metrics</div></div>
+            <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:12px 22px;text-align:center;"><div style="font-size:1.6rem;font-weight:700;">Free</div><div style="font-size:0.7rem;color:#8b8b9a;">1K ops/month</div></div>
+          </div>
+          <a href="integrate.html" style="display:inline-block;padding:12px 28px;background:#6366f1;color:#fff;border-radius:12px;font-size:1rem;font-weight:600;text-decoration:none;">Start Integrating →</a>
+        </div>
+      </div>
+
+      <!-- Navigation dots -->
+      <div style="display:flex;justify-content:center;gap:8px;margin-top:16px;" id="vdots"></div>
+    </div>
+  </section>
+
+  <script>
+  (function(){
+    var sl=document.querySelectorAll('.vslide'),tot=sl.length,cur=0,tm;
+    var dots=document.getElementById('vdots');
+    for(var i=0;i<tot;i++){var d=document.createElement('div');d.style.cssText='width:8px;height:8px;border-radius:50%;cursor:pointer;background:'+(i===0?'#6366f1':'#2a2a35');d.onclick=(function(x){return function(){go(x)};})(i);dots.appendChild(d);}
+    function go(n){sl[cur].style.display='none';cur=n;sl[cur].style.display='block';for(var i=0;i<dots.children.length;i++)dots.children[i].style.background=i===cur?'#6366f1':'#2a2a35';clearInterval(tm);tm=setInterval(function(){go((cur+1)%tot);},5000);}
+    tm=setInterval(function(){go((cur+1)%tot);},5000);
+  })();
+  </script>
+
   <header class="hero">
     <div class="hero-bg"></div>
     <div class="hero-content">
@@ -36,7 +140,6 @@
       <p class="hero-sub">Claude today. GPT-4 tomorrow. Gemini next week. Your preferences, corrections, and established facts follow you—because memory lives outside the model.</p>
       <div class="hero-cta">
         <a href="integrate.html" class="btn btn-large btn-primary">Start Integrating</a>
-        <a href="#" onclick="localStorage.removeItem('cls_demo_seen');location.reload();return false;" class="btn btn-large btn-outline">▶ Watch Demo</a>
         <a href="#tryit" class="btn btn-large btn-outline">Try It Live</a>
         <a href="#pricing" class="btn btn-large btn-outline">View Pricing</a>
       </div>
@@ -379,11 +482,9 @@
     </div>
   </footer>
 
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <!-- DEMO OVERLAY — auto-plays on first visit, shows product value   -->
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <div id="demo-overlay" style="position:fixed;inset:0;z-index:9999;background:rgba(6,6,12,0.97);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);">
-    <div style="width:900px;max-width:92vw;position:relative;">
+  <!-- Old overlay removed — demo is now embedded at top of page -->
+  <div id="demo-overlay" style="display:none;">
+    <div>
 
       <!-- Skip button -->
       <button onclick="dismissDemo()" style="position:absolute;top:-40px;right:0;background:none;border:none;color:#8b8b9a;font-size:0.9rem;cursor:pointer;font-family:inherit;">Skip intro →</button>
