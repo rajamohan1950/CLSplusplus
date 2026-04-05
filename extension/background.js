@@ -8,10 +8,23 @@ chrome.storage.local.get('cls_local', (r) => {
 });
 
 // ── User identity ──────────────────────────────────────────────────────────
-// Stable per-browser UID stored in chrome.storage.local (no local server).
+// If linked to account: use user-{id[:8]} namespace
+// If anonymous: use random u_ UID per browser
 let _cachedUID = null;
+let _cachedApiKey = null;
+
 async function getUID() {
   if (_cachedUID) return _cachedUID;
+
+  // Check for linked account first
+  const { cls_api_key, cls_user } = await chrome.storage.local.get(['cls_api_key', 'cls_user']);
+  if (cls_api_key && cls_user && cls_user.id) {
+    _cachedApiKey = cls_api_key;
+    _cachedUID = 'user-' + cls_user.id.slice(0, 8);
+    return _cachedUID;
+  }
+
+  // Fallback: anonymous UID
   const { uid } = await chrome.storage.local.get('uid');
   if (uid) { _cachedUID = uid; return uid; }
   const newUID = 'u_' + Math.random().toString(36).slice(2, 14) + Date.now().toString(36);
@@ -20,13 +33,25 @@ async function getUID() {
   return newUID;
 }
 
+async function getAuthHeaders() {
+  if (!_cachedApiKey) {
+    const { cls_api_key } = await chrome.storage.local.get('cls_api_key');
+    _cachedApiKey = cls_api_key || null;
+  }
+  const headers = { 'Content-Type': 'application/json', 'X-Client': 'extension' };
+  if (_cachedApiKey) {
+    headers['Authorization'] = `Bearer ${_cachedApiKey}`;
+  }
+  return headers;
+}
+
 // ── Telemetry ─────────────────────────────────────────────────────────────
 async function logTelemetry(event, data = {}) {
   const uid = await getUID();
   try {
     await fetch(`${API}/api/telemetry`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Client': 'extension' },
+      headers: await getAuthHeaders(),
       body: JSON.stringify({ uid, event, site: data.site || '', data, ts: new Date().toISOString() }),
     });
   } catch (_) {}
@@ -38,7 +63,7 @@ async function searchMemories(query, limit = 5) {
   try {
     const r = await fetch(`${API}/api/search/${uid}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthHeaders(),
       body: JSON.stringify({ query, limit }),
     });
     const d = await r.json();
@@ -51,7 +76,7 @@ async function storeMessage(text, source, model) {
   try {
     await fetch(`${API}/api/store/${uid}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthHeaders(),
       body: JSON.stringify({ text, source, model }),
     });
   } catch (_) {}
@@ -60,7 +85,9 @@ async function storeMessage(text, source, model) {
 async function getMemoryCount() {
   const uid = await getUID();
   try {
-    const r = await fetch(`${API}/api/memories/${uid}?limit=1`);
+    const r = await fetch(`${API}/api/memories/${uid}?limit=1`, {
+      headers: await getAuthHeaders(),
+    });
     const d = await r.json();
     return d.count || 0;
   } catch (_) { return 0; }
@@ -70,7 +97,7 @@ async function getMemoryCount() {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'SEARCH_MEMORIES') {
     searchMemories(msg.query, msg.limit || 5).then(sendResponse);
-    return true; // async
+    return true;
   }
   if (msg.type === 'STORE_MESSAGE') {
     storeMessage(msg.text, msg.source, msg.model).then(() => sendResponse({ ok: true }));
@@ -89,6 +116,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ ok: true });
     return false;
   }
+  // Account link/unlink — clear cached identity so it refreshes
+  if (msg.type === 'ACCOUNT_LINKED' || msg.type === 'ACCOUNT_UNLINKED') {
+    _cachedUID = null;
+    _cachedApiKey = null;
+    sendResponse({ ok: true });
+    updateBadge();
+    return false;
+  }
 });
 
 // ── Update badge count every 10s ──────────────────────────────────────────
@@ -105,7 +140,6 @@ setInterval(updateBadge, 10000);
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
     logTelemetry('install');
-    // Check if local server is running first, prefer local
     fetch('http://localhost:8080/health').then(r => {
       if (r.ok) chrome.tabs.create({ url: 'http://localhost:8080/ui/memory.html' });
       else chrome.tabs.create({ url: 'https://clsplusplus.onrender.com/install.html' });
@@ -113,8 +147,7 @@ chrome.runtime.onInstalled.addListener((details) => {
       chrome.tabs.create({ url: 'https://clsplusplus.onrender.com/install.html' });
     });
   }
-  // Set up daily ping alarm for DAU tracking
-  chrome.alarms.create('daily_ping', { periodInMinutes: 1440 }); // once per day
+  chrome.alarms.create('daily_ping', { periodInMinutes: 1440 });
 });
 
 // ── Daily ping for DAU tracking ───────────────────────────────────────────
@@ -126,5 +159,5 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 // ── Allow index.html to detect extension is present ────────────────────────
 chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
-  if (msg.type === 'PING') sendResponse({ ok: true, version: '2.1.0' });
+  if (msg.type === 'PING') sendResponse({ ok: true, version: '3.0.0' });
 });

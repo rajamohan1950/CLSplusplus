@@ -43,6 +43,21 @@
     <span class="logo-text">CLS++ Memory</span>
   </div>
 
+  <!-- Account Link -->
+  <div id="account-unlinked" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;margin-bottom:14px;">
+    <div style="font-size:12px;font-weight:600;margin-bottom:6px;">Link your account</div>
+    <input type="text" id="api-key-input" placeholder="Paste your API key" style="width:100%;padding:7px 10px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#f0f0f8;font-size:11px;margin-bottom:6px;outline:none;font-family:monospace;"/>
+    <button id="link-btn" onclick="linkAccount()" style="width:100%;padding:7px;background:#7c6ef0;border:none;border-radius:8px;color:#fff;font-size:11px;font-weight:600;cursor:pointer;">Link Account</button>
+    <div style="font-size:9px;color:rgba(240,240,248,.3);margin-top:6px;text-align:center;">Get your key at <a href="#" id="dashboard-link" style="color:#a89cf7;" target="_blank">your dashboard</a></div>
+    <div id="link-error" style="font-size:10px;color:#f05d9a;margin-top:4px;display:none;"></div>
+  </div>
+  <div id="account-linked" style="background:rgba(124,110,240,.08);border:1px solid rgba(124,110,240,.2);border-radius:10px;padding:12px;margin-bottom:14px;display:none;">
+    <div style="font-size:12px;font-weight:600;color:#a89cf7;">Linked</div>
+    <div id="linked-email" style="font-size:11px;margin-top:3px;"></div>
+    <div id="linked-tier" style="font-size:10px;color:rgba(240,240,248,.4);margin-top:2px;"></div>
+    <button onclick="unlinkAccount()" style="width:100%;padding:6px;background:transparent;border:1px solid rgba(255,255,255,.12);border-radius:8px;color:rgba(240,240,248,.5);font-size:10px;cursor:pointer;margin-top:8px;">Unlink Account</button>
+  </div>
+
   <div class="count" id="count">0</div>
   <div class="count-label">memories stored</div>
 
