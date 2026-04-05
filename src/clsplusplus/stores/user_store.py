@@ -68,10 +68,15 @@ class UserStore:
             ddl = f.read()
         await conn.execute(ddl)
         # RBAC tables (depends on users table existing first)
-        rbac_path = os.path.join(os.path.dirname(__file__), "rbac_ddl.sql")
-        with open(rbac_path) as f:
-            rbac_ddl = f.read()
-        await conn.execute(rbac_ddl)
+        # Non-fatal: if RBAC DDL fails, user auth still works
+        try:
+            rbac_path = os.path.join(os.path.dirname(__file__), "rbac_ddl.sql")
+            with open(rbac_path) as f:
+                rbac_ddl = f.read()
+            await conn.execute(rbac_ddl)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("RBAC schema init failed (non-fatal): %s", e)
 
     # =========================================================================
     # Users CRUD

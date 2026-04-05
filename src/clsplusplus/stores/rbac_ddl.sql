@@ -1,6 +1,8 @@
 -- CLS++ Role-Based Access Control Schema
 -- Auto-applied on first connection by UserStore._init_schema()
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- 1. ROLES — Named bundles of scopes
 CREATE TABLE IF NOT EXISTS roles (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

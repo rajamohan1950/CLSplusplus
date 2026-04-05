@@ -1,6 +1,9 @@
 -- CLS++ User Management Schema
 -- Auto-applied on first connection by UserStore._init_schema()
 
+-- gen_random_uuid() requires pgcrypto on PG < 13
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS users (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email           TEXT NOT NULL UNIQUE,
