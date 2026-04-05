@@ -172,6 +172,42 @@ def _normalize_token(token: str) -> str:
     return t
 
 
+# Synonym expansion table — maps common query terms to terms likely
+# found in stored facts. Covers the vocabulary gap between how users
+# ask questions and how facts are stated.
+_SYNONYMS: dict[str, list[str]] = {
+    "husband": ["married", "spouse"],
+    "wife": ["married", "spouse"],
+    "spouse": ["married", "husband", "wife"],
+    "daughter": ["child", "girl"],
+    "son": ["child", "boy"],
+    "child": ["daughter", "son"],
+    "children": ["daughter", "son", "kids"],
+    "university": ["graduated", "college", "degree", "school", "studied", "masters", "bachelor"],
+    "college": ["graduated", "university", "degree", "school", "studied"],
+    "school": ["graduated", "university", "college", "studied"],
+    "undergrad": ["graduated", "university", "college", "bachelor", "degree"],
+    "education": ["graduated", "university", "college", "degree", "studied", "masters"],
+    "role": ["title", "position", "job", "engineer", "manager", "director", "vp", "cto", "ceo"],
+    "title": ["role", "position", "job", "engineer", "manager", "director", "vp"],
+    "job": ["work", "role", "title", "position", "company"],
+    "position": ["role", "title", "job", "work"],
+    "hobby": ["hobbies", "interests", "enjoy", "love", "favorite"],
+    "hobbies": ["hobby", "interests", "enjoy", "love", "favorite"],
+    "allergy": ["allergic", "intolerant", "sensitive"],
+    "allergies": ["allergic", "intolerant", "sensitive"],
+    "car": ["drive", "vehicle", "tesla", "toyota", "honda"],
+    "vehicle": ["car", "drive"],
+    "home": ["house", "apartment", "address"],
+    "house": ["home", "apartment", "property"],
+    "salary": ["compensation", "pay", "income", "earning"],
+    "email": ["mail", "contact", "address"],
+    "phone": ["call", "number", "mobile", "cell"],
+    "birthday": ["born", "birth", "age"],
+    "age": ["old", "years", "born"],
+}
+
+
 def _tokenize(text: str) -> list[str]:
     """
     Tokenize text into index-ready tokens.
@@ -181,6 +217,7 @@ def _tokenize(text: str) -> list[str]:
 
     Returns a list of tokens ordered by estimated informativeness
     (longer/rarer tokens first). Both raw and normalized forms included.
+    Synonym expansions are appended to improve recall across vocabulary gaps.
     Stop words and single-character tokens filtered.
 
     The ordering matters for field radius: when R(s) contracts, common
@@ -201,6 +238,11 @@ def _tokenize(text: str) -> list[str]:
         if normalized != clean and normalized not in seen and len(normalized) > 1:
             raw_tokens.append(normalized)
             seen.add(normalized)
+        # Synonym expansion: add related terms to broaden matching
+        for syn in _SYNONYMS.get(clean, []):
+            if syn not in seen and syn not in _STOP_WORDS and len(syn) > 1:
+                raw_tokens.append(syn)
+                seen.add(syn)
 
     # Sort by length descending — longer tokens are more specific/informative
     # This is a cheap proxy for IDF before we have corpus statistics
@@ -854,19 +896,20 @@ class PhaseMemoryEngine:
 
         Gas:    χ = 0.7  (fresh, vivid, slightly lower trust)
         Liquid: χ = 1.0  (normal)
-        Solid:  χ = 1.0 + 0.5 / max(|ΔF|, 0.1)
-        Glass:  χ = 1.0 + 1.0 / max(|ΔF|, 0.1)
+        Solid:  χ = min(1.2, 1.0 + 0.1 / max(|ΔF|, 0.1))
+        Glass:  χ = min(1.3, 1.0 + 0.2 / max(|ΔF|, 0.1))
 
-        Continuous, physics-derived. Replaces hard-coded 1.5× schema boost.
+        Capped to prevent schema nodes from dominating raw facts in search.
+        At high item counts, uncapped schemas (10x boost) drown out individual facts.
         """
         s = item.consolidation_strength
 
         if item.schema_meta is not None:
             delta_F = abs(item.schema_meta.delta_F)
             if _is_glass_static(item):
-                return 1.0 + 1.0 / max(delta_F, 0.1)
+                return min(1.3, 1.0 + 0.2 / max(delta_F, 0.1))
             else:
-                return 1.0 + 0.5 / max(delta_F, 0.1)
+                return min(1.2, 1.0 + 0.1 / max(delta_F, 0.1))
 
         if s < self.STRENGTH_FLOOR:
             return 0.7  # Gas
@@ -2682,6 +2725,19 @@ class PhaseMemoryEngine:
                         inf_weight = 0.5 if t in inferred_tokens else 1.0
                         bmx_score += idf * h_weight * inf_weight
 
+                    # Length normalization: normalize BMX by item token count
+                    # to prevent long documents from dominating short personal facts.
+                    # Uses sqrt(len) to dampen rather than fully divide — so slightly
+                    # longer items still have a small advantage (more context = richer match).
+                    n_item_tokens = max(len(item.indexed_tokens), 1)
+                    bmx_score = bmx_score / (n_item_tokens ** 0.5)
+
+                    # Coverage bonus: reward items where matched tokens cover a high
+                    # fraction of the item's total tokens. Short facts that match well
+                    # (e.g. "My name is Kavya" with 3/4 tokens matched) get boosted.
+                    coverage = len(matched_tokens) / max(n_item_tokens, 1)
+                    bmx_score *= (1.0 + coverage)
+
                     # Layer 3: Semantic Bonus (PPMI-SVD vectors, if available)
                     semantic_bonus = 0.0
                     if query_vec is not None:
@@ -2699,6 +2755,27 @@ class PhaseMemoryEngine:
                     rank = (bmx_score + semantic_bonus + thermo) * chi
                     scored.append((rank, item))
 
+                # Supplementary: raw text substring scan for items the token
+                # index missed. Catches vocabulary gaps (e.g. query "husband"
+                # matching stored text "married to Vikram").
+                scored_ids = {item.id for _, item in scored}
+                items = self._items.get(namespace, [])
+                query_lower = " ".join(query_tokens).lower()
+                for item in items:
+                    if item.id in scored_ids:
+                        continue
+                    raw = (item.fact.raw_text or "").lower()
+                    if not raw:
+                        continue
+                    hits = sum(1 for w in query_token_set if w in raw)
+                    if hits > 0:
+                        chi = self._phase_susceptibility(item)
+                        n_toks = max(len(item.indexed_tokens), 1)
+                        coverage = hits / max(len(query_token_set), 1)
+                        thermo = -self._safe_fe(item) / max(self.kT, 1e-9)
+                        rank = coverage * 5.0 / (n_toks ** 0.5) * chi + thermo * 0.01
+                        scored.append((rank, item))
+
                 scored.sort(key=lambda x: x[0], reverse=True)
                 _top = scored[0] if scored else None
                 _top_info = (f"rank={round(_top[0], 4)}  bmx+sem+thermo×χ  "
@@ -2706,17 +2783,37 @@ class PhaseMemoryEngine:
                 _add_algo_meta(trace_id, _score_hop,
                                output=f"{len(scored)} scored  top: {_top_info}")
         else:
-            # No token matches: fallback to free energy ranking
+            # No token matches: fallback to raw text substring search.
+            # This catches cases where query tokens (e.g. "husband", "daughter",
+            # "university") don't appear in the tokenized index but DO appear
+            # as substrings of the stored raw text.
             with _algo_span(trace_id, "algo.score",
-                            candidates=0, fallback="free_energy") as _score_hop:
+                            candidates=0, fallback="substring") as _score_hop:
                 items = self._items.get(namespace, [])
+                query_lower = " ".join(query_tokens).lower()
+                query_words = set(query_tokens)
                 for item in items:
-                    chi = self._phase_susceptibility(item)
-                    rank = -self._safe_fe(item) / max(self.kT, 1e-9) * chi
-                    scored.append((rank, item))
+                    raw = (item.fact.raw_text or "").lower()
+                    if not raw:
+                        continue
+                    # Count how many query words appear as substrings in the raw text
+                    hits = sum(1 for w in query_words if w in raw)
+                    if hits > 0:
+                        chi = self._phase_susceptibility(item)
+                        # Score by hit ratio × chi, with slight thermo tiebreaker
+                        thermo = -self._safe_fe(item) / max(self.kT, 1e-9)
+                        rank = (hits / max(len(query_words), 1)) * 10.0 * chi + thermo * 0.01
+                        scored.append((rank, item))
+                if not scored:
+                    # True fallback: no substring matches either, use free energy
+                    for item in items:
+                        chi = self._phase_susceptibility(item)
+                        rank = -self._safe_fe(item) / max(self.kT, 1e-9) * chi
+                        scored.append((rank, item))
                 scored.sort(key=lambda x: x[0], reverse=True)
                 _add_algo_meta(trace_id, _score_hop,
-                               output=f"fallback FE rank  {len(scored)} items")
+                               output=f"substring fallback  {len(scored)} items  "
+                                      f"{'matched' if any(s[0] > 0.1 for s in scored) else 'FE only'}")
 
         # retrieval_count incremented by search(), not here
         return scored[:limit]

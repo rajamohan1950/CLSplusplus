@@ -55,16 +55,22 @@ class L1IndexingStore(BaseStore):
                         max_size=10,
                         command_timeout=60,
                     )
-                    # Register pgvector
+                    # Register pgvector (optional — falls back to FLOAT8[] if not installed)
                     async with self._pool.acquire() as conn:
-                        await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-                        await register_vector(conn)
+                        try:
+                            await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                            await register_vector(conn)
+                            self._has_pgvector = True
+                        except Exception:
+                            self._has_pgvector = False
+                            logger.info("pgvector not available — using FLOAT8[] for embeddings")
                         await self._init_schema(conn)
         return self._pool
 
     async def _init_schema(self, conn: asyncpg.Connection) -> None:
         """Create L1 table if not exists."""
-        await conn.execute("""
+        emb_type = "vector(384)" if getattr(self, '_has_pgvector', False) else "FLOAT8[]"
+        await conn.execute(f"""
             CREATE TABLE IF NOT EXISTS l1_memories (
                 id TEXT PRIMARY KEY,
                 namespace TEXT NOT NULL,
@@ -82,11 +88,11 @@ class L1IndexingStore(BaseStore):
                 conflict_score REAL DEFAULT 0.0,
                 surprise REAL DEFAULT 0.0,
                 promotion_score REAL DEFAULT 0.0,
-                metadata JSONB DEFAULT '{}',
+                metadata JSONB DEFAULT '{{}}'::jsonb,
                 subject TEXT,
                 predicate TEXT,
                 object TEXT,
-                embedding vector(384),
+                embedding {emb_type},
                 event_at TIMESTAMPTZ DEFAULT NULL,
                 superseded BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMPTZ DEFAULT NOW()
@@ -126,9 +132,12 @@ class L1IndexingStore(BaseStore):
         """Write to L1 with embedding."""
         item.store_level = StoreLevel.L1
         pool = await self.get_pool()
-        embedding_str = None
+        embedding_val = None
         if item.embedding:
-            embedding_str = "[" + ",".join(str(x) for x in item.embedding) + "]"
+            if getattr(self, '_has_pgvector', False):
+                embedding_val = "[" + ",".join(str(x) for x in item.embedding) + "]"
+            else:
+                embedding_val = list(item.embedding)
 
         _span_ctx = (
             tracer.span(trace_id, "sql.insert", "postgres",
@@ -146,7 +155,7 @@ class L1IndexingStore(BaseStore):
                         subject, predicate, object, embedding, event_at, superseded
                     ) VALUES (
                         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                        $14, $15, $16, $17, $18, $19, $20, $21::vector, $22, $23
+                        $14, $15, $16, $17, $18, $19, $20, $21, $22, $23
                     )
                     ON CONFLICT (id) DO UPDATE SET
                         text = EXCLUDED.text,
@@ -164,7 +173,7 @@ class L1IndexingStore(BaseStore):
                     item.checksum, json.dumps(item.lineage), item.salience,
                     item.usage_count, item.authority, item.conflict_score,
                     item.surprise, item.promotion_score, json.dumps(item.metadata),
-                    item.subject, item.predicate, item.object, embedding_str,
+                    item.subject, item.predicate, item.object, embedding_val,
                     item.event_at, item.superseded,
                 )
         return item
@@ -178,18 +187,39 @@ class L1IndexingStore(BaseStore):
     ) -> list[MemoryItem]:
         """kNN search by embedding similarity."""
         pool = await self.get_pool()
-        emb_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
-        rows = await pool.fetch("""
-            SELECT id, namespace, text, store_level, source, timestamp, confidence,
-                   version, checksum, lineage, salience, usage_count, authority,
-                   conflict_score, surprise, promotion_score, metadata,
-                   subject, predicate, object, embedding
-            FROM l1_memories
-            WHERE namespace = $1 AND confidence >= $2 AND embedding IS NOT NULL
-            ORDER BY embedding <=> $3::vector
-            LIMIT $4
-        """, namespace, min_confidence, emb_str, limit)
+        if getattr(self, '_has_pgvector', False):
+            emb_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
+            rows = await pool.fetch("""
+                SELECT id, namespace, text, store_level, source, timestamp, confidence,
+                       version, checksum, lineage, salience, usage_count, authority,
+                       conflict_score, surprise, promotion_score, metadata,
+                       subject, predicate, object, embedding
+                FROM l1_memories
+                WHERE namespace = $1 AND confidence >= $2 AND embedding IS NOT NULL
+                ORDER BY embedding <=> $3::vector
+                LIMIT $4
+            """, namespace, min_confidence, emb_str, limit)
+        else:
+            # Without pgvector: fetch all and sort by cosine in Python
+            rows = await pool.fetch("""
+                SELECT id, namespace, text, store_level, source, timestamp, confidence,
+                       version, checksum, lineage, salience, usage_count, authority,
+                       conflict_score, surprise, promotion_score, metadata,
+                       subject, predicate, object, embedding
+                FROM l1_memories
+                WHERE namespace = $1 AND confidence >= $2 AND embedding IS NOT NULL
+                LIMIT 1000
+            """, namespace, min_confidence)
+            # Sort by cosine similarity in Python
+            import numpy as np
+            q = np.array(query_embedding)
+            def _cos(row):
+                e = row['embedding']
+                if not e: return -1
+                v = np.array(e)
+                return float(np.dot(q, v) / (np.linalg.norm(q) * np.linalg.norm(v) + 1e-9))
+            rows = sorted(rows, key=_cos, reverse=True)[:limit]
 
         return [self._row_to_item(r) for r in rows]
 
@@ -219,14 +249,14 @@ class L1IndexingStore(BaseStore):
             confidence=float(row["confidence"]),
             version=row["version"],
             checksum=row["checksum"],
-            lineage=row["lineage"] or [],
+            lineage=json.loads(row["lineage"]) if isinstance(row["lineage"], str) else (row["lineage"] or []),
             salience=float(row["salience"]),
             usage_count=row["usage_count"],
             authority=float(row["authority"]),
             conflict_score=float(row["conflict_score"]),
             surprise=float(row["surprise"]),
             promotion_score=float(row["promotion_score"]),
-            metadata=row["metadata"] or {},
+            metadata=json.loads(row["metadata"]) if isinstance(row["metadata"], str) else (row["metadata"] or {}),
             subject=row["subject"],
             predicate=row["predicate"],
             object=row["object"],

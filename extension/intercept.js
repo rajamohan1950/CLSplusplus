@@ -263,6 +263,7 @@
                 ex.parts[0] = ctx + '\n\n' + ex.query;
                 args = rebuildFetchArgs(args, JSON.stringify(ex.parsed));
                 console.log('[CLS++] context injected into ChatGPT');
+                window.dispatchEvent(new CustomEvent('__clspp_telemetry', { detail: { event: 'context_injected', site: 'chatgpt' } }));
               }
             }
           }
@@ -276,6 +277,7 @@
                 const newBody = injectClaudeContext(ex, ctx);
                 args = rebuildFetchArgs(args, newBody);
                 console.log('[CLS++] context injected into Claude (' + ex.field + ')');
+                window.dispatchEvent(new CustomEvent('__clspp_telemetry', { detail: { event: 'context_injected', site: 'claude' } }));
               }
             }
           }
@@ -289,6 +291,7 @@
                 const newBody = ex.body.replace(ex.query, ctx + '\n\n' + ex.query);
                 args = rebuildFetchArgs(args, newBody);
                 console.log('[CLS++] context injected into Gemini');
+                window.dispatchEvent(new CustomEvent('__clspp_telemetry', { detail: { event: 'context_injected', site: 'gemini' } }));
               }
             }
           }

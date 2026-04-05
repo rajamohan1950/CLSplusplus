@@ -4,7 +4,7 @@
   "version": "2.1.0",
   "description": "Every AI remembers you. Silent cross-model memory for ChatGPT, Claude, Gemini and more.",
 
-  "permissions": ["storage"],
+  "permissions": ["storage", "alarms"],
   "host_permissions": [
     "https://clsplusplus.onrender.com/*",
     "https://chat.openai.com/*",

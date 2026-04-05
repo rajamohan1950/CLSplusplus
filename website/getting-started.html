@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Get Started | CLS++</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="auth.js" defer></script>
+  <style>
+    .gs-container { max-width:800px; margin:0 auto; padding:100px 24px 60px; }
+    .gs-hero { text-align:center; margin-bottom:48px; }
+    .gs-hero h1 { font-size:2.2rem; margin-bottom:12px; }
+    .gs-hero p { color:var(--text-muted); font-size:1.1rem; max-width:500px; margin:0 auto; }
+
+    .gs-step { background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius-lg); padding:32px; margin-bottom:24px; }
+    .gs-step-header { display:flex; align-items:center; gap:14px; margin-bottom:20px; }
+    .gs-step-num { width:36px; height:36px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:1rem; flex-shrink:0; }
+    .gs-step-header h2 { font-size:1.2rem; margin:0; }
+
+    .gs-code { background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:16px 20px; font-family:'JetBrains Mono',monospace; font-size:0.85rem; overflow-x:auto; position:relative; margin:12px 0; line-height:1.6; white-space:pre; }
+    .gs-code .copy-btn { position:absolute; top:8px; right:8px; background:var(--border); border:none; color:var(--text-muted); padding:4px 10px; border-radius:6px; font-size:0.75rem; cursor:pointer; font-family:inherit; }
+    .gs-code .copy-btn:hover { background:var(--accent); color:#fff; }
+
+    .gs-tabs { display:flex; gap:0; margin-bottom:-1px; position:relative; z-index:1; }
+    .gs-tab { padding:8px 16px; background:transparent; border:1px solid var(--border); border-bottom:none; border-radius:8px 8px 0 0; color:var(--text-muted); cursor:pointer; font-size:0.85rem; font-family:inherit; }
+    .gs-tab.active { background:var(--bg); color:var(--text); border-bottom-color:var(--bg); }
+
+    .gs-form { display:flex; gap:10px; margin:16px 0; }
+    .gs-form input { flex:1; padding:10px 14px; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); font-size:0.95rem; font-family:inherit; outline:none; }
+    .gs-form input:focus { border-color:var(--accent); }
+    .gs-form button { padding:10px 24px; background:var(--accent); color:#fff; border:none; border-radius:var(--radius); font-size:0.95rem; font-weight:600; cursor:pointer; font-family:inherit; white-space:nowrap; }
+    .gs-form button:disabled { opacity:0.5; cursor:not-allowed; }
+
+    .gs-result { background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.2); border-radius:var(--radius); padding:16px 20px; margin:16px 0; display:none; }
+    .gs-result .key-display { font-family:'JetBrains Mono',monospace; font-size:0.9rem; background:var(--bg); padding:8px 12px; border-radius:6px; display:flex; align-items:center; justify-content:space-between; margin:8px 0; }
+
+    .gs-error { background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); border-radius:var(--radius); padding:12px 16px; margin:12px 0; display:none; color:#ef4444; font-size:0.9rem; }
+
+    .gs-signin { text-align:center; padding:20px; }
+    .gs-signin a { color:var(--accent-light); }
+
+    .gs-test-results { margin:16px 0; }
+    .gs-test-phase { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px 16px; margin:8px 0; display:flex; justify-content:space-between; align-items:center; }
+    .gs-test-phase .phase-name { font-weight:600; }
+    .gs-test-phase .phase-status { font-size:0.85rem; }
+    .gs-test-phase .pass { color:#22c55e; }
+    .gs-test-phase .fail { color:#ef4444; }
+
+    .gs-links { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-top:32px; }
+    .gs-link-card { background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius); padding:20px; text-decoration:none; color:var(--text); transition:border-color 0.2s; }
+    .gs-link-card:hover { border-color:var(--accent); }
+    .gs-link-card h3 { font-size:0.95rem; margin-bottom:6px; }
+    .gs-link-card p { font-size:0.85rem; color:var(--text-muted); margin:0; }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs.html">Docs</a>
+        <a href="/integrate.html">Integrate</a>
+        <a href="/chat.html">Chat</a>
+        <a href="/getting-started.html">Get Started</a>
+        <div id="nav-auth" class="nav-auth"></div>
+      </div>
+      <button class="nav-toggle" aria-label="Menu">☰</button>
+    </div>
+  </nav>
+
+  <div class="gs-container">
+    <div class="gs-hero">
+      <h1>Get Started with CLS++</h1>
+      <p>Add persistent memory to your AI app in 3 minutes. Your users' preferences, corrections, and facts follow them across every model.</p>
+    </div>
+
+    <!-- Step 1: Zero Code — just change base_url -->
+    <div class="gs-step">
+      <div class="gs-step-header">
+        <div class="gs-step-num">1</div>
+        <h2>Change One Line — Get Memory Instantly</h2>
+      </div>
+      <p style="color:var(--text-muted);margin-bottom:16px;">Already using OpenAI or Anthropic? Just change the <code>base_url</code>. No SDK, no install, no new code. Your app gets persistent memory across every session.</p>
+
+      <div class="gs-tabs">
+        <button class="gs-tab active" onclick="showLang('openai')">OpenAI</button>
+        <button class="gs-tab" onclick="showLang('anthropic')">Anthropic</button>
+        <button class="gs-tab" onclick="showLang('langchain')">LangChain</button>
+      </div>
+
+      <div class="gs-code" id="install-openai"><span class="comment"># Before (no memory):</span>
+<span style="color:#ef4444;text-decoration:line-through;">client = OpenAI()</span>
+
+<span class="comment"># After (persistent memory forever):</span>
+<span style="color:#22c55e;">client = OpenAI(base_url="http://localhost:8181/v1")</span>
+
+<span class="comment"># That's it. Same code. Every conversation now remembered.</span>
+response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "I prefer Python"}]
+)
+<span class="comment"># Next session, GPT-4 already knows the user prefers Python.</span><button class="copy-btn" onclick="copyText(this)">Copy</button></div>
+
+      <div class="gs-code" id="install-anthropic" style="display:none"><span class="comment"># Before (no memory):</span>
+<span style="color:#ef4444;text-decoration:line-through;">client = anthropic.Anthropic()</span>
+
+<span class="comment"># After (persistent memory forever):</span>
+<span style="color:#22c55e;">client = anthropic.Anthropic(base_url="http://localhost:8181")</span>
+
+<span class="comment"># Same code. Claude now remembers every user.</span>
+message = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "I just switched to TypeScript"}]
+)<button class="copy-btn" onclick="copyText(this)">Copy</button></div>
+
+      <div class="gs-code" id="install-langchain" style="display:none"><span class="comment"># LangChain — same: just set base_url</span>
+from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(
+    model="gpt-4",
+    <span style="color:#22c55e;">base_url="http://localhost:8181/v1"</span>
+)
+
+<span class="comment"># Every LangChain chain now has persistent user memory.</span><button class="copy-btn" onclick="copyText(this)">Copy</button></div>
+    </div>
+
+    <!-- Step 2: Brain SDK (for more control) -->
+    <div class="gs-step">
+      <div class="gs-step-header">
+        <div class="gs-step-num">2</div>
+        <h2>Want More Control? Use the Brain SDK</h2>
+      </div>
+      <p style="color:var(--text-muted);margin-bottom:12px;">For developers who want to learn/ask/forget programmatically.</p>
+
+      <div class="gs-code">pip install git+https://github.com/rajamohan1950/CLSplusplus.git<button class="copy-btn" onclick="copyText(this)">Copy</button></div>
+
+      <div class="gs-code" id="example-code"><span id="code-key"></span>from clsplusplus import Brain
+
+brain = Brain("alice")
+
+brain.learn("Works at Google as a senior engineer")
+brain.learn("Prefers Python and VS Code")
+
+brain.ask("Where does she work?")
+<span class="comment"># → ["Works at Google as a senior engineer"]</span>
+
+brain.context("coding help")
+<span class="comment"># → "Known facts about this user:\n- Works at Google...\n- Prefers Python..."</span>
+
+<span class="comment"># 11 methods: learn, ask, context, forget, wrap, absorb, teach, watch, correct, chat, who</span><button class="copy-btn" onclick="copyText(this)">Copy</button></div>
+    </div>
+
+    <!-- Step 3: Try it live -->
+    <div class="gs-step">
+      <div class="gs-step-header">
+        <div class="gs-step-num">3</div>
+        <h2>Try It Right Here</h2>
+      </div>
+      <p style="color:var(--text-muted);margin-bottom:12px;">Test memory in your browser. No install needed.</p>
+      <div class="gs-form" style="flex-direction:column;">
+        <input type="text" id="pg-user" value="playground-user" style="display:none;">
+        <input type="text" id="test-fact" placeholder="Type a fact: I work at Google and use Python" style="width:100%;">
+        <input type="text" id="test-query" placeholder="Then ask: Where do I work?" style="width:100%;">
+        <div style="display:flex;gap:8px;">
+          <button id="learn-btn" onclick="pgLearnGS()" style="padding:10px 24px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-weight:600;cursor:pointer;font-family:inherit;">Learn</button>
+          <button id="ask-btn" onclick="pgAskGS()" style="padding:10px 24px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-weight:600;cursor:pointer;font-family:inherit;">Ask</button>
+        </div>
+      </div>
+      <div class="gs-error" id="step3-error"></div>
+      <div class="gs-test-results" id="test-results" style="display:none;"></div>
+    </div>
+
+    <!-- Links -->
+    <div class="gs-links">
+      <a href="docs.html" class="gs-link-card">
+        <h3>API Reference</h3>
+        <p>Full endpoint documentation with examples.</p>
+      </a>
+      <a href="integrations.html" class="gs-link-card">
+        <h3>Pre-Built Connectors</h3>
+        <p>LangChain, CrewAI, Zapier, AWS Bedrock.</p>
+      </a>
+      <a href="/dashboard.html" class="gs-link-card">
+        <h3>Your Dashboard</h3>
+        <p>View usage, manage API keys, upgrade tier.</p>
+      </a>
+      <a href="https://github.com/rajamohan1950/CLSplusplus" class="gs-link-card" target="_blank">
+        <h3>GitHub</h3>
+        <p>Star the repo, contribute, report issues.</p>
+      </a>
+    </div>
+  </div>
+
+  <script src="getting-started.js"></script>
+</body>
+</html>

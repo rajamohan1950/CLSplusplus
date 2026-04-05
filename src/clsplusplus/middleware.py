@@ -21,6 +21,10 @@ _PUBLIC_PATHS = frozenset({
     "/v1/memory/health",
     "/v1/demo/status",
     "/v1/demo/chat",
+    "/v1/auth/register",
+    "/v1/auth/login",
+    "/v1/auth/google",
+    "/v1/auth/google/callback",
     "/docs",
     "/redoc",
     "/openapi.json",
@@ -36,8 +40,17 @@ def _is_public(path: str, method: str) -> bool:
             or path.startswith("/api/") or path.startswith("/ws/"))
 
 
+def _requires_admin(path: str) -> bool:
+    """Check if path requires admin privileges."""
+    return path.startswith("/admin/")
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
-    """Validate API key for protected routes. Sets request.state.api_key when valid."""
+    """Dual auth: API key (Bearer) or JWT cookie (cls_session).
+
+    Sets request.state.api_key when API key is valid.
+    Sets request.state.user_id, user_email, is_admin when JWT is valid.
+    """
 
     def __init__(self, app, settings: Settings):
         super().__init__(app)
@@ -47,19 +60,53 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if _is_public(request.url.path, request.method):
             return await call_next(request)
 
-        if not self.settings.require_api_key:
-            return await call_next(request)
-
+        # --- Path 1: API key auth ---
         auth_header = request.headers.get("Authorization")
         key = get_api_key_from_request(auth_header)
-        if not key or not validate_api_key(key, self.settings):
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Invalid or missing API key. Use Authorization: Bearer <key>"},
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        request.state.api_key = key
-        return await call_next(request)
+        if key and validate_api_key(key, self.settings):
+            request.state.api_key = key
+            # API key users get all scopes (legacy compat — scoped keys enforced via integration store)
+            request.state.scopes = None  # None = no enforcement (backward compat)
+            return await call_next(request)
+
+        # --- Path 2: JWT cookie auth ---
+        if self.settings.jwt_secret:
+            from clsplusplus.jwt_utils import decode_token, get_token_from_cookie
+            token = get_token_from_cookie(request)
+            if token:
+                payload = decode_token(token, self.settings.jwt_secret)
+                if payload:
+                    request.state.user_id = payload["sub"]
+                    request.state.user_email = payload["email"]
+                    request.state.is_admin = payload.get("is_admin", False)
+                    # Admin route protection
+                    if _requires_admin(request.url.path) and not payload.get("is_admin"):
+                        return JSONResponse(
+                            status_code=403,
+                            content={"detail": "Admin access required"},
+                        )
+                    # Load RBAC scopes (cached in Redis)
+                    if not payload.get("is_admin"):
+                        try:
+                            from clsplusplus.rbac_service import RBACService
+                            rbac = RBACService(self.settings)
+                            request.state.scopes = await rbac.get_effective_scopes_cached(payload["sub"])
+                        except Exception:
+                            request.state.scopes = set()  # Fail-closed: no scopes on error
+                    else:
+                        request.state.scopes = None  # Admin bypasses all scope checks
+                    return await call_next(request)
+
+        # --- Neither auth method succeeded ---
+        if not self.settings.require_api_key:
+            # Auth not required (local/demo mode)
+            return await call_next(request)
+
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Authentication required. Use API key or sign in."},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -80,6 +127,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         allowed, count, limit = await check_rate_limit(key_id, self.settings)
         if not allowed:
+            # Emit rate limit hit metric
+            try:
+                from clsplusplus.metrics import MetricsEmitter
+                m = MetricsEmitter(self.settings)
+                import asyncio
+                asyncio.ensure_future(m.emit("system", "rate_limit_429"))
+            except Exception:
+                pass
             return JSONResponse(
                 status_code=429,
                 content={
@@ -93,11 +148,63 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 },
             )
 
+        # Emit total API request counter
+        try:
+            from clsplusplus.metrics import MetricsEmitter
+            m = MetricsEmitter(self.settings)
+            import asyncio
+            asyncio.ensure_future(m.emit("system", "total_api_requests"))
+        except Exception:
+            pass
+
         response = await call_next(request)
         remaining = limit - count
         response.headers["X-RateLimit-Limit"] = str(limit)
         response.headers["X-RateLimit-Remaining"] = str(max(0, remaining))
         return response
+
+
+class QuotaMiddleware(BaseHTTPMiddleware):
+    """Enforce monthly operation quota based on tier. Returns 402 when exceeded."""
+
+    def __init__(self, app, settings: Settings):
+        super().__init__(app)
+        self.settings = settings
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        if not self.settings.enforce_quotas:
+            return await call_next(request)
+
+        if _is_public(request.url.path, request.method):
+            return await call_next(request)
+
+        # Only meter mutating/query operations, not GETs on metadata
+        if request.method == "GET":
+            return await call_next(request)
+
+        api_key = getattr(request.state, "api_key", None)
+        if not api_key:
+            return await call_next(request)
+
+        try:
+            from clsplusplus.tiers import get_tier, check_quota
+
+            tier = get_tier(self.settings)
+            allowed, usage, limit = await check_quota(api_key, tier, self.settings)
+            if not allowed:
+                return JSONResponse(
+                    status_code=402,
+                    content={
+                        "detail": "Monthly operation quota exceeded. Upgrade your plan for more.",
+                        "usage": usage,
+                        "limit": limit,
+                        "tier": tier.value,
+                    },
+                )
+        except Exception:
+            pass  # Fail-open: never block on quota check errors
+
+        return await call_next(request)
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):

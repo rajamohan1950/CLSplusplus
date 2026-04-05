@@ -56,6 +56,13 @@ window.addEventListener('__clspp_context_request', async (e) => {
 window.dispatchEvent(new CustomEvent('__clspp_bridge_ready'));
 console.log('[CLS++] context bridge ready');
 
+// ── Forward telemetry events from MAIN world to background ───────────────
+window.addEventListener('__clspp_telemetry', (e) => {
+  if (e.detail && e.detail.event) {
+    chrome.runtime.sendMessage({ type: 'TELEMETRY', event: e.detail.event, data: e.detail });
+  }
+});
+
 // ── Query memories from background ────────────────────────────────────────
 async function queryMemories(query) {
   return new Promise(resolve => {
@@ -68,6 +75,7 @@ function storeMessage(text, source, model) {
   if (!text || text.trim().length < 6) return;
   if (text.startsWith(MEMORY_PREFIX)) return; // don't store our own injections
   chrome.runtime.sendMessage({ type: 'STORE_MESSAGE', text: text.trim(), source, model });
+  chrome.runtime.sendMessage({ type: 'TELEMETRY', event: 'message_captured', data: { site: model, source } });
 }
 
 // ── Format memory context block ────────────────────────────────────────────

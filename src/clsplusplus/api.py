@@ -5,6 +5,7 @@ import logging
 import time as _time
 import uuid as _uuid_mod
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Optional, List
 
 import os
@@ -19,7 +20,8 @@ from fastapi.staticfiles import StaticFiles
 from clsplusplus.config import Settings
 from clsplusplus.integration_service import IntegrationService
 from clsplusplus.memory_service import MemoryService
-from clsplusplus.middleware import AuthMiddleware, RateLimitMiddleware, RequestIdMiddleware, TracingMiddleware
+from clsplusplus.user_service import UserService
+from clsplusplus.middleware import AuthMiddleware, QuotaMiddleware, RateLimitMiddleware, RequestIdMiddleware, TracingMiddleware
 from clsplusplus.tracer import tracer
 from clsplusplus.models import (
     AdjudicateRequest,
@@ -31,6 +33,9 @@ from clsplusplus.models import (
     MemoryCycleRequest,
     ReadRequest,
     ReadResponse,
+    TierUpgradeRequest,
+    UserLoginRequest,
+    UserRegisterRequest,
     WebhookCreate,
     WriteRequest,
 )
@@ -45,6 +50,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     memory_service = MemoryService(settings)
     sleep_orchestrator = SleepOrchestrator(settings, engine=memory_service.engine)
     integration_service = IntegrationService(settings)
+    user_service = UserService(settings)
 
     app = FastAPI(
         title="CLS++ API",
@@ -57,13 +63,14 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=False,
+        allow_credentials=True,
         allow_methods=["GET", "POST", "DELETE", "OPTIONS", "HEAD"],
         allow_headers=["*"],
         expose_headers=["*"],
     )
     # Middleware execution order: outermost (added last) runs first.
-    # TracingMiddleware → RequestId → RateLimit → Auth → route handler
+    # TracingMiddleware → RequestId → RateLimit → Auth → Quota → route handler
+    app.add_middleware(QuotaMiddleware, settings=settings)
     app.add_middleware(AuthMiddleware, settings=settings)
     app.add_middleware(RateLimitMiddleware, settings=settings)
     app.add_middleware(RequestIdMiddleware)
@@ -136,13 +143,23 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         """Quick liveness probe. chat.js and other clients call this on startup."""
         return {"status": "ok", "version": getattr(settings, "version", "0.7")}
 
+    # Per-user metrics emitter (shared across all endpoints)
+    from clsplusplus.metrics import MetricsEmitter
+    _metrics = MetricsEmitter(settings)
+    memory_service._metrics = _metrics  # Wire metrics into memory service
+
     async def _record_usage(operation: str, request: Request):
         """Fire-and-forget usage tracking. Must never crash a user request."""
         try:
             api_key = getattr(request.state, "api_key", None)
             if api_key and settings.track_usage:
-                from clsplusplus.usage import record_usage
+                from clsplusplus.usage import record_usage, record_operation
                 await record_usage(api_key, operation, settings)
+                await record_operation(api_key, settings)
+            # Per-user metrics (emit even without track_usage for admin visibility)
+            user_id = getattr(request.state, "user_id", None)
+            if user_id:
+                await _metrics.emit(user_id, operation)
         except Exception:
             pass  # Usage tracking failure must not affect user responses
 
@@ -232,7 +249,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return item.to_dict()
 
     @app.post("/v1/memories/prewarm")
-    async def prewarm_namespace(namespace: str = _ns_query()):
+    async def prewarm_namespace(request: Request, namespace: str = _ns_query()):
         """Pre-load a namespace into memory so the first user request is instant.
 
         Call this at application startup for active namespaces.  Returns immediately
@@ -244,46 +261,51 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(status_code=400, detail=str(e))
         await memory_service.prewarm(namespace)
         already = namespace in memory_service._loaded_namespaces
+        await _record_usage("prewarm", request)
         return {"status": "loaded" if already else "loading", "namespace": namespace}
 
     @app.post("/v1/memory/sleep")
-    async def trigger_sleep(namespace: str = _ns_query()):
+    async def trigger_sleep(request: Request, namespace: str = _ns_query()):
         """Trigger nightly sleep cycle (admin)."""
         try:
             validate_namespace(namespace)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         report = await sleep_orchestrator.run(namespace)
+        await _record_usage("consolidation", request)
         return report
 
     @app.post("/v1/memories/consolidate")
-    async def consolidate_memories(namespace: str = _ns_query()):
+    async def consolidate_memories(request: Request, namespace: str = _ns_query()):
         """Product alias: POST /memories/consolidate -> sleep."""
         try:
             validate_namespace(namespace)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         report = await sleep_orchestrator.run(namespace)
+        await _record_usage("consolidation", request)
         return report
 
     @app.delete("/v1/memory/forget")
-    async def forget_memory(req: ForgetRequest):
+    async def forget_memory(req: ForgetRequest, request: Request):
         """Delete a memory by ID (RTBF)."""
         deleted = await memory_service.delete(req.item_id, req.namespace)
         if not deleted:
             raise HTTPException(status_code=404, detail="Item not found")
+        await _record_usage("delete", request)
         return {"deleted": True, "item_id": req.item_id}
 
     @app.delete("/v1/memories/forget")
-    async def forget_memory_alias(req: ForgetRequest):
+    async def forget_memory_alias(req: ForgetRequest, request: Request):
         """Product alias: DELETE /memories/forget."""
         deleted = await memory_service.delete(req.item_id, req.namespace)
         if not deleted:
             raise HTTPException(status_code=404, detail="Item not found")
+        await _record_usage("delete", request)
         return {"deleted": True, "item_id": req.item_id}
 
     @app.post("/v1/memory/adjudicate_conflict")
-    async def adjudicate_conflict(req: AdjudicateRequest):
+    async def adjudicate_conflict(req: AdjudicateRequest, request: Request):
         """Submit conflicting fact + evidence for reconsolidation gate."""
         result = await memory_service.adjudicate(
             new_text=req.new_fact,
@@ -293,6 +315,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         )
         # If the returned item is the same as the existing one, quorum was not met
         decision = "rejected" if (req.existing_item_id and result.id == req.existing_item_id) else "accepted"
+        await _record_usage("adjudication", request)
         return {"decision": decision, "new_id": result.id}
 
     @app.get("/v1/demo/status")
@@ -407,6 +430,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.delete("/v1/memories/{item_id}")
     async def forget_memory_by_id(
+        request: Request,
         item_id: str = Path(..., min_length=1, max_length=64),
         namespace: str = _ns_query(),
     ):
@@ -419,22 +443,533 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         deleted = await memory_service.delete(item_id, namespace)
         if not deleted:
             raise HTTPException(status_code=404, detail="Item not found")
+        await _record_usage("delete", request)
         return {"deleted": True, "item_id": item_id}
 
     @app.get("/v1/usage")
     async def usage_endpoint(request: Request):
-        """Usage metrics for current period (marketplace billing). Requires API key when auth enabled."""
+        """Usage metrics for current period with tier info. Requires API key when auth enabled."""
         from clsplusplus.auth import get_api_key_from_request
         api_key = getattr(request.state, "api_key", None) or get_api_key_from_request(request.headers.get("Authorization"))
         if settings.require_api_key and not api_key:
             raise HTTPException(status_code=401, detail="API key required")
-        from clsplusplus.usage import get_usage as _get_usage
-        return await _get_usage(api_key or "anonymous", settings)
+        from clsplusplus.tiers import get_tier, get_quota_status
+        tier = get_tier(settings)
+        return await get_quota_status(api_key or "anonymous", tier, settings)
 
     @app.get("/v1/billing/usage")
     async def billing_usage(request: Request):
         """Billing API: usage for current period (alias for /v1/usage)."""
         return await usage_endpoint(request)
+
+    # =========================================================================
+    # User Auth API — Registration, login, Google OAuth, profile
+    # =========================================================================
+
+    def _set_session_cookie(response: JSONResponse, token: str) -> JSONResponse:
+        response.set_cookie(
+            key="cls_session",
+            value=token,
+            httponly=True,
+            secure=False,  # Set True in production (HTTPS)
+            samesite="lax",
+            max_age=7 * 86400,  # 7 days
+            path="/",
+        )
+        return response
+
+    @app.post("/v1/auth/register")
+    async def register_user(req: UserRegisterRequest):
+        """Register a new user with email and password."""
+        try:
+            user, token = await user_service.register(req.email, req.password, req.name)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail="Registration service unavailable")
+        response = JSONResponse(content=user)
+        return _set_session_cookie(response, token)
+
+    @app.post("/v1/auth/login")
+    async def login_user(req: UserLoginRequest):
+        """Login with email and password."""
+        try:
+            user, token = await user_service.login(req.email, req.password)
+        except ValueError as e:
+            raise HTTPException(status_code=401, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail="Login service unavailable")
+        response = JSONResponse(content=user)
+        return _set_session_cookie(response, token)
+
+    @app.post("/v1/auth/logout")
+    async def logout_user():
+        """Clear session cookie."""
+        response = JSONResponse(content={"detail": "Logged out"})
+        response.delete_cookie("cls_session", path="/")
+        return response
+
+    @app.get("/v1/auth/me")
+    async def get_current_user(request: Request):
+        """Get current authenticated user from JWT cookie."""
+        user_id = getattr(request.state, "user_id", None)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        try:
+            user = await user_service.get_user(user_id)
+        except Exception:
+            raise HTTPException(status_code=500, detail="User service unavailable")
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return user
+
+    @app.get("/v1/auth/google")
+    async def google_auth_redirect(request: Request, redirect: str = "/dashboard.html"):
+        """Redirect to Google OAuth consent screen."""
+        from urllib.parse import urlencode
+        if not settings.google_client_id:
+            raise HTTPException(status_code=501, detail="Google OAuth not configured")
+        callback_url = str(request.base_url).rstrip("/") + "/v1/auth/google/callback"
+        params = urlencode({
+            "client_id": settings.google_client_id,
+            "redirect_uri": callback_url,
+            "response_type": "code",
+            "scope": "openid email profile",
+            "access_type": "offline",
+            "state": redirect,
+        })
+        from starlette.responses import RedirectResponse
+        return RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
+
+    @app.get("/v1/auth/google/callback")
+    async def google_auth_callback(request: Request, code: str = "", state: str = "/dashboard.html"):
+        """Handle Google OAuth callback — exchange code, create/login user, redirect."""
+        if not code:
+            raise HTTPException(status_code=400, detail="Missing authorization code")
+        callback_url = str(request.base_url).rstrip("/") + "/v1/auth/google/callback"
+        try:
+            user, token = await user_service.google_auth(code, callback_url)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception:
+            raise HTTPException(status_code=500, detail="Google auth service unavailable")
+        from starlette.responses import RedirectResponse
+        response = RedirectResponse(state or "/dashboard.html")
+        _set_session_cookie(response, token)
+        return response
+
+    # =========================================================================
+    # User Dashboard API — Per-user usage and tier management
+    # =========================================================================
+
+    @app.get("/v1/user/usage")
+    async def user_usage(request: Request):
+        """Usage metrics for the authenticated user."""
+        user_id = getattr(request.state, "user_id", None)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        user = await user_service.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        from clsplusplus.tiers import Tier, get_quota_status
+        tier = Tier(user["tier"])
+        namespace = f"user-{user_id[:8]}"
+        return await get_quota_status(namespace, tier, settings)
+
+    @app.post("/v1/user/upgrade")
+    async def upgrade_tier(req: TierUpgradeRequest, request: Request):
+        """Change user tier (upgrade or downgrade)."""
+        user_id = getattr(request.state, "user_id", None)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        try:
+            user = await user_service.update_tier(user_id, req.tier)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception:
+            raise HTTPException(status_code=500, detail="Upgrade service unavailable")
+        return user
+
+    @app.get("/v1/user/usage/history")
+    async def user_usage_history(request: Request):
+        """Usage history for the last 6 months for the authenticated user."""
+        user_id = getattr(request.state, "user_id", None)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        namespace = f"user-{user_id[:8]}"
+        from clsplusplus.usage import get_usage_history
+        try:
+            return await get_usage_history(namespace, months=6, settings=settings)
+        except Exception:
+            return []
+
+    @app.get("/v1/user/integrations")
+    async def user_integrations(request: Request):
+        """List integrations for the authenticated user's namespace."""
+        user_id = getattr(request.state, "user_id", None)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        namespace = f"user-{user_id[:8]}"
+        try:
+            integrations = await integration_service.list_all(namespace)
+            return {"integrations": [i.model_dump(mode="json") if hasattr(i, "model_dump") else i for i in integrations]}
+        except Exception:
+            return {"integrations": []}
+
+    # =========================================================================
+    # Admin Dashboard API — Protected by is_admin flag in JWT
+    # =========================================================================
+
+    @app.get("/admin/metrics/summary")
+    async def admin_summary(request: Request):
+        """Top-bar KPIs: Total Users, Revenue, Cost, Margin %."""
+        _require_admin(request)
+        try:
+            from clsplusplus.tiers import Tier, TIER_PRICES
+            from clsplusplus.cost_model import compute_cost
+
+            tier_counts = await user_service.store.count_users_by_tier()
+            total_users = sum(tier_counts.values())
+            paying_users = total_users - tier_counts.get("free", 0)
+
+            monthly_revenue = sum(
+                tier_counts.get(t.value, 0) * TIER_PRICES[t]
+                for t in Tier
+            )
+
+            aggregate = await _metrics.get_aggregate_metrics()
+            monthly_cost = compute_cost(aggregate)
+            margin = ((monthly_revenue - monthly_cost) / monthly_revenue * 100) if monthly_revenue > 0 else 0
+
+            return {
+                "total_users": total_users,
+                "paying_users": paying_users,
+                "free_users": tier_counts.get("free", 0),
+                "monthly_revenue": round(monthly_revenue, 2),
+                "monthly_cost": round(monthly_cost, 4),
+                "margin_percent": round(margin, 1),
+                "tier_counts": tier_counts,
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Metrics unavailable: {str(e)[:200]}")
+
+    @app.get("/admin/metrics/signups")
+    async def admin_signups(request: Request):
+        """Daily signup counts for the last 90 days."""
+        _require_admin(request)
+        try:
+            signups = await user_service.store.daily_signups(days=90)
+            return {"signups": signups}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Signup data unavailable: {str(e)[:200]}")
+
+    @app.get("/admin/metrics/revenue")
+    async def admin_revenue(request: Request):
+        """MRR, ARR, and simple linear forecast."""
+        _require_admin(request)
+        try:
+            from clsplusplus.tiers import Tier, TIER_PRICES
+            tier_counts = await user_service.store.count_users_by_tier()
+
+            mrr = sum(
+                tier_counts.get(t.value, 0) * TIER_PRICES[t]
+                for t in Tier
+            )
+            arr = mrr * 12
+
+            # Simple forecast: assume current MRR for remaining FY months
+            now = datetime.now()
+            months_remaining = 12 - now.month
+            fy_projected = arr  # Simplified: current run rate
+
+            return {
+                "mrr": round(mrr, 2),
+                "arr": round(arr, 2),
+                "fy_projected": round(fy_projected, 2),
+                "months_remaining": months_remaining,
+                "tier_counts": tier_counts,
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Revenue data unavailable: {str(e)[:200]}")
+
+    @app.get("/admin/metrics/operations")
+    async def admin_operations(request: Request):
+        """Aggregate metering points across all users for current period."""
+        _require_admin(request)
+        try:
+            aggregate = await _metrics.get_aggregate_metrics()
+            from clsplusplus.cost_model import compute_cost
+            total_cost = compute_cost(aggregate)
+
+            return {
+                "period": datetime.utcnow().strftime("%Y-%m"),
+                "metrics": aggregate,
+                "total_cost": round(total_cost, 4),
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Operations data unavailable: {str(e)[:200]}")
+
+    @app.get("/admin/metrics/users")
+    async def admin_users(request: Request):
+        """Per-user breakdown: tier, operations, cost, revenue."""
+        _require_admin(request)
+        try:
+            from clsplusplus.tiers import Tier, TIER_PRICES
+            from clsplusplus.cost_model import compute_cost
+
+            users = await user_service.list_users(limit=500)
+            result = []
+            for u in users:
+                user_metrics = await _metrics.get_user_metrics(u["id"])
+                user_cost = compute_cost(user_metrics)
+                user_revenue = TIER_PRICES.get(Tier(u["tier"]), 0)
+                ops = sum(user_metrics.values())
+                result.append({
+                    "id": u["id"],
+                    "email": u["email"],
+                    "name": u["name"],
+                    "tier": u["tier"],
+                    "operations": ops,
+                    "cost": round(user_cost, 4),
+                    "revenue": round(user_revenue, 2),
+                    "created_at": u["created_at"],
+                })
+
+            return {"users": result}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"User data unavailable: {str(e)[:200]}")
+
+    def _require_admin(request: Request):
+        """Helper to enforce admin access on endpoints."""
+        if not getattr(request.state, "is_admin", False):
+            raise HTTPException(status_code=403, detail="Admin access required")
+
+    @app.get("/admin/metrics/user/{user_id}")
+    async def admin_user_detail(request: Request, user_id: str = Path(...)):
+        """Get detailed metrics for a specific user (admin only)."""
+        _require_admin(request)
+        try:
+            user = await user_service.get_user(user_id)
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found")
+            user_metrics = await _metrics.get_user_metrics(user_id)
+            from clsplusplus.cost_model import compute_cost
+            from clsplusplus.tiers import Tier, TIER_PRICES
+            user_cost = compute_cost(user_metrics)
+            user_revenue = TIER_PRICES.get(Tier(user["tier"]), 0)
+            return {
+                "user": user,
+                "metrics": user_metrics,
+                "cost": round(user_cost, 4),
+                "revenue": round(user_revenue, 2),
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"User metrics unavailable: {str(e)[:200]}")
+
+    @app.get("/admin/metrics/extension")
+    async def admin_extension(request: Request):
+        """Browser extension analytics: installs, DAU/WAU/MAU, site usage."""
+        _require_admin(request)
+        try:
+            return await _metrics.get_extension_analytics()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Extension analytics unavailable: {str(e)[:200]}")
+
+    @app.get("/admin/metrics/storage")
+    async def admin_storage(request: Request):
+        """Storage metering: item counts across L0/L1/L2, namespaces."""
+        _require_admin(request)
+        try:
+            l0_items = sum(len(items) for items in memory_service.engine._items.values())
+            l0_namespaces = len(memory_service.engine._items)
+            loaded_namespaces = len(memory_service._loaded_namespaces)
+
+            # L1 count (if DB available)
+            l1_count = 0
+            l1_namespaces = 0
+            try:
+                ns_list = await memory_service.l1.list_namespaces()
+                l1_namespaces = len(ns_list)
+                for ns in ns_list[:50]:  # Cap to avoid slow query
+                    l1_count += await memory_service.l1.count(ns)
+            except Exception:
+                pass
+
+            return {
+                "l0_items": l0_items,
+                "l0_namespaces": l0_namespaces,
+                "l1_items": l1_count,
+                "l1_namespaces": l1_namespaces,
+                "loaded_namespaces": loaded_namespaces,
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Storage metrics unavailable: {str(e)[:200]}")
+
+    # =========================================================================
+    # RBAC Admin API — Roles, Groups, Users, Permissions
+    # =========================================================================
+
+    from clsplusplus.rbac_service import RBACService, ALL_SCOPES
+    _rbac = RBACService(settings)
+
+    @app.get("/admin/rbac/scopes")
+    async def list_scopes(request: Request):
+        _require_admin(request)
+        return {"scopes": sorted(ALL_SCOPES)}
+
+    @app.get("/admin/rbac/roles")
+    async def list_roles(request: Request):
+        _require_admin(request)
+        return {"roles": await _rbac.store.list_roles()}
+
+    @app.post("/admin/rbac/roles")
+    async def create_role(request: Request):
+        _require_admin(request)
+        body = await request.json()
+        role = await _rbac.store.create_role(body["name"], body.get("description", ""), body.get("scopes", []))
+        return role
+
+    @app.put("/admin/rbac/roles/{role_id}")
+    async def update_role(request: Request, role_id: str = Path(...)):
+        _require_admin(request)
+        body = await request.json()
+        ok = await _rbac.store.update_role(role_id, body.get("description"), body.get("scopes"))
+        if not ok:
+            raise HTTPException(status_code=404, detail="Role not found or is a system role")
+        return {"ok": True}
+
+    @app.delete("/admin/rbac/roles/{role_id}")
+    async def delete_role(request: Request, role_id: str = Path(...)):
+        _require_admin(request)
+        ok = await _rbac.store.delete_role(role_id)
+        if not ok:
+            raise HTTPException(status_code=400, detail="Cannot delete system role")
+        return {"ok": True}
+
+    @app.get("/admin/rbac/groups")
+    async def list_groups(request: Request):
+        _require_admin(request)
+        return {"groups": await _rbac.store.list_groups()}
+
+    @app.post("/admin/rbac/groups")
+    async def create_group(request: Request):
+        _require_admin(request)
+        body = await request.json()
+        group = await _rbac.store.create_group(body["name"], body.get("description", ""))
+        return group
+
+    @app.put("/admin/rbac/groups/{group_id}")
+    async def update_group(request: Request, group_id: str = Path(...)):
+        _require_admin(request)
+        body = await request.json()
+        ok = await _rbac.store.update_group(group_id, body.get("name"), body.get("description"))
+        if not ok:
+            raise HTTPException(status_code=404, detail="Group not found")
+        return {"ok": True}
+
+    @app.delete("/admin/rbac/groups/{group_id}")
+    async def delete_group(request: Request, group_id: str = Path(...)):
+        _require_admin(request)
+        ok = await _rbac.store.delete_group(group_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Group not found")
+        return {"ok": True}
+
+    @app.get("/admin/rbac/groups/{group_id}/roles")
+    async def get_group_roles(request: Request, group_id: str = Path(...)):
+        _require_admin(request)
+        return {"roles": await _rbac.store.get_group_roles(group_id)}
+
+    @app.post("/admin/rbac/groups/{group_id}/roles")
+    async def add_group_role(request: Request, group_id: str = Path(...)):
+        _require_admin(request)
+        body = await request.json()
+        await _rbac.store.add_group_role(group_id, body["role_id"])
+        await _rbac.invalidate_group_cache(group_id)
+        return {"ok": True}
+
+    @app.delete("/admin/rbac/groups/{group_id}/roles/{role_id}")
+    async def remove_group_role(request: Request, group_id: str = Path(...), role_id: str = Path(...)):
+        _require_admin(request)
+        await _rbac.store.remove_group_role(group_id, role_id)
+        await _rbac.invalidate_group_cache(group_id)
+        return {"ok": True}
+
+    @app.get("/admin/rbac/groups/{group_id}/members")
+    async def get_group_members(request: Request, group_id: str = Path(...)):
+        _require_admin(request)
+        return {"members": await _rbac.store.get_group_members(group_id)}
+
+    @app.post("/admin/rbac/groups/{group_id}/members")
+    async def add_group_member(request: Request, group_id: str = Path(...)):
+        _require_admin(request)
+        body = await request.json()
+        await _rbac.store.add_group_member(group_id, body["user_id"])
+        await _rbac.invalidate_cache(body["user_id"])
+        return {"ok": True}
+
+    @app.delete("/admin/rbac/groups/{group_id}/members/{user_id}")
+    async def remove_group_member(request: Request, group_id: str = Path(...), user_id: str = Path(...)):
+        _require_admin(request)
+        await _rbac.store.remove_group_member(group_id, user_id)
+        await _rbac.invalidate_cache(user_id)
+        return {"ok": True}
+
+    @app.get("/admin/rbac/users/{user_id}/roles")
+    async def get_user_roles(request: Request, user_id: str = Path(...)):
+        _require_admin(request)
+        return {"roles": await _rbac.store.get_user_roles(user_id)}
+
+    @app.post("/admin/rbac/users/{user_id}/roles")
+    async def add_user_role(request: Request, user_id: str = Path(...)):
+        _require_admin(request)
+        body = await request.json()
+        await _rbac.store.add_user_role(user_id, body["role_id"])
+        await _rbac.invalidate_cache(user_id)
+        return {"ok": True}
+
+    @app.delete("/admin/rbac/users/{user_id}/roles/{role_id}")
+    async def remove_user_role(request: Request, user_id: str = Path(...), role_id: str = Path(...)):
+        _require_admin(request)
+        await _rbac.store.remove_user_role(user_id, role_id)
+        await _rbac.invalidate_cache(user_id)
+        return {"ok": True}
+
+    @app.get("/admin/rbac/users/{user_id}/permissions")
+    async def get_user_permissions(request: Request, user_id: str = Path(...)):
+        _require_admin(request)
+        return {"permissions": await _rbac.store.get_user_permissions(user_id)}
+
+    @app.post("/admin/rbac/users/{user_id}/permissions")
+    async def set_user_permission(request: Request, user_id: str = Path(...)):
+        _require_admin(request)
+        body = await request.json()
+        perm = await _rbac.store.set_user_permission(user_id, body["scope"], body.get("granted", True))
+        await _rbac.invalidate_cache(user_id)
+        return perm
+
+    @app.delete("/admin/rbac/users/{user_id}/permissions/{permission_id}")
+    async def remove_user_permission(request: Request, user_id: str = Path(...), permission_id: str = Path(...)):
+        _require_admin(request)
+        await _rbac.store.remove_user_permission(user_id, permission_id)
+        await _rbac.invalidate_cache(user_id)
+        return {"ok": True}
+
+    @app.get("/admin/rbac/users/{user_id}/effective")
+    async def get_effective_scopes(request: Request, user_id: str = Path(...)):
+        _require_admin(request)
+        scopes = await _rbac.get_effective_scopes(user_id)
+        groups = await _rbac.store.get_user_groups(user_id)
+        roles = await _rbac.store.get_user_roles(user_id)
+        overrides = await _rbac.store.get_user_permissions(user_id)
+        return {
+            "scopes": sorted(scopes),
+            "groups": groups,
+            "direct_roles": roles,
+            "overrides": overrides,
+        }
 
     # =========================================================================
     # Integration Management API — Self-service integration endpoints
@@ -813,6 +1348,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "phase_dynamics": _phase_dynamics(ns),
         }
 
+        await _record_usage("chat_message", request)
+
         return {
             "reply": reply,
             "memory_used": memory_used,
@@ -948,7 +1485,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     # Register local/daemon routes (memory viewer, LLM proxies, WebSocket, installer)
     from clsplusplus.local_routes import create_local_router
-    app.include_router(create_local_router(memory_service, settings))
+    app.include_router(create_local_router(memory_service, settings, metrics_emitter=_metrics))
 
     # Serve website static files if the directory exists
     if _website_dir and FilePath(_website_dir).is_dir():

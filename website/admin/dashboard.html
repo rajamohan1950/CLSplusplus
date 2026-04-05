@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard | CLS++</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="../auth.js" defer></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/permissions.html">Permissions</a>
+        <a href="/docs.html">Docs</a>
+        <a href="/integrate.html">Integrate</a>
+        <a href="/chat.html">Chat</a>
+        <div id="nav-auth" class="nav-auth"></div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="admin-container">
+    <!-- KPI Top Bar -->
+    <div class="kpi-bar" id="kpi-bar">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Users</div>
+        <div class="kpi-value" id="kpi-users">--</div>
+        <div class="kpi-sub" id="kpi-users-sub"></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Monthly Revenue</div>
+        <div class="kpi-value kpi-green" id="kpi-revenue">--</div>
+        <div class="kpi-sub" id="kpi-revenue-sub"></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Monthly Cost</div>
+        <div class="kpi-value kpi-red" id="kpi-cost">--</div>
+        <div class="kpi-sub" id="kpi-cost-sub"></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Margin %</div>
+        <div class="kpi-value" id="kpi-margin">--</div>
+        <div class="kpi-sub">Revenue - Cost / Revenue</div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- SECTION 1: USER BUCKETS (how users join each tier)           -->
+    <!-- ============================================================ -->
+    <div class="section-card">
+      <h2>User Buckets</h2>
+      <p class="section-sub">How users are distributed across tiers and their revenue contribution.</p>
+      <div class="kpi-bar" id="user-buckets">
+        <div class="kpi-card" style="border-top:3px solid var(--text-muted);">
+          <div class="kpi-label">Free</div>
+          <div class="kpi-value" id="bucket-free-count">--</div>
+          <div class="kpi-sub" id="bucket-free-rev">$0 revenue</div>
+        </div>
+        <div class="kpi-card" style="border-top:3px solid var(--accent);">
+          <div class="kpi-label">Pro — $9/month</div>
+          <div class="kpi-value" id="bucket-pro-count">--</div>
+          <div class="kpi-sub" id="bucket-pro-rev">$0 revenue</div>
+        </div>
+        <div class="kpi-card" style="border-top:3px solid #eab308;">
+          <div class="kpi-label">Business — $29/month</div>
+          <div class="kpi-value" id="bucket-business-count">--</div>
+          <div class="kpi-sub" id="bucket-business-rev">$0 revenue</div>
+        </div>
+        <div class="kpi-card" style="border-top:3px solid #ec4899;">
+          <div class="kpi-label">Enterprise — $149/month</div>
+          <div class="kpi-value" id="bucket-enterprise-count">--</div>
+          <div class="kpi-sub" id="bucket-enterprise-rev">$0 revenue</div>
+        </div>
+      </div>
+      <div class="charts-row" style="margin-top:20px;">
+        <div class="chart-card">
+          <h3>Daily Signups</h3>
+          <div class="chart-wrap"><canvas id="chart-signups"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <h3>Financial Year Forecast</h3>
+          <div class="chart-wrap"><canvas id="chart-forecast"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- SECTION 2: EXTENSION & DOWNLOADS                             -->
+    <!-- ============================================================ -->
+    <div class="section-card" id="ext-section">
+      <h2>Extension & Downloads</h2>
+      <p class="section-sub">Browser extension installs, active users, and site-specific usage.</p>
+      <div class="kpi-bar" style="margin-bottom:20px;">
+        <div class="kpi-card"><div class="kpi-label">Installs Today</div><div class="kpi-value" id="ext-installs-today">--</div></div>
+        <div class="kpi-card"><div class="kpi-label">Installs This Month</div><div class="kpi-value" id="ext-installs-month">--</div></div>
+        <div class="kpi-card"><div class="kpi-label">DAU</div><div class="kpi-value kpi-green" id="ext-dau">--</div><div class="kpi-sub">Daily Active Users</div></div>
+        <div class="kpi-card"><div class="kpi-label">WAU</div><div class="kpi-value" id="ext-wau">--</div><div class="kpi-sub">Weekly Active Users</div></div>
+      </div>
+      <div class="kpi-bar" style="margin-bottom:20px;">
+        <div class="kpi-card"><div class="kpi-label">MAU</div><div class="kpi-value" id="ext-mau">--</div><div class="kpi-sub">Monthly Active Users</div></div>
+        <div class="kpi-card"><div class="kpi-label">Auto-Inject On</div><div class="kpi-value" id="ext-autoinject">--</div></div>
+        <div class="kpi-card"><div class="kpi-label">Local Mode</div><div class="kpi-value" id="ext-localmode">--</div></div>
+        <div class="kpi-card"><div class="kpi-label">Cloud Mode</div><div class="kpi-value" id="ext-cloudmode">--</div></div>
+      </div>
+      <div class="charts-row">
+        <div class="chart-card">
+          <h3>Context Injections by Site</h3>
+          <div class="chart-wrap"><canvas id="chart-sites"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <h3>Messages Captured by Site</h3>
+          <div class="chart-wrap"><canvas id="chart-messages"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- SECTION 3: API & MEMORY ACTIVITY                             -->
+    <!-- ============================================================ -->
+    <div class="section-card">
+      <h2>API Request Metrics</h2>
+      <p class="section-sub">Operation counts across all users for the current billing period.</p>
+      <div class="metrics-grid" id="metrics-api"><div class="metric-placeholder">Loading...</div></div>
+    </div>
+
+    <div class="section-card">
+      <h2>Compute Metrics</h2>
+      <p class="section-sub">Embedding, consolidation, and replay operations.</p>
+      <div class="metrics-grid" id="metrics-compute"><div class="metric-placeholder">Loading...</div></div>
+    </div>
+
+    <div class="section-card">
+      <h2>Extension Backend Metrics</h2>
+      <p class="section-sub">Server-side operations triggered by the browser extension.</p>
+      <div class="metrics-grid" id="metrics-ext-backend"><div class="metric-placeholder">Loading...</div></div>
+    </div>
+
+    <div class="section-card">
+      <h2>Storage Metering</h2>
+      <p class="section-sub">Item counts across memory layers and namespaces.</p>
+      <div class="metrics-grid" id="metrics-storage"><div class="metric-placeholder">Loading...</div></div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- SECTION 4: FINANCIAL SUMMARY (at bottom)                     -->
+    <!-- ============================================================ -->
+    <div class="section-card">
+      <h2>Daily Net Profit & 30-Day Forecast</h2>
+      <p class="section-sub">Revenue minus cost per day. Forecast based on current run rate.</p>
+      <div class="kpi-bar" style="margin-bottom:20px;">
+        <div class="kpi-card"><div class="kpi-label">Daily Revenue</div><div class="kpi-value kpi-green" id="profit-daily-rev">--</div></div>
+        <div class="kpi-card"><div class="kpi-label">Daily Cost</div><div class="kpi-value kpi-red" id="profit-daily-cost">--</div></div>
+        <div class="kpi-card"><div class="kpi-label">Daily Net Profit</div><div class="kpi-value" id="profit-daily-net">--</div></div>
+        <div class="kpi-card"><div class="kpi-label">30-Day Projected Profit</div><div class="kpi-value" id="profit-30d">--</div></div>
+      </div>
+      <div class="chart-wrap" style="height:280px;"><canvas id="chart-profit-forecast"></canvas></div>
+    </div>
+
+    <div class="charts-row">
+      <div class="chart-card">
+        <h3>Monthly Recurring Revenue</h3>
+        <div class="chart-wrap"><canvas id="chart-mrr"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Annual Recurring Revenue</h3>
+        <div class="chart-wrap"><canvas id="chart-arr"></canvas></div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <h2>Platform Metrics</h2>
+      <p class="section-sub">Rate limiting, request volume, and system-level counters.</p>
+      <div class="metrics-grid" id="metrics-platform"><div class="metric-placeholder">Loading...</div></div>
+    </div>
+
+    <div class="section-card">
+      <h2>External Service Metrics</h2>
+      <p class="section-sub">LLM tokens, proxy requests, and third-party API usage.</p>
+      <div class="metrics-grid" id="metrics-external"><div class="metric-placeholder">Loading...</div></div>
+    </div>
+
+    <div class="section-card" style="text-align:center;">
+      <h2>Total Infrastructure Cost</h2>
+      <div class="kpi-value kpi-red" id="total-cost-value" style="font-size:2.5rem;">--</div>
+      <div class="kpi-sub">This billing period</div>
+    </div>
+
+    <!-- Per-User Table -->
+    <div class="section-card">
+      <h2>Per-User Breakdown</h2>
+      <p class="section-sub">Cost and revenue per user this month. Click a row to see detailed metrics.</p>
+      <div class="table-wrap">
+        <table class="admin-table" id="users-table">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Name</th>
+              <th>Tier</th>
+              <th>Operations</th>
+              <th>Cost</th>
+              <th>Revenue</th>
+              <th>Margin</th>
+              <th>Joined</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody">
+            <tr><td colspan="8" style="text-align:center;color:var(--text-muted);">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- User Detail Modal -->
+  <div id="user-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:200;overflow-y:auto;">
+    <div style="max-width:700px;margin:60px auto;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-lg);padding:32px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
+        <h2 id="modal-title" style="margin:0;">User Details</h2>
+        <button onclick="document.getElementById('user-modal').style.display='none'" style="background:none;border:none;color:var(--text-muted);font-size:1.5rem;cursor:pointer;">&times;</button>
+      </div>
+      <div class="kpi-bar" style="margin-bottom:20px;">
+        <div class="kpi-card"><div class="kpi-label">Tier</div><div class="kpi-value" id="modal-tier">--</div></div>
+        <div class="kpi-card"><div class="kpi-label">Operations</div><div class="kpi-value" id="modal-ops">--</div></div>
+        <div class="kpi-card"><div class="kpi-label">Cost</div><div class="kpi-value kpi-red" id="modal-cost">--</div></div>
+        <div class="kpi-card"><div class="kpi-label">Revenue</div><div class="kpi-value kpi-green" id="modal-rev">--</div></div>
+      </div>
+      <h3 style="margin-bottom:12px;">Detailed Metrics</h3>
+      <div class="metrics-grid" id="modal-metrics"><div class="metric-placeholder">No metrics yet.</div></div>
+    </div>
+  </div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

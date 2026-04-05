@@ -115,6 +115,11 @@ class InMemoryStore:
         self.data[key] = value
         self.ttls[key] = time.time() + ttl
 
+    async def incr(self, key: str) -> int:
+        current = int(self.data.get(key, "0"))
+        self.data[key] = str(current + 1)
+        return current + 1
+
     async def hincrby(self, key: str, field: str, amount: int = 1):
         if key not in self.hashes:
             self.hashes[key] = {}

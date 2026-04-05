@@ -20,6 +20,18 @@ async function getUID() {
   return newUID;
 }
 
+// ── Telemetry ─────────────────────────────────────────────────────────────
+async function logTelemetry(event, data = {}) {
+  const uid = await getUID();
+  try {
+    await fetch(`${API}/api/telemetry`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Client': 'extension' },
+      body: JSON.stringify({ uid, event, site: data.site || '', data, ts: new Date().toISOString() }),
+    });
+  } catch (_) {}
+}
+
 // ── API helpers ────────────────────────────────────────────────────────────
 async function searchMemories(query, limit = 5) {
   const uid = await getUID();
@@ -72,6 +84,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     getUID().then(uid => sendResponse({ uid }));
     return true;
   }
+  if (msg.type === 'TELEMETRY') {
+    logTelemetry(msg.event, msg.data || {});
+    sendResponse({ ok: true });
+    return false;
+  }
 });
 
 // ── Update badge count every 10s ──────────────────────────────────────────
@@ -87,6 +104,7 @@ setInterval(updateBadge, 10000);
 // ── On install: open welcome page ──────────────────────────────────────────
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
+    logTelemetry('install');
     // Check if local server is running first, prefer local
     fetch('http://localhost:8080/health').then(r => {
       if (r.ok) chrome.tabs.create({ url: 'http://localhost:8080/ui/memory.html' });
@@ -95,9 +113,18 @@ chrome.runtime.onInstalled.addListener((details) => {
       chrome.tabs.create({ url: 'https://clsplusplus.onrender.com/install.html' });
     });
   }
+  // Set up daily ping alarm for DAU tracking
+  chrome.alarms.create('daily_ping', { periodInMinutes: 1440 }); // once per day
+});
+
+// ── Daily ping for DAU tracking ───────────────────────────────────────────
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'daily_ping') {
+    logTelemetry('ping');
+  }
 });
 
 // ── Allow index.html to detect extension is present ────────────────────────
 chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
-  if (msg.type === 'PING') sendResponse({ ok: true, version: '1.0.0' });
+  if (msg.type === 'PING') sendResponse({ ok: true, version: '2.1.0' });
 });

@@ -111,10 +111,11 @@ def _local_uid() -> str:
     return uid
 
 
-def create_local_router(memory_service: MemoryService, settings: Settings) -> APIRouter:
+def create_local_router(memory_service: MemoryService, settings: Settings, metrics_emitter=None) -> APIRouter:
     """Create an APIRouter with all local/daemon routes."""
     router = APIRouter()
     engine = memory_service.engine
+    _ext_metrics = metrics_emitter
 
     # ── In-memory state (closure-scoped) ──────────────────────────────────
     memory_log: dict[str, list[dict]] = defaultdict(list)
@@ -178,6 +179,30 @@ def create_local_router(memory_service: MemoryService, settings: Settings) -> AP
             "ts": datetime.utcnow().isoformat(),
         })
 
+    async def _ext_metric(uid: str, metric: str, count: int = 1):
+        """Fire-and-forget extension metric. Keyed by ext:{uid}."""
+        if _ext_metrics:
+            try:
+                await _ext_metrics.emit(f"ext:{uid}", metric, count)
+            except Exception:
+                pass
+
+    # ── Telemetry endpoint (extension analytics) ─────────────────────────
+    @router.post("/api/telemetry")
+    async def record_telemetry(request: Request):
+        """Fire-and-forget extension telemetry. Never fails."""
+        try:
+            body = await request.json()
+            uid = body.get("uid", "")
+            event = body.get("event", "")
+            site = body.get("site", "")
+            data = body.get("data", {})
+            if _ext_metrics and uid and event:
+                await _ext_metrics.record_ext_telemetry(uid, event, site, data)
+        except Exception:
+            pass
+        return {"ok": True}
+
     # ── OpenAI proxy ───────────────────────────────────────────────────────
     @router.post("/v1/chat/completions")
     async def openai_chat(request: Request):
@@ -203,6 +228,7 @@ def create_local_router(memory_service: MemoryService, settings: Settings) -> AP
                 await _store(uid, f, model_name, "assistant")
         except Exception:
             pass
+        await _ext_metric(uid, "ext_llm_proxy_openai")
         return Response(content=resp.content, media_type="application/json", status_code=resp.status_code)
 
     # ── Anthropic proxy ────────────────────────────────────────────────────
@@ -235,6 +261,7 @@ def create_local_router(memory_service: MemoryService, settings: Settings) -> AP
                 await _store(uid, f, model_name, "assistant")
         except Exception:
             pass
+        await _ext_metric(uid, "ext_llm_proxy_anthropic")
         return Response(content=resp.content, media_type="application/json", status_code=resp.status_code)
 
     # ── Demo chat (powers memory.html live chat) ────────────────────────────
@@ -326,6 +353,7 @@ def create_local_router(memory_service: MemoryService, settings: Settings) -> AP
         layer_counts = {"L0": 0, "L1": 0, "L2": 0, "L3": 0}
         for e in entries:
             layer_counts[e.get("layer", "L1")] += 1
+        await _ext_metric(uid, "ext_memory_fetch")
         return {
             "uid": uid,
             "count": len(entries),
@@ -368,6 +396,7 @@ def create_local_router(memory_service: MemoryService, settings: Settings) -> AP
                 entries.append(id_map[item.id])
             else:
                 entries.append({"id": item.id, "text": item.fact.raw_text, "category": "General"})
+        await _ext_metric(uid, "ext_search")
         return {"memories": entries, "count": len(entries)}
 
     @router.post("/api/search")
@@ -427,6 +456,7 @@ def create_local_router(memory_service: MemoryService, settings: Settings) -> AP
             "ts": datetime.utcnow().isoformat(),
         })
 
+        await _ext_metric(uid, "ext_context_injection")
         return {"context": ctx, "count": len(facts)}
 
     # ── Store / Delete / UID ───────────────────────────────────────────────
@@ -439,6 +469,9 @@ def create_local_router(memory_service: MemoryService, settings: Settings) -> AP
         if not text:
             return JSONResponse({"error": "text required"}, 400)
         entry = await _store(uid, text, model, source)
+        await _ext_metric(uid, "ext_write")
+        if model and model != "unknown":
+            await _ext_metric(uid, f"ext_write_{model}")
         return {"ok": True, "entry": entry}
 
     @router.delete("/api/memories/{uid}")
@@ -447,6 +480,7 @@ def create_local_router(memory_service: MemoryService, settings: Settings) -> AP
         context_log.pop(uid, None)
         engine._items.pop(uid, None)
         engine._token_index.pop(uid, None)
+        await _ext_metric(uid, "ext_delete")
         return {"ok": True}
 
     @router.get("/api/uid")
@@ -527,6 +561,7 @@ def create_local_router(memory_service: MemoryService, settings: Settings) -> AP
                 if f.is_file() and ".git" not in f.parts and "node_modules" not in f.parts:
                     zf.write(f, f.relative_to(_EXT_DIR_GLOBAL.parent))
         buf.seek(0)
+        await _ext_metric("system", "ext_download")
         return Response(
             content=buf.read(),
             media_type="application/zip",

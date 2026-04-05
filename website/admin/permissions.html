@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Permissions | CLS++ Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="styles.css">
+  <script src="../auth.js" defer></script>
+  <style>
+    .perm-layout { display:grid; grid-template-columns:260px 1fr; min-height:calc(100vh - 60px); margin-top:60px; }
+    .perm-sidebar { background:var(--bg-elevated); border-right:1px solid var(--border); padding:20px 0; overflow-y:auto; }
+    .perm-sidebar h3 { padding:0 16px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin:20px 0 8px; }
+    .perm-sidebar h3:first-child { margin-top:0; }
+    .perm-item { display:block; padding:8px 16px; cursor:pointer; color:var(--text); text-decoration:none; font-size:0.9rem; border-left:3px solid transparent; }
+    .perm-item:hover { background:rgba(99,102,241,0.08); }
+    .perm-item.active { border-left-color:var(--accent); background:rgba(99,102,241,0.12); color:var(--accent-light); }
+    .perm-main { padding:24px 32px; overflow-y:auto; }
+    .perm-main h2 { margin-bottom:16px; }
+    .perm-search { display:block; width:calc(100% - 32px); margin:0 16px 12px; padding:8px 12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:0.85rem; outline:none; font-family:inherit; }
+    .perm-search:focus { border-color:var(--accent); }
+
+    .scope-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:8px; margin:16px 0; }
+    .scope-check { display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; font-size:0.85rem; cursor:pointer; }
+    .scope-check:hover { border-color:var(--accent); }
+    .scope-check input { accent-color:var(--accent); }
+    .scope-check.granted { border-color:var(--success); background:rgba(34,197,94,0.05); }
+    .scope-check.denied { border-color:#ef4444; background:rgba(239,68,68,0.05); }
+
+    .tag { display:inline-block; padding:3px 10px; border-radius:12px; font-size:0.75rem; font-weight:600; margin:2px; }
+    .tag-role { background:rgba(99,102,241,0.15); color:var(--accent-light); }
+    .tag-group { background:rgba(34,197,94,0.15); color:#22c55e; }
+    .tag-remove { cursor:pointer; margin-left:4px; opacity:0.6; }
+    .tag-remove:hover { opacity:1; }
+
+    .perm-actions { display:flex; gap:8px; margin-top:20px; }
+    .perm-btn { padding:8px 20px; border-radius:8px; font-size:0.9rem; font-weight:600; cursor:pointer; border:none; font-family:inherit; }
+    .perm-btn-primary { background:var(--accent); color:#fff; }
+    .perm-btn-danger { background:#ef4444; color:#fff; }
+    .perm-btn-outline { background:transparent; border:1px solid var(--border); color:var(--text); }
+
+    .add-widget { display:flex; gap:8px; margin:12px 0; }
+    .add-widget select, .add-widget input { padding:6px 10px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:0.85rem; font-family:inherit; }
+    .add-widget button { padding:6px 14px; background:var(--accent); color:#fff; border:none; border-radius:6px; font-size:0.85rem; cursor:pointer; font-family:inherit; }
+
+    .effective-list { display:flex; flex-wrap:wrap; gap:6px; margin:12px 0; }
+    .eff-scope { padding:4px 12px; border-radius:6px; font-size:0.8rem; font-weight:500; }
+    .eff-granted { background:rgba(34,197,94,0.15); color:#22c55e; }
+    .eff-denied { background:rgba(239,68,68,0.15); color:#ef4444; }
+    .eff-missing { background:rgba(139,139,154,0.1); color:var(--text-muted); text-decoration:line-through; }
+
+    .field-group { margin-bottom:16px; }
+    .field-group label { display:block; font-size:0.8rem; color:var(--text-muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.3px; }
+    .field-group input, .field-group textarea { display:block; width:100%; padding:8px 12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:0.9rem; font-family:inherit; outline:none; }
+    .field-group input:focus, .field-group textarea:focus { border-color:var(--accent); }
+
+    .empty-state { text-align:center; color:var(--text-muted); padding:40px 20px; }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/permissions.html">Permissions</a>
+        <a href="/docs.html">Docs</a>
+        <a href="/integrate.html">Integrate</a>
+        <a href="/chat.html">Chat</a>
+        <div id="nav-auth" class="nav-auth"></div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="perm-layout">
+    <!-- Left Sidebar -->
+    <div class="perm-sidebar">
+      <h3>Roles</h3>
+      <div id="sidebar-roles"></div>
+      <div class="perm-item" onclick="showCreateRole()" style="color:var(--accent);font-size:0.85rem;">+ New Role</div>
+
+      <h3>Groups</h3>
+      <div id="sidebar-groups"></div>
+      <div class="perm-item" onclick="showCreateGroup()" style="color:var(--accent);font-size:0.85rem;">+ New Group</div>
+
+      <h3>Users</h3>
+      <input type="text" class="perm-search" id="user-search" placeholder="Search users..." oninput="filterUsers(this.value)">
+      <div id="sidebar-users"></div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="perm-main" id="perm-main">
+      <div class="empty-state">
+        <h2>Permissions Manager</h2>
+        <p>Select a role, group, or user from the sidebar to manage their permissions.</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="permissions.js"></script>
+</body>
+</html>

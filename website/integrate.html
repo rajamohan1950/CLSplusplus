@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Integrate | CLS++</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="auth.js" defer></script>
+  <style>
+    .int-container { max-width:900px; margin:0 auto; padding:100px 24px 60px; }
+    .int-hero { text-align:center; margin-bottom:48px; }
+    .int-hero h1 { font-size:2.2rem; margin-bottom:12px; }
+    .int-hero p { color:var(--text-muted); font-size:1.1rem; max-width:550px; margin:0 auto; }
+    .int-hero .highlight { color:var(--accent-light); font-weight:600; }
+
+    .method-cards { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-bottom:40px; }
+    .method-card { background:var(--bg-elevated); border:2px solid var(--border); border-radius:var(--radius-lg); padding:28px 24px; cursor:pointer; transition:all 0.2s; text-align:center; }
+    .method-card:hover { border-color:var(--accent); }
+    .method-card.active { border-color:var(--accent); background:rgba(99,102,241,0.08); }
+    .method-card .icon { font-size:2.5rem; margin-bottom:12px; }
+    .method-card h3 { font-size:1rem; margin-bottom:6px; }
+    .method-card p { font-size:0.85rem; color:var(--text-muted); margin:0; }
+    .method-card .badge { display:inline-block; padding:2px 8px; border-radius:8px; font-size:0.7rem; font-weight:600; text-transform:uppercase; margin-top:8px; }
+    .badge-green { background:rgba(34,197,94,0.15); color:#22c55e; }
+    .badge-blue { background:rgba(99,102,241,0.15); color:var(--accent-light); }
+    .badge-orange { background:rgba(234,179,8,0.15); color:#eab308; }
+
+    .int-section { background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius-lg); padding:32px; margin-bottom:24px; display:none; }
+    .int-section.active { display:block; }
+    .int-section h2 { font-size:1.3rem; margin-bottom:8px; }
+    .int-section .sub { color:var(--text-muted); font-size:0.95rem; margin-bottom:20px; }
+
+    .step { display:flex; gap:16px; margin:20px 0; align-items:flex-start; }
+    .step-num { width:32px; height:32px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.9rem; flex-shrink:0; margin-top:2px; }
+    .step-content { flex:1; }
+    .step-content h3 { font-size:1rem; margin-bottom:4px; }
+    .step-content p { color:var(--text-muted); font-size:0.9rem; margin:0; }
+
+    .code-box { background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:16px 20px; font-family:'JetBrains Mono',monospace; font-size:0.82rem; overflow-x:auto; position:relative; margin:12px 0; line-height:1.7; }
+    .code-box .copy { position:absolute; top:8px; right:8px; background:var(--accent); border:none; color:#fff; padding:4px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer; font-family:inherit; }
+    .code-box .copy:hover { background:var(--accent-dark); }
+    .code-box .old { color:#ef4444; text-decoration:line-through; opacity:0.6; }
+    .code-box .new { color:#22c55e; font-weight:500; }
+    .code-box .comment { color:var(--text-muted); }
+
+    .playground { background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin:20px 0; }
+    .playground h3 { font-size:0.95rem; margin-bottom:12px; }
+    .pg-row { display:flex; gap:8px; margin-bottom:10px; }
+    .pg-row input { flex:1; padding:10px 14px; background:var(--bg-elevated); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:0.9rem; font-family:inherit; outline:none; }
+    .pg-row input:focus { border-color:var(--accent); }
+    .pg-row button { padding:10px 20px; background:var(--accent); color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer; font-family:inherit; white-space:nowrap; }
+    .pg-result { background:var(--bg-elevated); border:1px solid var(--border); border-radius:8px; padding:12px 16px; margin-top:10px; font-size:0.9rem; min-height:40px; display:none; }
+    .pg-result.show { display:block; }
+
+    .download-btn { display:inline-flex; align-items:center; gap:8px; padding:14px 28px; background:var(--accent); color:#fff; border:none; border-radius:var(--radius); font-size:1rem; font-weight:600; cursor:pointer; font-family:inherit; margin-top:16px; }
+    .download-btn:hover { background:var(--accent-dark); }
+
+    .compare { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:20px 0; }
+    .compare-side { background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:16px; }
+    .compare-side h4 { font-size:0.85rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:8px; letter-spacing:0.5px; }
+
+    @media (max-width:768px) { .method-cards { grid-template-columns:1fr; } .compare { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs.html">Docs</a>
+        <a href="/integrate.html">Integrate</a>
+        <a href="/chat.html">Chat</a>
+        <a href="/getting-started.html">Get Started</a>
+        <div id="nav-auth" class="nav-auth"></div>
+      </div>
+      <button class="nav-toggle" aria-label="Menu">☰</button>
+    </div>
+  </nav>
+
+  <div class="int-container">
+    <div class="int-hero">
+      <h1>Add Memory to Your AI App</h1>
+      <p>Choose how you want to integrate. From <span class="highlight">zero code changes</span> to full SDK control.</p>
+    </div>
+
+    <!-- Method Selection -->
+    <div class="method-cards">
+      <div class="method-card" onclick="selectMethod('proxy')" id="card-proxy">
+        <div class="icon">🔌</div>
+        <h3>Zero Code</h3>
+        <p>Change 1 line. Your existing OpenAI/Claude app gets memory instantly.</p>
+        <span class="badge badge-green">Easiest</span>
+      </div>
+      <div class="method-card" onclick="selectMethod('playground')" id="card-playground">
+        <div class="icon">🧪</div>
+        <h3>Try First</h3>
+        <p>Test memory in your browser. No install. Then download working code.</p>
+        <span class="badge badge-blue">Interactive</span>
+      </div>
+      <div class="method-card" onclick="selectMethod('sdk')" id="card-sdk">
+        <div class="icon">🧠</div>
+        <h3>Full SDK</h3>
+        <p>11 methods. brain.learn(), brain.ask(), brain.wrap() — total control.</p>
+        <span class="badge badge-orange">Power</span>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- METHOD 1: ZERO CODE — Proxy -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <div class="int-section" id="section-proxy">
+      <h2>Zero Code Integration</h2>
+      <p class="sub">Your app already calls OpenAI or Anthropic. Just change the base URL. Every conversation now has persistent memory. Nothing else changes.</p>
+
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <h3>Find your LLM call</h3>
+          <p>Wherever you call OpenAI or Anthropic in your code.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <h3>Change one line</h3>
+          <p>Point the base URL to CLS++. That's the entire integration.</p>
+        </div>
+      </div>
+
+      <div class="compare">
+        <div class="compare-side">
+          <h4>Before (no memory)</h4>
+          <div class="code-box" style="font-size:0.78rem;">client = OpenAI(<span class="old">
+    # default: api.openai.com</span>
+)
+
+<span class="comment"># User chats. Forgets everything next session.</span></div>
+        </div>
+        <div class="compare-side">
+          <h4>After (persistent memory)</h4>
+          <div class="code-box" style="font-size:0.78rem;">client = OpenAI(
+    <span class="new">base_url="http://localhost:8181/v1"</span>
+)
+
+<span class="comment"># Same code. Now remembers every user forever.</span></div>
+        </div>
+      </div>
+
+      <div class="code-box">
+<span class="comment"># Python — OpenAI with memory (1 line change)</span>
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="your-openai-key",
+    <span class="new">base_url="<span id="proxy-url-openai">http://localhost:8181</span>/v1"  # ← This is the only change</span>
+)
+
+response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Remember, I prefer Python"}]
+)
+<span class="comment"># CLS++ intercepts the call, injects memory context,
+# forwards to real OpenAI, stores the conversation.
+# Next session, GPT-4 already knows the user prefers Python.</span>
+<button class="copy" onclick="copyCode(this)">Copy</button></div>
+
+      <div class="code-box">
+<span class="comment"># Python — Anthropic with memory (1 line change)</span>
+import anthropic
+
+client = anthropic.Anthropic(
+    api_key="your-anthropic-key",
+    <span class="new">base_url="<span id="proxy-url-anthropic">http://localhost:8181</span>"  # ← This is the only change</span>
+)
+
+message = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "I just switched to TypeScript"}]
+)
+<span class="comment"># Next time, Claude already knows about the TypeScript switch.</span>
+<button class="copy" onclick="copyCode(this)">Copy</button></div>
+
+      <p style="color:var(--text-muted);font-size:0.9rem;margin-top:16px;">
+        Works with any OpenAI-compatible client: LangChain, LlamaIndex, CrewAI, AutoGen — just set <code>base_url</code>.
+      </p>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- METHOD 2: PLAYGROUND — Try in browser, then download -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <div class="int-section" id="section-playground">
+      <h2>Interactive Playground</h2>
+      <p class="sub">Test memory right here in your browser. No install needed. When it works, download the code.</p>
+
+      <div class="playground">
+        <h3>Teach the brain</h3>
+        <div class="pg-row">
+          <input type="text" id="pg-user" placeholder="User ID (e.g. alice)" value="playground-user">
+          <input type="text" id="pg-fact" placeholder="Type a fact: I work at Google as an engineer">
+          <button onclick="pgLearn()">Learn</button>
+        </div>
+        <div class="pg-result" id="pg-learn-result"></div>
+      </div>
+
+      <div class="playground">
+        <h3>Ask the brain</h3>
+        <div class="pg-row">
+          <input type="text" id="pg-query" placeholder="Ask anything: Where do I work?">
+          <button onclick="pgAsk()">Ask</button>
+        </div>
+        <div class="pg-result" id="pg-ask-result"></div>
+      </div>
+
+      <div class="playground">
+        <h3>Get LLM context</h3>
+        <div class="pg-row">
+          <input type="text" id="pg-topic" placeholder="Topic: coding help" value="">
+          <button onclick="pgContext()">Get Context</button>
+        </div>
+        <div class="pg-result" id="pg-context-result" style="white-space:pre-wrap;"></div>
+      </div>
+
+      <p style="margin-top:24px;font-weight:600;">It works? Download the code that does exactly this:</p>
+      <button class="download-btn" onclick="downloadCode()">Download Python App</button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- METHOD 3: FULL SDK -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <div class="int-section" id="section-sdk">
+      <h2>Full Brain SDK</h2>
+      <p class="sub">11 methods. Total control. For developers who want to do powerful things.</p>
+
+      <div class="code-box">
+<span class="comment"># pip install git+https://github.com/rajamohan1950/CLSplusplus.git</span>
+from clsplusplus import Brain
+
+brain = Brain("alice")
+
+<span class="comment"># Core — every memory SDK does this</span>
+brain.learn("Prefers dark mode")           <span class="comment"># Store a fact</span>
+brain.ask("What theme?")                   <span class="comment"># Semantic recall</span>
+brain.context("UI design")                 <span class="comment"># LLM-ready prompt</span>
+brain.forget("old fact")                   <span class="comment"># GDPR delete</span>
+
+<span class="comment"># Innovative — only CLS++ does this</span>
+<span class="new">@brain.wrap</span>                                <span class="comment"># Auto-memory for any LLM fn</span>
+def chat(system, msg):
+    return openai.chat(system=system, user=msg)
+
+brain.absorb(conversation_transcript)      <span class="comment"># Bulk learn from text</span>
+brain.teach({"name":"Priya","role":"DS"})  <span class="comment"># Learn from dict/JSON</span>
+brain.watch(openai_messages)               <span class="comment"># Learn from message arrays</span>
+brain.correct("old belief","new belief")   <span class="comment"># Smart belief update</span>
+brain.chat("question", llm_fn=my_llm)      <span class="comment"># Full conversation handler</span>
+brain.who()                                <span class="comment"># Auto user profile</span>
+<button class="copy" onclick="copyCode(this)">Copy</button></div>
+    </div>
+  </div>
+
+  <script>
+  function selectMethod(method) {
+    document.querySelectorAll('.method-card').forEach(function(c) { c.classList.remove('active'); });
+    document.querySelectorAll('.int-section').forEach(function(s) { s.classList.remove('active'); });
+    document.getElementById('card-' + method).classList.add('active');
+    document.getElementById('section-' + method).classList.add('active');
+  }
+
+  function copyCode(btn) {
+    var box = btn.closest('.code-box');
+    var clone = box.cloneNode(true);
+    clone.querySelectorAll('.copy').forEach(function(b){b.remove();});
+    navigator.clipboard.writeText(clone.textContent.trim());
+    btn.textContent = 'Copied!';
+    setTimeout(function(){ btn.textContent = 'Copy'; }, 1500);
+  }
+
+  // Playground
+  async function pgLearn() {
+    var user = document.getElementById('pg-user').value.trim();
+    var fact = document.getElementById('pg-fact').value.trim();
+    var res = document.getElementById('pg-learn-result');
+    if (!fact) return;
+    try {
+      var r = await fetch('/v1/memory/write', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({text: fact, namespace: user || 'playground'})});
+      if (r.ok) { res.textContent = 'Learned: "' + fact + '"'; res.className = 'pg-result show'; document.getElementById('pg-fact').value = ''; }
+      else { res.textContent = 'Error: ' + r.status; res.className = 'pg-result show'; }
+    } catch(e) { res.textContent = 'Server not running at localhost:8181'; res.className = 'pg-result show'; }
+  }
+
+  async function pgAsk() {
+    var user = document.getElementById('pg-user').value.trim();
+    var query = document.getElementById('pg-query').value.trim();
+    var res = document.getElementById('pg-ask-result');
+    if (!query) return;
+    try {
+      var r = await fetch('/v1/memory/read', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({query: query, namespace: user || 'playground', limit: 5})});
+      if (r.ok) {
+        var data = await r.json();
+        var items = (data.items || []).map(function(i){return '• ' + i.text;});
+        res.textContent = items.length ? items.join('\n') : 'No memories found. Teach it something first!';
+        res.className = 'pg-result show';
+      }
+    } catch(e) { res.textContent = 'Server not running'; res.className = 'pg-result show'; }
+  }
+
+  async function pgContext() {
+    var user = document.getElementById('pg-user').value.trim();
+    var topic = document.getElementById('pg-topic').value.trim() || 'everything';
+    var res = document.getElementById('pg-context-result');
+    try {
+      var r = await fetch('/v1/memory/read', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({query: topic, namespace: user || 'playground', limit: 8})});
+      if (r.ok) {
+        var data = await r.json();
+        var items = (data.items || []).map(function(i){return i.text;});
+        if (items.length) {
+          res.textContent = 'Known facts about this user:\n' + items.map(function(t){return '- ' + t;}).join('\n') +
+            '\n\n↑ Paste this into any LLM system prompt.';
+        } else { res.textContent = 'No memories yet. Teach the brain first!'; }
+        res.className = 'pg-result show';
+      }
+    } catch(e) { res.textContent = 'Server not running'; res.className = 'pg-result show'; }
+  }
+
+  function downloadCode() {
+    var user = document.getElementById('pg-user').value.trim() || 'my-user';
+    var code = '# Generated by CLS++ Integration Builder\n' +
+      '# pip install git+https://github.com/rajamohan1950/CLSplusplus.git\n\n' +
+      'from clsplusplus import Brain\n\n' +
+      'brain = Brain("' + user + '", url="http://localhost:8181")\n\n' +
+      '# Store facts\n' +
+      'brain.learn("Your first fact here")\n\n' +
+      '# Retrieve\n' +
+      'print(brain.ask("Your question here"))\n\n' +
+      '# Get LLM context\n' +
+      'print(brain.context("topic"))\n';
+
+    var blob = new Blob([code], {type: 'text/plain'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'cls_memory_app.py';
+    a.click();
+  }
+
+  // Auto-select proxy (most innovative) on load
+  selectMethod('proxy');
+  </script>
+</body>
+</html>

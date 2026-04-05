@@ -27,6 +27,15 @@ class Settings(BaseSettings):
     # SaaS: Usage tracking for billing (marketplace)
     track_usage: bool = False
 
+    # SaaS: Tier and quota enforcement
+    tier: str = "free"                # free | pro | unlimited
+    enforce_quotas: bool = False      # Enable quota enforcement (off for local/demo)
+
+    # User auth (JWT + Google OAuth)
+    jwt_secret: str = ""                  # CLS_JWT_SECRET (required for user auth)
+    google_client_id: str = ""            # CLS_GOOGLE_CLIENT_ID
+    google_client_secret: str = ""        # CLS_GOOGLE_CLIENT_SECRET
+
     # Idempotency: cache window (seconds)
     idempotency_ttl_seconds: int = 86400  # 24 hours
 

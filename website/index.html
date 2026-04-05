@@ -9,29 +9,19 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <script src="auth.js" defer></script>
 </head>
 <body>
   <nav class="nav">
     <div class="nav-inner">
-      <a href="#" class="logo">CLS<span class="logo-plus">++</span></a>
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
       <div class="nav-links">
-        <a href="#tryit" class="btn btn-primary">Try It</a>
-        <a href="#problem">Problem</a>
-        <a href="#solution">Solution</a>
-        <a href="#demo">See It</a>
-        <a href="#enterprise">Enterprise</a>
-        <a href="#pricing">Pricing</a>
-        <a href="docs.html">Docs</a>
-        <a href="integrations.html">Integrations</a>
-        <a href="chat.html">Chat</a>
-        <a href="benchmark.html">Benchmarks</a>
-        <a href="tests.html">Tests</a>
-        <a href="trace.html">Traces</a>
-        <a href="memory.html">Memory</a>
-        <a href="install.html">Install</a>
-        <a href="/docs" target="_blank" rel="noopener">API</a>
-        <a href="https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener">GitHub</a>
-        <a href="#pricing" class="btn btn-primary">Get Started</a>
+        <a href="/">Home</a>
+        <a href="/docs.html">Docs</a>
+        <a href="/integrate.html">Integrate</a>
+        <a href="/chat.html">Chat</a>
+        <a href="/getting-started.html">Get Started</a>
+        <div id="nav-auth" class="nav-auth"></div>
       </div>
       <button class="nav-toggle" aria-label="Menu">☰</button>
     </div>
@@ -44,7 +34,8 @@
       <h1>Switch AI Models.<br><span class="gradient-text">Never Lose Context.</span></h1>
       <p class="hero-sub">Claude today. GPT-4 tomorrow. Gemini next week. Your preferences, corrections, and established facts follow you—because memory lives outside the model.</p>
       <div class="hero-cta">
-        <a href="https://render.com/deploy?repo=https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener" class="btn btn-large btn-primary">Deploy Free on Render</a>
+        <a href="integrate.html" class="btn btn-large btn-primary">Start Integrating</a>
+        <a href="https://render.com/deploy?repo=https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener" class="btn btn-large btn-outline">Deploy Free on Render</a>
         <a href="#tryit" class="btn btn-large btn-outline">Try It Live</a>
         <a href="#pricing" class="btn btn-large btn-outline">View Pricing</a>
       </div>
@@ -250,7 +241,7 @@
       </div>
 
       <div style="text-align:center;margin-top:32px;">
-        <a href="install.html" class="btn btn-large btn-primary">Install Now &mdash; 30 seconds</a>
+        <a href="getting-started.html" class="btn btn-large btn-primary">Start Integrating &mdash; 3 minutes</a>
       </div>
     </div>
   </section>
@@ -273,81 +264,64 @@
 
       <div class="pricing-grid">
         <div class="pricing-card pricing-silver pricing-highlight" id="tier-0">
-          <h3>Silver</h3>
+          <h3>Free</h3>
           <div class="price"><span class="price-amount">$0</span><span class="price-period">/month</span></div>
           <p class="price-desc">For individuals exploring AI memory</p>
           <ul>
-            <li><strong>10,000</strong> memory tokens/month</li>
-            <li>3 LLM models (ChatGPT, Claude, Gemini)</li>
-            <li>L0 Gas + L1 Liquid layers</li>
+            <li><strong>1,000</strong> operations/month</li>
+            <li>500 stored memories</li>
             <li>1 namespace</li>
             <li>Chrome extension included</li>
-            <li>Memory viewer dashboard</li>
-            <li>Basic context injection (5 memories)</li>
-            <li>Read-only API access</li>
-            <li>30-day data retention</li>
+            <li>Python SDK access</li>
             <li>Community support</li>
           </ul>
-          <a href="install.html" class="btn btn-outline">Get Started Free</a>
+          <a href="getting-started.html" class="btn btn-outline">Get Started Free</a>
         </div>
 
         <div class="pricing-card pricing-gold" id="tier-1">
-          <h3>Gold</h3>
-          <div class="price"><span class="price-amount">$29</span><span class="price-period">/month</span></div>
-          <p class="price-desc">For power users who live in AI</p>
+          <h3>Pro</h3>
+          <div class="price"><span class="price-amount">$9</span><span class="price-period">/month</span></div>
+          <p class="price-desc">For developers building with AI memory</p>
           <ul>
-            <li><strong>100,000</strong> memory tokens/month</li>
-            <li>5 LLM models (+Copilot, Perplexity)</li>
+            <li><strong>50,000</strong> operations/month</li>
+            <li>50,000 stored memories</li>
+            <li>10 namespaces</li>
             <li>All 4 memory layers</li>
-            <li>5 namespaces</li>
-            <li>Chrome extension included</li>
-            <li>Memory viewer dashboard</li>
-            <li>Standard context injection (15 memories)</li>
-            <li>Full API access</li>
-            <li>Sleep cycle (memory consolidation)</li>
-            <li>1-year data retention</li>
+            <li>Full API + SDK access</li>
+            <li>Sleep cycle consolidation</li>
             <li>Email support</li>
           </ul>
-          <a href="mailto:contact@alphaforge.ai?subject=CLS++%20Gold%20Plan" class="btn btn-primary">Start Free Trial</a>
+          <a href="/signup.html?next=/getting-started.html" class="btn btn-primary">Start Free Trial</a>
         </div>
 
         <div class="pricing-card pricing-platinum pricing-card-featured" id="tier-2">
           <span class="badge">Most Popular</span>
-          <h3>Platinum</h3>
-          <div class="price"><span class="price-amount">$99</span><span class="price-period">/month</span></div>
-          <p class="price-desc">For teams switching models daily</p>
+          <h3>Business</h3>
+          <div class="price"><span class="price-amount">$29</span><span class="price-period">/month</span></div>
+          <p class="price-desc">For teams shipping AI products</p>
           <ul>
-            <li><strong>1,000,000</strong> memory tokens/month</li>
-            <li>Unlimited LLM models</li>
+            <li><strong>200,000</strong> operations/month</li>
+            <li>200,000 stored memories</li>
+            <li>50 namespaces</li>
             <li>All 4 memory layers</li>
-            <li>Unlimited namespaces</li>
-            <li>Chrome extension included</li>
-            <li>Memory viewer dashboard</li>
-            <li>Advanced context injection (50 memories)</li>
             <li>Full API + webhook events</li>
-            <li>Sleep cycle (memory consolidation)</li>
-            <li>Unlimited data retention</li>
+            <li>Sleep cycle consolidation</li>
             <li>Priority support</li>
           </ul>
-          <a href="mailto:contact@alphaforge.ai?subject=CLS++%20Platinum%20Plan" class="btn btn-primary">Start Free Trial</a>
+          <a href="/signup.html?next=/getting-started.html" class="btn btn-primary">Start Free Trial</a>
         </div>
 
         <div class="pricing-card pricing-enterprise" id="tier-3">
           <h3>Enterprise</h3>
-          <div class="price"><span class="price-amount">Custom</span></div>
-          <p class="price-desc">For orgs with strict compliance</p>
+          <div class="price"><span class="price-amount">$149</span><span class="price-period">/month</span></div>
+          <p class="price-desc">For organizations at scale</p>
           <ul>
-            <li><strong>Unlimited</strong> memory tokens</li>
-            <li>Unlimited LLM models</li>
+            <li><strong>1,000,000</strong> operations/month</li>
+            <li>1,000,000 stored memories</li>
+            <li>500 namespaces</li>
             <li>All 4 memory layers</li>
-            <li>Unlimited namespaces</li>
-            <li>Chrome extension + custom build</li>
-            <li>Memory viewer dashboard</li>
-            <li>Custom context injection</li>
             <li>Full API + webhook events</li>
-            <li>Sleep cycle (memory consolidation)</li>
-            <li>Custom data retention</li>
-            <li>SSO, SAML, HIPAA BAA</li>
+            <li>SSO, RBAC, audit logs</li>
             <li>Self-hosted option</li>
             <li>Dedicated support + SLA</li>
           </ul>
@@ -395,7 +369,7 @@
           <a href="docs.html">Docs</a>
           <a href="/docs" target="_blank" rel="noopener">API</a>
           <a href="memory.html">Memory</a>
-          <a href="install.html">Install</a>
+          <a href="getting-started.html">Get Started</a>
           <a href="https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener">GitHub</a>
           <a href="mailto:contact@alphaforge.ai">Contact</a>
         </div>

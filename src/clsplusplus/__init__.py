@@ -1,34 +1,31 @@
-"""CLS++ - Continuous Learning System++
+"""CLS++ — Memory that thinks like a brain.
 
-Brain-inspired, model-agnostic persistent memory architecture for LLMs.
+    from clsplusplus import Brain
 
-3-line integration (loads SDK on first use):
-    from clsplusplus import CLS
-    client = CLS(api_key="cls_live_xxx")
-    client.memories.encode(content="User prefers dark mode", agent_id="a1")
+    brain = Brain("alice")
+    brain.learn("I work at Google")
+    brain.ask("Where do I work?")  # → ["I work at Google"]
 
-Embedded installs (e.g. local server) can import the phase engine without pulling the HTTP client:
-    from clsplusplus.memory_phase import PhaseMemoryEngine
+Or as module-level functions:
+
+    import clsplusplus as mem
+    mem.learn("alice", "Prefers dark mode")
+    mem.ask("alice", "What theme?")
 """
 
 from __future__ import annotations
 
 __version__ = "1.5.0"
 
-__all__ = ["CLS", "CLSClient", "MemoriesClient", "__version__"]
+__all__ = ["Brain", "learn", "ask", "context", "forget", "CLS", "CLSClient", "__version__"]
 
 
 def __getattr__(name: str):
-    if name == "CLS":
-        from clsplusplus.client import CLS
-
-        return CLS
-    if name == "CLSClient":
-        from clsplusplus.client import CLSClient
-
-        return CLSClient
-    if name == "MemoriesClient":
-        from clsplusplus.client import MemoriesClient
-
-        return MemoriesClient
+    from clsplusplus.client import Brain, learn, ask, context, forget, CLS, CLSClient, MemoriesClient
+    _map = {
+        "Brain": Brain, "learn": learn, "ask": ask, "context": context,
+        "forget": forget, "CLS": CLS, "CLSClient": CLSClient, "MemoriesClient": MemoriesClient,
+    }
+    if name in _map:
+        return _map[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

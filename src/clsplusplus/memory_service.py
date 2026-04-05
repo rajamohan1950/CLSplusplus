@@ -62,6 +62,7 @@ class MemoryService:
         self.plasticity = PlasticityEngine(settings)
 
         self._webhook_dispatcher = None  # Lazy init to avoid circular imports
+        self._metrics = None  # Set by api.py after creation
         self._loaded_namespaces: set[str] = set()
         self._loading_namespaces: set[str] = set()  # currently loading (background)
         self._write_counts: dict[str, int] = {}  # per-namespace write counter
@@ -69,6 +70,14 @@ class MemoryService:
         # Managed entirely outside the PhaseMemoryEngine to avoid crystallization interference.
         self._event_threads: dict[str, dict[str, list[str]]] = {}
         self._event_threads_lock = asyncio.Lock()
+
+    async def _emit_metric(self, namespace: str, metric: str, count: int = 1):
+        """Fire-and-forget metric emission. Never blocks."""
+        if self._metrics:
+            try:
+                await self._metrics.emit(f"ns:{namespace}", metric, count)
+            except Exception:
+                pass
 
     # =========================================================================
     # Conversion — PhaseMemoryItem ↔ MemoryItem
@@ -123,7 +132,11 @@ class MemoryService:
           • embedding_dense         ← embedding  (384-dim; enables semantic re-ranking)
         """
         if namespace in self._loaded_namespaces:
-            return
+            # Check if items still exist in engine — they may have evaporated
+            if self.engine._items.get(namespace):
+                return
+            # Items evaporated — reload from L1
+            self._loaded_namespaces.discard(namespace)
         if namespace in self._loading_namespaces:
             # Background load in progress — don't block the request
             return
@@ -801,6 +814,7 @@ class MemoryService:
                     if phase_item and not phase_item.embedding_dense:
                         emb = self.embedding_service.embed(req.text)
                         phase_item.embedding_dense = emb
+                        await self._emit_metric(req.namespace, "embedding")
                         tracer.add_metadata(trace_id, emb_hop,
                                             output=f"{len(emb)}-dim vector")
                     elif phase_item and phase_item.embedding_dense:
@@ -817,6 +831,7 @@ class MemoryService:
                 with tracer.span(trace_id, "engine.recall_long_tail", "phase_engine",
                                  namespace=ns, trigger="auto_n_writes"):
                     rehearsed = self.engine.recall_long_tail(ns, batch_size=50)
+                    await self._emit_metric(ns, "hippocampal_replay")
                     logger.debug("Auto recall_long_tail ns=%s writes=%d rehearsed=%d",
                                  ns, self._write_counts[ns], rehearsed)
 
@@ -874,6 +889,23 @@ class MemoryService:
                              namespace=req.namespace):
                 await self.ensure_loaded(req.namespace)
 
+            # 1-fast: If namespace has no items in engine, go straight to L1
+            ns_items = self.engine._items.get(req.namespace, [])
+            ns_alive = [i for i in ns_items if i.consolidation_strength >= self.engine.STRENGTH_FLOOR]
+            if not ns_alive:
+                try:
+                    query_emb = self.embedding_service.embed(req.query)
+                    l1_results = await self.l1.read(query_emb, req.namespace, limit=req.limit, min_confidence=0.0)
+                    if l1_results:
+                        return ReadResponse(
+                            items=l1_results[:req.limit],
+                            query=req.query,
+                            namespace=req.namespace,
+                            trace_id=trace_id or "",
+                        )
+                except Exception as _l1_err:
+                    logger.debug("L1 direct search failed: %s", _l1_err)
+
             # 1b. Auto-parse temporal filter from query if not provided
             effective_tf = req.temporal_filter
             if effective_tf is None:
@@ -900,6 +932,24 @@ class MemoryService:
                 else:
                     tracer.add_metadata(trace_id, search_hop, output="0 results", results=0)
 
+            # 2-fallback: If engine returned 0 results, search L1 PostgreSQL directly
+            if not results:
+                try:
+                    query_emb = self.embedding_service.embed(req.query)
+                    l1_items = await self.l1.read(query_emb, req.namespace, limit=req.limit, min_confidence=0.0)
+                    if l1_items:
+                        for li in l1_items:
+                            results.append((0.5, None))  # placeholder — will be replaced by items in convert step
+                        # Convert L1 items directly to the output format
+                        return ReadResponse(
+                            items=l1_items[:req.limit],
+                            query=req.query,
+                            namespace=req.namespace,
+                            trace_id=trace_id or "",
+                        )
+                except Exception as _l1_err:
+                    logger.debug("L1 fallback search failed: %s", _l1_err)
+
             # 2a. Apply temporal date filter (before semantic re-rank)
             if effective_tf and (effective_tf.start or effective_tf.end):
                 results = [
@@ -914,6 +964,7 @@ class MemoryService:
                                  candidates=len(results)) as rerank_hop:
                     try:
                         query_emb = self.embedding_service.embed(req.query)
+                        await self._emit_metric(req.namespace, "embedding")
                         query_meaningful = self._meaningful_tokens(req.query)
                         top_text_tokens = set(_re.findall(r'\w+', (results[0][1].fact.raw_text or "").lower()))
                         ttr_is_relevant = bool(query_meaningful & top_text_tokens)
@@ -927,7 +978,40 @@ class MemoryService:
                         logger.debug("Semantic re-rank failed (falling back to TRR order): %s", _rr_err)
                         tracer.add_metadata(trace_id, rerank_hop, output=f"failed: {_rr_err}")
 
-            # 2c. Recency decay blend (after semantic re-rank, before slicing)
+            # 2c. Embedding-based fallback: when token search returns schema fragments
+            # or irrelevant results, do a pure cosine similarity scan across all items.
+            # This catches queries like "husband" → "married to Vikram" where no tokens overlap.
+            top_is_schema = (results and results[0][1].schema_meta is not None)
+            top_is_empty = not results
+            if top_is_schema or top_is_empty:
+                try:
+                    all_items = self.engine._items.get(req.namespace, [])
+                    if all_items and len(all_items) <= 5000:  # Cap to avoid slow scan on huge namespaces
+                        q_emb = self.embedding_service.embed(req.query)
+                        emb_scored = []
+                        for pi in all_items:
+                            if pi.schema_meta is not None:
+                                continue  # Skip schema nodes
+                            if pi.consolidation_strength < self.engine.STRENGTH_FLOOR:
+                                continue  # Skip gas phase
+                            emb = getattr(pi, 'embedding_dense', None)
+                            if emb:
+                                import numpy as _np
+                                sim = float(_np.dot(q_emb, emb) / (
+                                    _np.linalg.norm(q_emb) * _np.linalg.norm(emb) + 1e-9))
+                                emb_scored.append((sim, pi))
+                        if emb_scored:
+                            emb_scored.sort(key=lambda x: x[0], reverse=True)
+                            # Merge: put embedding results ahead of token results
+                            existing_ids = {pi.id for _, pi in results if pi.schema_meta is None}
+                            for sim, pi in emb_scored[:req.limit]:
+                                if pi.id not in existing_ids:
+                                    results.insert(0, (sim * 10, pi))  # Scale to compete with TRR scores
+                                    existing_ids.add(pi.id)
+                except Exception as _emb_err:
+                    logger.debug("Embedding fallback failed: %s", _emb_err)
+
+            # 2d. Recency decay blend (after semantic re-rank, before slicing)
             if effective_tf and effective_tf.recency_alpha > 0.05:
                 results = self._apply_recency_decay(results, datetime.now(timezone.utc), effective_tf)
 

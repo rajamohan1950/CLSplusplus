@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <script src="auth.js" defer></script>
   <style>
     .docs-hero { padding: 120px 0 60px; text-align: center; }
     .docs-hero h1 { font-size: 2.5rem; margin-bottom: 12px; }
@@ -47,17 +48,14 @@
 <body>
   <nav class="nav">
     <div class="nav-inner">
-      <a href="index.html" class="logo">CLS<span class="logo-plus">++</span></a>
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
       <div class="nav-links">
-        <a href="index.html#tryit" class="btn btn-primary">Try It</a>
-        <a href="index.html">Home</a>
-        <a href="docs.html" style="color: var(--accent);">Docs</a>
-        <a href="integrations.html">Integrations</a>
-        <a href="chat.html">Chat</a>
-        <a href="benchmark.html">Benchmarks</a>
-        <a href="memory.html">Memory</a>
-        <a href="install.html">Install</a>
-        <a href="https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener">GitHub</a>
+        <a href="/">Home</a>
+        <a href="/docs.html">Docs</a>
+        <a href="/integrate.html">Integrate</a>
+        <a href="/chat.html">Chat</a>
+        <a href="/getting-started.html">Get Started</a>
+        <div id="nav-auth" class="nav-auth"></div>
       </div>
       <button class="nav-toggle" aria-label="Menu">☰</button>
     </div>
@@ -91,7 +89,7 @@
           <h2>Quick Start</h2>
           <p>Base URL: <code>https://clsplusplus-api.onrender.com</code> (or <code>http://localhost:8080</code> for local)</p>
           <h3>1. Install the Python SDK</h3>
-          <div class="code-block"><code>pip install clsplusplus</code></div>
+          <div class="code-block"><code>pip install git+https://github.com/rajamohan1950/CLSplusplus.git</code></div>
           <h3>2. Write and read in 3 lines</h3>
           <div class="code-block"><pre><code>from clsplusplus.client import CLSClient
 

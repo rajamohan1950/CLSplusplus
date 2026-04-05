@@ -43,8 +43,16 @@
     return 'user-' + Math.random().toString(36).slice(2, 10);
   }
 
-  /** Return the current namespace, creating one if this is a first visit. */
+  /** Return the current namespace, creating one if this is a first visit.
+   *  If the user is logged in (window._CLS_USER_ID set by auth.js),
+   *  use a deterministic namespace derived from their user ID. */
   function get() {
+    // Logged-in users get a deterministic namespace tied to their account
+    if (window._CLS_USER_ID) {
+      var ns = 'user-' + window._CLS_USER_ID.slice(0, 8);
+      _write(ns);
+      return ns;
+    }
     var ns = _read();
     if (!ns) {
       ns = _generate();

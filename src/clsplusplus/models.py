@@ -368,3 +368,54 @@ class MemoryCycleRequest(BaseModel):
     @classmethod
     def ns_valid(cls, v: str) -> str:
         return _validate_namespace(v)
+
+
+class UsageResponse(BaseModel):
+    """Tier-aware usage response for /v1/usage and /v1/billing/usage."""
+
+    tier: str = Field(description="Current tier: free, pro, or unlimited")
+    period: str = Field(description="Billing period YYYY-MM")
+    operations: int = Field(description="Total operations this period")
+    operations_limit: int = Field(description="Max operations for tier (-1 = unlimited)")
+    writes: int = Field(description="Write operations this period")
+    reads: int = Field(description="Read operations this period")
+    namespaces_limit: int = Field(description="Max namespaces for tier (-1 = unlimited)")
+    storage_limit: int = Field(description="Max L1 items per namespace for tier")
+    rate_limit: int = Field(description="Requests per minute for tier")
+
+
+# =========================================================================
+# User auth models
+# =========================================================================
+
+class UserRegisterRequest(BaseModel):
+    """Register a new user with email and password."""
+
+    email: str = Field(..., max_length=256)
+    password: str = Field(..., min_length=8, max_length=128)
+    name: str = Field(default="", max_length=128)
+
+
+class UserLoginRequest(BaseModel):
+    """Login with email and password."""
+
+    email: str = Field(..., max_length=256)
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+class UserResponse(BaseModel):
+    """Public user profile (no password_hash)."""
+
+    id: str
+    email: str
+    name: str
+    tier: str
+    is_admin: bool
+    avatar_url: Optional[str] = None
+    created_at: str
+
+
+class TierUpgradeRequest(BaseModel):
+    """Request to change user tier."""
+
+    tier: str = Field(..., pattern="^(free|pro|business|enterprise)$")
