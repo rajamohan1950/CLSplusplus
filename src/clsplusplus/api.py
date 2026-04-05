@@ -530,6 +530,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         if not settings.google_client_id:
             raise HTTPException(status_code=501, detail="Google OAuth not configured")
         callback_url = str(request.base_url).rstrip("/") + "/v1/auth/google/callback"
+        # Force HTTPS when behind reverse proxy (Render, Cloudflare, etc.)
+        if request.headers.get("x-forwarded-proto") == "https" or "onrender.com" in callback_url:
+            callback_url = callback_url.replace("http://", "https://", 1)
         params = urlencode({
             "client_id": settings.google_client_id,
             "redirect_uri": callback_url,
@@ -547,6 +550,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         if not code:
             raise HTTPException(status_code=400, detail="Missing authorization code")
         callback_url = str(request.base_url).rstrip("/") + "/v1/auth/google/callback"
+        # Force HTTPS when behind reverse proxy (Render, Cloudflare, etc.)
+        if request.headers.get("x-forwarded-proto") == "https" or "onrender.com" in callback_url:
+            callback_url = callback_url.replace("http://", "https://", 1)
         try:
             user, token = await user_service.google_auth(code, callback_url)
         except ValueError as e:
