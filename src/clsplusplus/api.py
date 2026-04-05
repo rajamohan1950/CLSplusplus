@@ -486,7 +486,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
-            raise HTTPException(status_code=500, detail="Registration service unavailable")
+            raise HTTPException(status_code=500, detail=f"Registration failed: {type(e).__name__}: {str(e)[:200]}")
         response = JSONResponse(content=user)
         return _set_session_cookie(response, token)
 
