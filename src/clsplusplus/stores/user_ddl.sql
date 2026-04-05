@@ -18,6 +18,18 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Migrations for existing tables (safe on fresh tables too)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT UNIQUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'free';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+-- Drop old CHECK constraint and add new one (safe if doesn't exist)
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_tier_check;
+ALTER TABLE users ADD CONSTRAINT users_tier_check CHECK (tier IN ('free', 'pro', 'business', 'enterprise'));
+
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_tier ON users(tier);
