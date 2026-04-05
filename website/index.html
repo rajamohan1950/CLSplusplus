@@ -17,10 +17,8 @@
       <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
       <div class="nav-links">
         <a href="/">Home</a>
-        <a href="/demo.html">Demo</a>
-        <a href="/docs.html">Docs</a>
+        <a href="/docs.html">API</a>
         <a href="/integrate.html">Integrate</a>
-        <a href="/chat.html">Chat</a>
         <a href="/getting-started.html">Get Started</a>
         <div id="nav-auth" class="nav-auth"></div>
       </div>
@@ -140,7 +138,6 @@
       <p class="hero-sub">Claude today. GPT-4 tomorrow. Gemini next week. Your preferences, corrections, and established facts follow you—because memory lives outside the model.</p>
       <div class="hero-cta">
         <a href="integrate.html" class="btn btn-large btn-primary">Start Integrating</a>
-        <a href="#tryit" class="btn btn-large btn-outline">Try It Live</a>
         <a href="#pricing" class="btn btn-large btn-outline">View Pricing</a>
       </div>
       <div class="hero-logos">
@@ -152,200 +149,84 @@
     </div>
   </header>
 
-  <section id="tryit" class="section tryit">
-    <div class="container">
-      <h2>Try It Yourself</h2>
-      <p class="section-lead">Tell Claude. Ask OpenAI. Same memory. No sign-up.</p>
-      <div class="demo-panels demo-panels-two">
-        <div class="demo-panel" data-model="claude">
-          <div class="demo-panel-header claude">Claude</div>
-          <div class="demo-panel-messages" id="chat-claude"></div>
-          <div class="demo-panel-input">
-            <input type="text" placeholder="Tell or ask..." maxlength="500" data-input="claude">
-            <button type="button" class="btn btn-primary" data-send="claude">Send</button>
-          </div>
-        </div>
-        <div class="demo-panel" data-model="openai">
-          <div class="demo-panel-header openai">OpenAI</div>
-          <div class="demo-panel-messages" id="chat-openai"></div>
-          <div class="demo-panel-input">
-            <input type="text" placeholder="Tell or ask..." maxlength="500" data-input="openai">
-            <button type="button" class="btn btn-primary" data-send="openai">Send</button>
-          </div>
-        </div>
-      </div>
-      <p class="demo-hint" id="demo-hint">Tell one, ask the other. Memory is shared. (First load may take 1–2 min — API warming up.)</p>
-      <p class="demo-ns-bar">
-        🧠 Your memory namespace: <code id="demo-ns-label">…</code>
-        &nbsp;·&nbsp;
-        <a href="/trace.html" target="_blank" style="color:#6366f1;text-decoration:none;">View in Trace UI ↗</a>
-        &nbsp;·&nbsp;
-        <button id="demo-reset-ns" style="background:none;border:none;color:#888;cursor:pointer;font-size:0.78rem;padding:0;" title="Clear memory and start fresh">Reset memory</button>
-      </p>
-      <p class="demo-pitch">Pitch in 10 words: <strong>Your memory lives here. Switch AI anytime. No reset.</strong></p>
-      <script>
-        (function(){
-          // namespace.js runs before this — window.CLS_USER_NAMESPACE is already set.
-          function showNS() {
-            var ns = (window.CLSNamespace && window.CLSNamespace.get())
-                  || window.CLS_USER_NAMESPACE || '…';
-            document.getElementById('demo-ns-label').textContent = ns;
-          }
-          if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', showNS);
-          } else {
-            showNS();
-          }
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- WHAT IT SOLVES                                                    -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <section class="section" style="padding:80px 0;">
+    <div class="container" style="text-align:center;">
+      <h2>What CLS++ Solves</h2>
+      <p class="section-lead" style="max-width:600px;margin:0 auto 48px;">One memory layer that works across every AI model. No lock-in. No retraining. No context loss.</p>
 
-          document.getElementById('demo-reset-ns').addEventListener('click', function(){
-            if (!confirm('Clear all memory and start a fresh session?')) return;
-            if (window.CLSNamespace) { window.CLSNamespace.reset(); }
-            location.reload();
-          });
-        })();
-      </script>
-    </div>
-  </section>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px;text-align:left;">
 
-  <section id="problem" class="section problem">
-    <div class="container">
-      <h2>The Multi-Model Problem</h2>
-      <p class="section-lead">Every model switch is a cold start. Your AI forgets everything.</p>
-      <div class="problem-grid">
-        <div class="problem-card">
-          <div class="problem-icon">😤</div>
-          <h3>Sarah uses Claude</h3>
-          <p>She spends 2 weeks training her assistant: preferences, project context, corrected facts. It finally understands her workflow.</p>
+        <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:16px;padding:32px;">
+          <div style="font-size:2rem;margin-bottom:12px;">🔄</div>
+          <h3 style="font-size:1.1rem;margin-bottom:8px;">Cross-Model Memory</h3>
+          <p style="color:var(--text-muted);font-size:0.9rem;line-height:1.6;">Switch between Claude, GPT-4, and Gemini. Your user's preferences, corrections, and facts follow them — because memory lives outside the model.</p>
         </div>
-        <div class="problem-arrow">→</div>
-        <div class="problem-card problem-card-bad">
-          <div class="problem-icon">💔</div>
-          <h3>She switches to GPT-4</h3>
-          <p>Budget change. Policy update. She tries GPT-4. <strong>Everything is gone.</strong> She starts from zero. Again.</p>
-        </div>
-      </div>
-      <p class="problem-stats">Enterprise teams switch models 3–5x per month. Each switch = hours of lost productivity.</p>
-    </div>
-  </section>
 
-  <section id="demo" class="section demo">
-    <div class="container">
-      <h2>See the Problem. See the Fix.</h2>
-      <p class="section-lead">Without CLS++: switch models and your context is gone. With CLS++: your memory follows you.</p>
-      <div class="demo-cta">
-        <p><strong>Experience it live above.</strong> Tell Claude a fact. Ask OpenAI. Same memory.</p>
-        <a href="#tryit" class="btn btn-primary">Go to live demo ↑</a>
+        <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:16px;padding:32px;">
+          <div style="font-size:2rem;margin-bottom:12px;">⚡</div>
+          <h3 style="font-size:1.1rem;margin-bottom:8px;">Zero Integration</h3>
+          <p style="color:var(--text-muted);font-size:0.9rem;line-height:1.6;">Change one line — your <code>base_url</code>. No SDK required. No database setup. No embedding configuration. Your app gets persistent memory instantly.</p>
+        </div>
+
+        <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:16px;padding:32px;">
+          <div style="font-size:2rem;margin-bottom:12px;">🧠</div>
+          <h3 style="font-size:1.1rem;margin-bottom:8px;">Brain SDK</h3>
+          <p style="color:var(--text-muted);font-size:0.9rem;line-height:1.6;">Want full control? Four methods: <code>learn()</code>, <code>ask()</code>, <code>context()</code>, <code>forget()</code>. Plus 7 innovative methods for production AI apps.</p>
+        </div>
+
       </div>
     </div>
   </section>
 
-  <section id="solution" class="section solution">
-    <div class="container">
-      <h2>Memory That Lives Outside the Model</h2>
-      <p class="section-lead">CLS++ is an external memory layer. Any LLM plugs in. Context flows with you.</p>
-      <div class="solution-diagram">
-        <div class="diagram-row">
-          <div class="diagram-box">Claude</div>
-          <div class="diagram-box">GPT-4</div>
-          <div class="diagram-box">Gemini</div>
-        </div>
-        <div class="diagram-arrow">↓</div>
-        <div class="diagram-core">
-          <strong>CLS++</strong><br>
-          <span>Persistent Memory Layer</span>
-        </div>
-        <div class="diagram-arrow">↓</div>
-        <div class="diagram-storage">
-          <span>Your context • Preferences • Facts • Corrections</span>
-        </div>
-      </div>
-      <ul class="solution-features">
-        <li><strong>Model-agnostic</strong> — One memory, every model</li>
-        <li><strong>Brain-inspired</strong> — Strengthens what matters, forgets what doesn't</li>
-        <li><strong>No retraining</strong> — Plug in via REST API</li>
-      </ul>
-    </div>
-  </section>
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- INTEGRATIONS                                                      -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <section class="section" id="integrations" style="padding:80px 0;">
+    <div class="container" style="text-align:center;">
+      <h2>Integrations</h2>
+      <p class="section-lead" style="max-width:500px;margin:0 auto 48px;">Plug into your existing workflow. More connectors coming soon.</p>
 
-  <section id="enterprise" class="section enterprise">
-    <div class="container">
-      <h2>Enterprise Multi-Model Workflows</h2>
-      <p class="section-lead">Real problems. Real costs. CLS++ solves them.</p>
-      <div class="enterprise-grid">
-        <div class="enterprise-card">
-          <h3>Support Teams</h3>
-          <p>Agents switch between models for cost, compliance, or capability. Each switch = lost ticket context. Customer repeats themselves. <strong>CLS++ keeps context across every handoff.</strong></p>
-        </div>
-        <div class="enterprise-card">
-          <h3>Legal & Contract</h3>
-          <p>Deal memos, negotiation history, corrected terms—scattered across sessions and models. <strong>CLS++ gives you one audit trail, one source of truth.</strong></p>
-        </div>
-        <div class="enterprise-card">
-          <h3>Development</h3>
-          <p>Devs use Claude for code, GPT for docs, Gemini for research. No shared context. <strong>CLS++ unifies memory across your entire stack.</strong></p>
-        </div>
-        <div class="enterprise-card">
-          <h3>Healthcare</h3>
-          <p>Clinical notes, patient history—must persist across model switches for compliance. <strong>CLS++ is HIPAA-ready with full provenance.</strong></p>
-        </div>
-      </div>
-    </div>
-  </section>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:700px;margin:0 auto;">
 
-  <section id="architecture" class="section architecture">
-    <div class="container">
-      <h2>Server + Client. <span class="gradient-text">Lightning Fast Setup.</span></h2>
-      <p class="section-lead">Your memory server runs in the cloud. A thin Chrome extension does the rest.</p>
+        <a href="/integrate.html" style="background:var(--bg-elevated);border:1px solid var(--accent);border-radius:14px;padding:28px 20px;text-decoration:none;color:var(--text);transition:all 0.2s;text-align:center;">
+          <div style="font-size:2rem;margin-bottom:8px;">🌐</div>
+          <div style="font-weight:600;margin-bottom:4px;">Chrome Extension</div>
+          <span style="display:inline-block;padding:2px 10px;border-radius:10px;font-size:0.7rem;font-weight:600;background:rgba(34,197,94,0.15);color:#22c55e;">Available</span>
+        </a>
 
-      <div class="arch-diagram">
-        <div class="arch-node arch-server">
-          <div class="arch-icon">&#9729;</div>
-          <h3>Memory Server</h3>
-          <p class="arch-subtitle">Hosted on Render</p>
-          <ul>
-            <li>Phase memory engine</li>
-            <li>Zero-LLM retrieval</li>
-            <li>Sub-microsecond lookup</li>
-            <li>4-layer thermodynamics</li>
-          </ul>
+        <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:14px;padding:28px 20px;text-align:center;opacity:0.5;cursor:default;">
+          <div style="font-size:2rem;margin-bottom:8px;">🦜</div>
+          <div style="font-weight:600;margin-bottom:4px;">LangChain</div>
+          <span style="display:inline-block;padding:2px 10px;border-radius:10px;font-size:0.7rem;font-weight:600;background:rgba(139,139,154,0.15);color:var(--text-muted);">Coming Soon</span>
         </div>
-        <div class="arch-connector">
-          <div class="arch-line"></div>
-          <span class="arch-label">Encrypted sync</span>
-        </div>
-        <div class="arch-node arch-client">
-          <div class="arch-icon">&#129513;</div>
-          <h3>Chrome Extension</h3>
-          <p class="arch-subtitle">Thin client &middot; 47 KB</p>
-          <ul>
-            <li>Auto-detects ChatGPT, Claude, Gemini</li>
-            <li>Silent memory capture</li>
-            <li>Context injection on send</li>
-            <li>Active indicator on LLM tabs</li>
-          </ul>
-        </div>
-      </div>
 
-      <div class="install-steps">
-        <div class="install-step">
-          <span class="step-num">1</span>
-          <h4>Install Extension</h4>
-          <p>One click from Chrome Web Store</p>
+        <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:14px;padding:28px 20px;text-align:center;opacity:0.5;cursor:default;">
+          <div style="font-size:2rem;margin-bottom:8px;">🕸️</div>
+          <div style="font-weight:600;margin-bottom:4px;">LangGraph</div>
+          <span style="display:inline-block;padding:2px 10px;border-radius:10px;font-size:0.7rem;font-weight:600;background:rgba(139,139,154,0.15);color:var(--text-muted);">Coming Soon</span>
         </div>
-        <div class="install-step">
-          <span class="step-num">2</span>
-          <h4>Connect Server</h4>
-          <p>Auto-connects to your Render instance</p>
-        </div>
-        <div class="install-step">
-          <span class="step-num">3</span>
-          <h4>Chat Normally</h4>
-          <p>Memories captured automatically</p>
-        </div>
-      </div>
 
-      <div style="text-align:center;margin-top:32px;">
-        <a href="getting-started.html" class="btn btn-large btn-primary">Start Integrating &mdash; 3 minutes</a>
+        <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:14px;padding:28px 20px;text-align:center;opacity:0.5;cursor:default;">
+          <div style="font-size:2rem;margin-bottom:8px;">💻</div>
+          <div style="font-weight:600;margin-bottom:4px;">VS Code Extension</div>
+          <span style="display:inline-block;padding:2px 10px;border-radius:10px;font-size:0.7rem;font-weight:600;background:rgba(139,139,154,0.15);color:var(--text-muted);">Coming Soon</span>
+        </div>
+
+        <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:14px;padding:28px 20px;text-align:center;opacity:0.5;cursor:default;">
+          <div style="font-size:2rem;margin-bottom:8px;">🤖</div>
+          <div style="font-weight:600;margin-bottom:4px;">CrewAI</div>
+          <span style="display:inline-block;padding:2px 10px;border-radius:10px;font-size:0.7rem;font-weight:600;background:rgba(139,139,154,0.15);color:var(--text-muted);">Coming Soon</span>
+        </div>
+
+        <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:14px;padding:28px 20px;text-align:center;opacity:0.5;cursor:default;">
+          <div style="font-size:2rem;margin-bottom:8px;">🔗</div>
+          <div style="font-weight:600;margin-bottom:4px;">Node Graph IDE</div>
+          <span style="display:inline-block;padding:2px 10px;border-radius:10px;font-size:0.7rem;font-weight:600;background:rgba(139,139,154,0.15);color:var(--text-muted);">Coming Soon</span>
+        </div>
+
       </div>
     </div>
   </section>
@@ -470,10 +351,9 @@
           <p>AlphaForge AI Labs</p>
         </div>
         <div class="footer-links">
-          <a href="docs.html">Docs</a>
-          <a href="/docs" target="_blank" rel="noopener">API</a>
-          <a href="memory.html">Memory</a>
-          <a href="getting-started.html">Get Started</a>
+          <a href="/docs.html">API</a>
+          <a href="/integrate.html">Integrate</a>
+          <a href="/getting-started.html">Get Started</a>
           <a href="https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener">GitHub</a>
           <a href="mailto:contact@alphaforge.ai">Contact</a>
         </div>
