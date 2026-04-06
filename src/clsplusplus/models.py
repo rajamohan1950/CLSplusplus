@@ -419,3 +419,12 @@ class TierUpgradeRequest(BaseModel):
     """Request to change user tier."""
 
     tier: str = Field(..., pattern="^(free|pro|business|enterprise)$")
+
+
+class UserProfileUpdateRequest(BaseModel):
+    """Request to update user profile fields."""
+
+    name: Optional[str] = Field(default=None, max_length=128)
+    email: Optional[str] = Field(default=None, max_length=256)
+    password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+    current_password: Optional[str] = Field(default=None, max_length=128)

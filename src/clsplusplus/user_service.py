@@ -162,6 +162,60 @@ class UserService:
             return _strip_password(user)
         return None
 
+    async def update_profile(
+        self,
+        user_id: str,
+        name: Optional[str] = None,
+        email: Optional[str] = None,
+        password: Optional[str] = None,
+        current_password: Optional[str] = None,
+    ) -> dict:
+        """Update user profile fields.
+
+        Returns updated user dict.
+        Raises ValueError on validation failure.
+        """
+        user = await self.store.get_by_email(
+            (await self.store.get_by_id(user_id) or {}).get("email", "")
+        )
+        if not user:
+            raise ValueError("User not found")
+
+        fields: dict = {}
+
+        if name is not None:
+            fields["name"] = name.strip()
+
+        if email is not None:
+            email = email.strip().lower()
+            if not _EMAIL_RE.match(email):
+                raise ValueError("Invalid email format")
+            if email != user["email"]:
+                existing = await self.store.get_by_email(email)
+                if existing:
+                    raise ValueError("An account with this email already exists")
+                fields["email"] = email
+
+        if password is not None:
+            if not current_password:
+                raise ValueError("Current password is required to set a new password")
+            stored_hash = user.get("password_hash")
+            if not stored_hash:
+                raise ValueError("Cannot change password for Google-only accounts")
+            if not _verify_password(current_password, stored_hash):
+                raise ValueError("Current password is incorrect")
+            fields["password_hash"] = _hash_password(password)
+
+        if not fields:
+            return _strip_password(
+                await self.store.get_by_id(user_id) or {}
+            )
+
+        updated = await self.store.update_user(user_id, fields)
+        if not updated:
+            raise ValueError("User not found")
+        return _strip_password(updated)
+
     async def update_tier(self, user_id: str, new_tier: str) -> dict:
         """Change user tier and record revenue event.
 

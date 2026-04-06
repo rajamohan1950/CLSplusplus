@@ -165,6 +165,34 @@ class UserStore:
             )
             return [_row_to_dict(r) for r in rows]
 
+    async def update_user(self, user_id: str, fields: dict) -> Optional[dict]:
+        """Update arbitrary user fields (name, email, password_hash)."""
+        if not fields:
+            return await self.get_by_id(user_id)
+        sets = []
+        vals = []
+        idx = 1
+        for key in ("name", "email", "password_hash"):
+            if key in fields:
+                sets.append(f"{key} = ${idx}")
+                vals.append(fields[key])
+                idx += 1
+        if not sets:
+            return await self.get_by_id(user_id)
+        sets.append(f"updated_at = ${idx}")
+        vals.append(_now())
+        idx += 1
+        vals.append(user_id)
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                f"UPDATE users SET {', '.join(sets)} WHERE id = ${idx} RETURNING *",
+                *vals,
+            )
+            if not row:
+                return None
+            return _row_to_dict(row)
+
     async def count_users(self) -> int:
         pool = await self.get_pool()
         async with pool.acquire() as conn:

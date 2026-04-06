@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Usage | CLS++</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="auth.js" defer></script>
+</head>
+<body>
+  <button class="sidebar-mobile-toggle" aria-label="Menu">&#9776;</button>
+
+  <div class="app-layout">
+    <aside class="app-sidebar"></aside>
+
+    <main class="app-main">
+      <div class="app-main-header">
+        <h1>Usage</h1>
+        <span class="tier-badge" id="tier-badge">Loading...</span>
+      </div>
+
+      <!-- Usage Cards -->
+      <div class="usage-grid">
+        <div class="usage-card">
+          <h3>Operations This Month</h3>
+          <div class="usage-value" id="ops-value">--</div>
+          <div class="usage-sub" id="ops-sub">of -- limit</div>
+          <div class="usage-progress"><div class="usage-progress-fill" id="ops-bar" style="width:0%"></div></div>
+        </div>
+        <div class="usage-card">
+          <h3>Writes</h3>
+          <div class="usage-value" id="writes-value">--</div>
+          <div class="usage-sub">Memories stored</div>
+        </div>
+        <div class="usage-card">
+          <h3>Reads</h3>
+          <div class="usage-value" id="reads-value">--</div>
+          <div class="usage-sub">Queries answered</div>
+        </div>
+      </div>
+
+      <!-- Limits -->
+      <div class="usage-grid">
+        <div class="usage-card">
+          <h3>Billing Period</h3>
+          <div class="usage-value" id="billing-period">--</div>
+          <div class="usage-sub" id="billing-price">--</div>
+        </div>
+        <div class="usage-card">
+          <h3>Storage Limit</h3>
+          <div class="usage-value" id="storage-limit">--</div>
+          <div class="usage-sub">L1 items per namespace</div>
+        </div>
+        <div class="usage-card">
+          <h3>Namespaces</h3>
+          <div class="usage-value" id="ns-limit">--</div>
+          <div class="usage-sub">Max namespaces allowed</div>
+        </div>
+      </div>
+
+      <!-- Rate Limit -->
+      <div class="usage-grid" style="margin-bottom:8px;">
+        <div class="usage-card">
+          <h3>Rate Limit</h3>
+          <div class="usage-value" id="rate-limit">--</div>
+          <div class="usage-sub">Requests per minute</div>
+        </div>
+      </div>
+
+      <!-- Usage History Chart -->
+      <div class="usage-chart-section">
+        <h2>Usage History</h2>
+        <div class="usage-chart-wrap">
+          <canvas id="usage-chart"></canvas>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="sidebar.js"></script>
+  <script src="usage.js"></script>
+</body>
+</html>

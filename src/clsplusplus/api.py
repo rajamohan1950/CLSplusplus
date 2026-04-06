@@ -35,6 +35,7 @@ from clsplusplus.models import (
     ReadResponse,
     TierUpgradeRequest,
     UserLoginRequest,
+    UserProfileUpdateRequest,
     UserRegisterRequest,
     WebhookCreate,
     WriteRequest,
@@ -621,6 +622,89 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             return {"integrations": [i.model_dump(mode="json") if hasattr(i, "model_dump") else i for i in integrations]}
         except Exception:
             return {"integrations": []}
+
+    @app.patch("/v1/user/profile")
+    async def update_profile(req: UserProfileUpdateRequest, request: Request):
+        """Update user profile (name, email, password)."""
+        user_id = getattr(request.state, "user_id", None)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        try:
+            user = await user_service.update_profile(
+                user_id=user_id,
+                name=req.name,
+                email=req.email,
+                password=req.password,
+                current_password=req.current_password,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception:
+            raise HTTPException(status_code=500, detail="Profile update failed")
+        return user
+
+    # =========================================================================
+    # Billing — Stripe Checkout & Customer Portal
+    # =========================================================================
+
+    @app.post("/v1/billing/checkout")
+    async def billing_checkout(req: TierUpgradeRequest, request: Request):
+        """Create a Stripe Checkout session for tier upgrade."""
+        user_id = getattr(request.state, "user_id", None)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        try:
+            from clsplusplus.stripe_service import create_checkout_session
+            session_url = await create_checkout_session(
+                user_id=user_id,
+                tier=req.tier,
+                settings=settings,
+            )
+            return {"url": session_url}
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error("Stripe checkout error: %s", e)
+            raise HTTPException(status_code=500, detail="Billing service unavailable")
+
+    @app.get("/v1/billing/portal")
+    async def billing_portal(request: Request):
+        """Create a Stripe Customer Portal session for subscription management."""
+        user_id = getattr(request.state, "user_id", None)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        try:
+            from clsplusplus.stripe_service import create_portal_session
+            portal_url = await create_portal_session(
+                user_id=user_id,
+                settings=settings,
+            )
+            return {"url": portal_url}
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error("Stripe portal error: %s", e)
+            raise HTTPException(status_code=500, detail="Billing service unavailable")
+
+    @app.post("/v1/billing/webhook")
+    async def billing_webhook(request: Request):
+        """Handle Stripe webhook events."""
+        payload = await request.body()
+        sig = request.headers.get("stripe-signature", "")
+        try:
+            from clsplusplus.stripe_service import handle_webhook
+            await handle_webhook(
+                payload=payload,
+                sig=sig,
+                settings=settings,
+                user_service=user_service,
+            )
+            return {"status": "ok"}
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error("Stripe webhook error: %s", e)
+            raise HTTPException(status_code=500, detail="Webhook processing failed")
 
     # =========================================================================
     # Admin Dashboard API — Protected by is_admin flag in JWT

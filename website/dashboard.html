@@ -8,22 +8,18 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <script src="auth.js" defer></script>
   <style>
-    .dash-container { max-width:960px; margin:0 auto; padding:100px 24px 60px; }
-    .dash-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:40px; flex-wrap:wrap; gap:16px; }
-    .dash-header h1 { font-size:1.8rem; }
     .tier-badge { display:inline-block; padding:6px 16px; border-radius:20px; font-size:0.85rem; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
     .tier-free { background:rgba(139,139,154,0.15); color:var(--text-muted); }
     .tier-pro { background:rgba(99,102,241,0.15); color:var(--accent-light); }
     .tier-business { background:rgba(234,179,8,0.15); color:#eab308; }
     .tier-enterprise { background:rgba(236,72,153,0.15); color:#ec4899; }
 
-    .dash-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:20px; margin-bottom:40px; }
+    .dash-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:20px; margin-bottom:32px; }
     .dash-card { background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius); padding:24px; }
-    .dash-card h3 { font-size:0.85rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:12px; }
-    .dash-card .value { font-size:1.8rem; font-weight:700; margin-bottom:8px; }
+    .dash-card h3 { font-size:0.8rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px; }
+    .dash-card .value { font-size:1.8rem; font-weight:700; margin-bottom:6px; }
     .dash-card .sub { font-size:0.85rem; color:var(--text-muted); }
 
     .progress-bar { height:8px; background:var(--border); border-radius:4px; overflow:hidden; margin-top:8px; }
@@ -31,149 +27,111 @@
     .progress-fill.warning { background:#eab308; }
     .progress-fill.danger { background:#ef4444; }
 
-    .upgrade-section { background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius); padding:32px; margin-bottom:40px; text-align:center; }
-    .upgrade-section h2 { margin-bottom:12px; }
-    .upgrade-section p { color:var(--text-muted); margin-bottom:24px; }
-    .upgrade-btns { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
-    .upgrade-btn { padding:12px 28px; border-radius:var(--radius); font-size:0.95rem; font-weight:600; cursor:pointer; border:none; font-family:inherit; transition:all 0.2s; }
-    .upgrade-btn.pro { background:var(--accent); color:#fff; }
-    .upgrade-btn.pro:hover { background:var(--accent-dark); }
-    .upgrade-btn.business { background:linear-gradient(135deg, #eab308, #f59e0b); color:#000; }
-    .upgrade-btn.business:hover { opacity:0.9; }
-    .upgrade-btn.enterprise { background:linear-gradient(135deg, #ec4899, #8b5cf6); color:#fff; }
-    .upgrade-btn.enterprise:hover { opacity:0.9; }
-    .upgrade-btn:disabled { opacity:0.4; cursor:not-allowed; }
-    .upgrade-btn .price { font-weight:400; opacity:0.8; }
+    .quick-links { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:32px; }
+    .quick-link { display:flex; align-items:center; gap:14px; padding:20px; background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius); text-decoration:none; color:var(--text); transition:all 0.15s; }
+    .quick-link:hover { border-color:var(--accent); background:rgba(99,102,241,0.04); }
+    .quick-link .ql-icon { font-size:1.4rem; width:36px; height:36px; display:flex; align-items:center; justify-content:center; background:rgba(99,102,241,0.1); border-radius:10px; flex-shrink:0; }
+    .quick-link .ql-text h4 { font-size:0.9rem; font-weight:600; margin-bottom:2px; }
+    .quick-link .ql-text p { font-size:0.78rem; color:var(--text-muted); }
 
-    .chart-section { background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius); padding:24px; margin-bottom:40px; }
+    .chart-section { background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius); padding:24px; margin-bottom:32px; }
     .chart-section h2 { font-size:1.1rem; margin-bottom:16px; }
-    .chart-wrap { position:relative; height:250px; }
 
-    .account-section { background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius); padding:24px; }
-    .account-section h2 { font-size:1.1rem; margin-bottom:16px; }
-    .account-row { display:flex; justify-content:space-between; padding:12px 0; border-bottom:1px solid var(--border); }
-    .account-row:last-child { border-bottom:none; }
-    .account-label { color:var(--text-muted); }
+    .int-table { width:100%; border-collapse:collapse; font-size:0.85rem; }
+    .int-table th { text-align:left; padding:8px 0; color:var(--text-muted); font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid var(--border); }
+    .int-table td { padding:10px 0; border-bottom:1px solid rgba(42,42,53,0.5); }
   </style>
 </head>
 <body>
-  <nav class="nav">
-    <div class="nav-inner">
-      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
-      <div class="nav-links">
-        <a href="/">Home</a>
-        <a href="/docs.html">API</a>
-        <a href="/integrate.html">Integrate</a>
-        <a href="/#pricing">Pricing</a>
-        <a href="/chat.html">Chat</a>
-        <a href="/memory.html">Memory</a>
-        <a href="/dashboard.html">Dashboard</a>
-        <div id="nav-auth" class="nav-auth"></div>
-      </div>
-      <button class="nav-toggle" aria-label="Menu">☰</button>
-    </div>
-  </nav>
+  <button class="sidebar-mobile-toggle" aria-label="Menu">&#9776;</button>
 
-  <div class="dash-container" id="dashboard">
-    <div class="dash-header">
-      <h1>Dashboard</h1>
-      <span class="tier-badge" id="tier-badge">Loading...</span>
-    </div>
+  <div class="app-layout">
+    <aside class="app-sidebar"></aside>
 
-    <!-- Usage cards -->
-    <div class="dash-grid">
-      <div class="dash-card">
-        <h3>Operations This Month</h3>
-        <div class="value" id="ops-value">--</div>
-        <div class="sub" id="ops-sub">of -- limit</div>
-        <div class="progress-bar"><div class="progress-fill" id="ops-bar" style="width:0%"></div></div>
+    <main class="app-main">
+      <div class="app-main-header">
+        <h1>Dashboard</h1>
+        <span class="tier-badge" id="tier-badge">Loading...</span>
       </div>
-      <div class="dash-card">
-        <h3>Writes</h3>
-        <div class="value" id="writes-value">--</div>
-        <div class="sub">Memories stored</div>
-      </div>
-      <div class="dash-card">
-        <h3>Reads</h3>
-        <div class="value" id="reads-value">--</div>
-        <div class="sub">Queries answered</div>
-      </div>
-    </div>
 
-    <!-- Billing & Limits -->
-    <div class="dash-grid" style="margin-bottom:20px;">
-      <div class="dash-card">
-        <h3>Billing Period</h3>
-        <div class="value" id="billing-period">--</div>
-        <div class="sub" id="billing-price">--</div>
+      <!-- Quick Links -->
+      <div class="quick-links">
+        <a href="/profile.html" class="quick-link">
+          <div class="ql-icon">&#x1F464;</div>
+          <div class="ql-text">
+            <h4>Profile & API Keys</h4>
+            <p>Manage account, keys, billing</p>
+          </div>
+        </a>
+        <a href="/usage.html" class="quick-link">
+          <div class="ql-icon">&#x1F4CA;</div>
+          <div class="ql-text">
+            <h4>Usage & Limits</h4>
+            <p>View stats, history, quotas</p>
+          </div>
+        </a>
+        <a href="/memory.html" class="quick-link">
+          <div class="ql-icon">&#x1F9E0;</div>
+          <div class="ql-text">
+            <h4>Memory Viewer</h4>
+            <p>Browse stored memories</p>
+          </div>
+        </a>
+        <a href="/chat.html" class="quick-link">
+          <div class="ql-icon">&#x1F4AC;</div>
+          <div class="ql-text">
+            <h4>Chat</h4>
+            <p>Chat with memory context</p>
+          </div>
+        </a>
       </div>
-      <div class="dash-card">
-        <h3>Storage Limit</h3>
-        <div class="value" id="storage-limit">--</div>
-        <div class="sub">L1 items per namespace</div>
-      </div>
-      <div class="dash-card">
-        <h3>Namespaces</h3>
-        <div class="value" id="ns-limit">--</div>
-        <div class="sub">Max namespaces allowed</div>
-      </div>
-    </div>
 
-    <!-- Integrations -->
-    <div class="chart-section" id="integrations-section">
-      <h2>Your Integrations</h2>
-      <div id="integrations-list" style="margin-bottom:16px;">
-        <p style="color:var(--text-muted);">Loading...</p>
-      </div>
-      <div id="create-int-form" style="display:flex;gap:8px;align-items:center;">
-        <input type="text" id="new-int-name" placeholder="App name (e.g. My AI Bot)" style="flex:1;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:0.9rem;font-family:inherit;outline:none;">
-        <button onclick="createDashIntegration()" style="padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;">+ Create Integration</button>
-      </div>
-      <div id="new-key-result" style="display:none;margin-top:12px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:var(--radius);padding:12px 16px;">
-        <p style="margin:0 0 6px;font-weight:600;color:#22c55e;">API Key Created</p>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:0.85rem;background:var(--bg);padding:8px 12px;border-radius:6px;display:flex;justify-content:space-between;align-items:center;">
-          <span id="new-key-value">cls_live_...</span>
-          <button onclick="navigator.clipboard.writeText(document.getElementById('new-key-value').textContent);this.textContent='Copied!';var b=this;setTimeout(function(){b.textContent='Copy'},1500)" style="background:var(--border);border:none;color:var(--text-muted);padding:4px 10px;border-radius:6px;font-size:0.75rem;cursor:pointer;">Copy</button>
+      <!-- Summary Stats -->
+      <div class="dash-grid">
+        <div class="dash-card">
+          <h3>Operations This Month</h3>
+          <div class="value" id="ops-value">--</div>
+          <div class="sub" id="ops-sub">of -- limit</div>
+          <div class="progress-bar"><div class="progress-fill" id="ops-bar" style="width:0%"></div></div>
         </div>
-        <p style="margin:6px 0 0;font-size:0.8rem;color:var(--text-muted);">Save this key — it won't be shown again.</p>
+        <div class="dash-card">
+          <h3>Writes</h3>
+          <div class="value" id="writes-value">--</div>
+          <div class="sub">Memories stored</div>
+        </div>
+        <div class="dash-card">
+          <h3>Reads</h3>
+          <div class="value" id="reads-value">--</div>
+          <div class="sub">Queries answered</div>
+        </div>
       </div>
-    </div>
 
-    <!-- Upgrade -->
-    <div class="upgrade-section" id="upgrade-section">
-      <h2>Upgrade Your Plan</h2>
-      <p>Unlock more operations, storage, and namespaces.</p>
-      <div class="upgrade-btns">
-        <button class="upgrade-btn pro" id="btn-pro" onclick="upgradeTier('pro')">
-          Pro <span class="price">$9/month</span>
-        </button>
-        <button class="upgrade-btn business" id="btn-business" onclick="upgradeTier('business')">
-          Business <span class="price">$29/month</span>
-        </button>
-        <button class="upgrade-btn enterprise" id="btn-enterprise" onclick="upgradeTier('enterprise')">
-          Enterprise <span class="price">$149/month</span>
-        </button>
+      <!-- Integrations -->
+      <div class="chart-section" id="integrations-section">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <h2 style="margin-bottom:0;">Integrations</h2>
+          <a href="/profile.html#section-keys" class="btn btn-outline btn-sm">Manage API Keys</a>
+        </div>
+        <div id="integrations-list" style="margin-bottom:16px;">
+          <p style="color:var(--text-muted);">Loading...</p>
+        </div>
+        <div id="create-int-form" style="display:flex;gap:8px;align-items:center;">
+          <input type="text" id="new-int-name" placeholder="App name (e.g. My AI Bot)" style="flex:1;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:0.9rem;font-family:inherit;outline:none;">
+          <button onclick="createDashIntegration()" style="padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;">+ Create Integration</button>
+        </div>
+        <div id="new-key-result" style="display:none;margin-top:12px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:var(--radius);padding:12px 16px;">
+          <p style="margin:0 0 6px;font-weight:600;color:#22c55e;">API Key Created</p>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:0.85rem;background:var(--bg);padding:8px 12px;border-radius:6px;display:flex;justify-content:space-between;align-items:center;">
+            <span id="new-key-value">cls_live_...</span>
+            <button onclick="navigator.clipboard.writeText(document.getElementById('new-key-value').textContent);this.textContent='Copied!';var b=this;setTimeout(function(){b.textContent='Copy'},1500)" style="background:var(--border);border:none;color:var(--text-muted);padding:4px 10px;border-radius:6px;font-size:0.75rem;cursor:pointer;">Copy</button>
+          </div>
+          <p style="margin:6px 0 0;font-size:0.8rem;color:var(--text-muted);">Save this key — it won't be shown again.</p>
+        </div>
       </div>
-    </div>
-
-    <!-- Usage chart -->
-    <div class="chart-section">
-      <h2>Usage History</h2>
-      <div class="chart-wrap">
-        <canvas id="usage-chart"></canvas>
-      </div>
-    </div>
-
-    <!-- Account info -->
-    <div class="account-section" id="account-section">
-      <h2>Account</h2>
-      <div class="account-row"><span class="account-label">Email</span><span id="acct-email">--</span></div>
-      <div class="account-row"><span class="account-label">Name</span><span id="acct-name">--</span></div>
-      <div class="account-row"><span class="account-label">Tier</span><span id="acct-tier">--</span></div>
-      <div class="account-row"><span class="account-label">Member Since</span><span id="acct-since">--</span></div>
-    </div>
+    </main>
   </div>
 
-  <script src="dashboard.js?v=2"></script>
+  <script src="sidebar.js"></script>
+  <script src="dashboard.js?v=3"></script>
 </body>
 </html>

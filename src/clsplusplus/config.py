@@ -101,6 +101,15 @@ class Settings(BaseSettings):
     # blend weight for strong recency signals ("recently", "last week", "yesterday")
     temporal_recency_alpha_strong: float = 0.5
 
+    # Stripe billing
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_price_pro: str = ""            # Stripe Price ID for Pro tier
+    stripe_price_business: str = ""       # Stripe Price ID for Business tier
+    stripe_price_enterprise: str = ""     # Stripe Price ID for Enterprise tier
+    stripe_success_url: str = "/profile.html?billing=success"
+    stripe_cancel_url: str = "/profile.html?billing=cancel"
+
     # Demo LLM keys (optional; demo uses these for real Claude/OpenAI/Gemini)
     anthropic_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
