@@ -4,6 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>CLS++ · Memory Viewer</title>
+  <script src="auth.js"></script>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{
@@ -318,6 +319,61 @@ function modelMeta(m) {
 
 async function loadMemories() {
   try {
+    // Try authenticated API first (for logged-in users with persisted memories)
+    var user = (typeof CLSAuth !== 'undefined') ? await CLSAuth.getUser() : null;
+    if (user) {
+      var ns = 'user-' + user.id.slice(0, 8);
+      var authResp = await fetch(API + '/v1/memory/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ query: '*', namespace: ns, limit: 100 }),
+      });
+      if (authResp.ok) {
+        var authData = await authResp.json();
+        var items = authData.items || [];
+        // Convert to memory viewer format
+        var converted = items.map(function(item) {
+          return {
+            id: item.id,
+            text: item.text,
+            fact: item.text,
+            category: (item.metadata && item.metadata.category) || classify_simple(item.text),
+            source_model: item.source || 'api',
+            source: item.source || 'user',
+            strength: item.confidence || 0.5,
+            phase: (item.store_level === 'L0') ? 'gas' : (item.store_level === 'L2') ? 'solid' : (item.store_level === 'L3') ? 'glass' : 'liquid',
+            layer: item.store_level || 'L1',
+            ts: item.timestamp || item.event_at || '',
+          };
+        });
+        // Merge with extension memories (if any)
+        try {
+          var extResp = await fetch(API + '/api/memories');
+          if (extResp.ok) {
+            var extData = await extResp.json();
+            var extMems = extData.memories || [];
+            // Deduplicate by text
+            var seen = new Set(converted.map(function(m) { return m.text; }));
+            extMems.forEach(function(m) {
+              if (!seen.has(m.text || m.fact)) converted.push(m);
+            });
+          }
+        } catch(e) { /* extension API not available */ }
+        allMemories = converted;
+        renderMemories();
+        buildSidebar({
+          count: converted.length,
+          memories: converted,
+          available_models: [...new Set(converted.map(function(m) { return m.source_model; }))],
+          available_categories: [...new Set(converted.map(function(m) { return m.category; }))],
+          layers: converted.reduce(function(acc, m) { acc[m.layer] = (acc[m.layer] || 0) + 1; return acc; }, {L0:0,L1:0,L2:0,L3:0}),
+        });
+        return;
+      }
+    }
+
+    // Fallback: extension local API (anonymous user)
     let url = `${API}/api/memories`;
     const p = [];
     if (activeModel) p.push('model='+encodeURIComponent(activeModel));
@@ -329,6 +385,17 @@ async function loadMemories() {
     renderMemories();
     buildSidebar(d);
   } catch(e) { console.error('Server not reachable', e); }
+}
+
+function classify_simple(text) {
+  if (!text) return 'General';
+  var t = text.toLowerCase();
+  if (t.includes('prefer') || t.includes('like') || t.includes('love') || t.includes('favorite')) return 'Preference';
+  if (t.includes('name is') || t.includes('i am') || t.includes("i'm")) return 'Identity';
+  if (t.includes('work') || t.includes('job') || t.includes('company')) return 'Work';
+  if (t.includes('project') || t.includes('building') || t.includes('develop')) return 'Project';
+  if (t.includes('goal') || t.includes('want to') || t.includes('plan')) return 'Goal';
+  return 'General';
 }
 
 function renderMemories() {
@@ -511,7 +578,7 @@ function esc(s) {
 
 loadMemories();
 connectWS();
-setInterval(loadMemories, 5000);
+setInterval(loadMemories, 30000);
 </script>
 </body>
 </html>

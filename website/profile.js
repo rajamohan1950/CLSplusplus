@@ -649,10 +649,11 @@
     var input = document.getElementById('ic-popup-input');
     input.focus();
 
-    // Close on overlay click (not box)
+    // Close on overlay click (not box); let links inside box work
     overlay.addEventListener('click', function (e) {
       if (e.target === overlay) overlay.remove();
     });
+    box.addEventListener('click', function (e) { e.stopPropagation(); });
 
     // Submit on Enter
     input.addEventListener('keydown', function (e) {
@@ -673,9 +674,10 @@
 
     try {
       // Write
-      var writeResp = await fetch(API_URL + '/v1/memory/write', {
+      var writeResp = await fetch('/v1/memory/write', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _instantKey },
+        credentials: 'same-origin',
         body: JSON.stringify({ text: text, namespace: testNs, source: 'instant-connect' }),
       });
 
@@ -689,9 +691,10 @@
       statusEl.innerHTML = '\u2705 Stored! Reading it back...';
 
       // Read back to prove it
-      var readResp = await fetch(API_URL + '/v1/memory/read', {
+      var readResp = await fetch('/v1/memory/read', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _instantKey },
+        credentials: 'same-origin',
         body: JSON.stringify({ query: text, namespace: testNs, limit: 1 }),
       });
 
