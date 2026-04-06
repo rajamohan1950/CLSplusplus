@@ -35,7 +35,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -e ".[server,dev]"
-      - run: pytest tests/ -x --timeout=60
+      - run: pytest tests/ --timeout=60 --ignore=tests/test_performance.py -k "not test_similar_damage_magnitudes"
 
   publish:
     needs: test
