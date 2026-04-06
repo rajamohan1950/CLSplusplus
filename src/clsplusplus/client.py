@@ -25,7 +25,7 @@ Usage:
 
 Environment variables (all optional):
     CLS_API_KEY   — API key for cloud/production
-    CLS_BASE_URL  — Server URL (default: http://localhost:8080)
+    CLS_BASE_URL  — Server URL (default: https://clsplusplus-api.onrender.com)
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ class Brain:
         url: Optional[str] = None,
     ):
         self.user = user
-        self._url = (url or os.environ.get("CLS_BASE_URL", "http://localhost:8080")).rstrip("/")
+        self._url = (url or os.environ.get("CLS_BASE_URL", "https://clsplusplus-api.onrender.com")).rstrip("/")
         self._key = api_key or os.environ.get("CLS_API_KEY", "")
         self._http = httpx.Client(
             base_url=self._url,
@@ -402,7 +402,7 @@ class MemoriesClient:
 class CLSClient:
     """Legacy client. Use Brain instead."""
     def __init__(self, base_url=None, api_key=None):
-        self._url = (base_url or os.environ.get("CLS_BASE_URL", "http://localhost:8080")).rstrip("/")
+        self._url = (base_url or os.environ.get("CLS_BASE_URL", "https://clsplusplus-api.onrender.com")).rstrip("/")
         self._key = api_key or os.environ.get("CLS_API_KEY", "")
         self._client = httpx.Client(
             base_url=self._url,
