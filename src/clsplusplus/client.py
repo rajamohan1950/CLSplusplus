@@ -411,6 +411,10 @@ class CLSClient:
         )
         self.memories = MemoriesClient(self)
 
+    @property
+    def base_url(self) -> str:
+        return self._url
+
     def write(self, text, namespace="default", source="user", salience=0.5, authority=0.5, metadata=None):
         from clsplusplus.models import WriteRequest
         req = WriteRequest(text=text, namespace=namespace, source=source, salience=salience, authority=authority, metadata=metadata or {})
@@ -424,6 +428,28 @@ class CLSClient:
         resp = self._client.post("/v1/memory/read", json=req.model_dump())
         resp.raise_for_status()
         return ReadResponse(**resp.json())
+
+    def get_item(self, item_id, namespace="default"):
+        resp = self._client.get(f"/v1/memory/item/{item_id}", params={"namespace": namespace})
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        return resp.json()
+
+    def forget(self, item_id, namespace="default"):
+        resp = self._client.request("DELETE", "/v1/memory/forget", json={"item_id": item_id, "namespace": namespace})
+        resp.raise_for_status()
+        return resp.json()
+
+    def sleep(self, namespace="default"):
+        resp = self._client.post("/v1/memory/sleep", json={"namespace": namespace})
+        resp.raise_for_status()
+        return resp.json()
+
+    def health(self):
+        resp = self._client.get("/v1/memory/health")
+        resp.raise_for_status()
+        return resp.json()
 
     def close(self):
         self._client.close()
