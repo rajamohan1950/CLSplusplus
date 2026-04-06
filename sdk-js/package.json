@@ -1,7 +1,7 @@
 {
   "name": "clsplusplus",
-  "version": "4.0.1",
-  "description": "Brain-inspired, model-agnostic persistent memory for LLMs",
+  "version": "4.0.2",
+  "description": "Brain-inspired, model-agnostic persistent memory for LLMs. Learn, recall, forget — like a brain. Works with OpenAI, Claude, Gemini, Llama.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -35,23 +35,34 @@
     "llm",
     "memory",
     "ai",
-    "cls",
+    "brain",
     "persistent-memory",
     "model-agnostic",
-    "brain",
-    "langchain",
     "openai",
-    "anthropic"
+    "anthropic",
+    "claude",
+    "gemini",
+    "langchain",
+    "rag",
+    "semantic-search",
+    "vector-database",
+    "conversational-ai",
+    "context-window"
   ],
   "author": "AlphaForge AI Labs <contact@alphaforge.ai>",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/rajamohan1950/CLSplusplus"
+    "url": "git+https://github.com/rajamohan1950/CLSplusplus.git",
+    "directory": "sdk-js"
   },
-  "homepage": "https://github.com/rajamohan1950/CLSplusplus",
+  "homepage": "https://github.com/rajamohan1950/CLSplusplus#readme",
   "bugs": {
     "url": "https://github.com/rajamohan1950/CLSplusplus/issues"
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/rajamohan1950/CLSplusplus"
   },
   "devDependencies": {
     "@types/node": "^25.5.2",

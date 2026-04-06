@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clsplusplus"
-version = "4.0.1"
+version = "4.0.2"
 description = "Brain-inspired, model-agnostic persistent memory for LLMs. Learn, recall, forget — like a brain. Works with OpenAI, Claude, Gemini, Llama."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -73,16 +73,14 @@ dev = [
 cls = "clsplusplus.cli:main"
 
 [project.urls]
-Homepage = "https://www.clsplusplus.com"
-Documentation = "https://www.clsplusplus.com/docs"
+Homepage = "https://github.com/rajamohan1950/CLSplusplus"
+Documentation = "https://github.com/rajamohan1950/CLSplusplus/wiki"
 Repository = "https://github.com/rajamohan1950/CLSplusplus"
 "Bug Tracker" = "https://github.com/rajamohan1950/CLSplusplus/issues"
 Changelog = "https://github.com/rajamohan1950/CLSplusplus/releases"
-"API Reference" = "https://www.clsplusplus.com/docs"
-"Live Demo" = "https://www.clsplusplus.com/chat"
-"npm Package" = "https://www.npmjs.com/package/clsplusplus"
+"API Reference" = "https://github.com/rajamohan1950/CLSplusplus/blob/main/docs/API_DOCUMENTATION.md"
 "Source Code" = "https://github.com/rajamohan1950/CLSplusplus/tree/main/src"
-Wiki = "https://github.com/rajamohan1950/CLSplusplus/wiki"
+"Download" = "https://github.com/rajamohan1950/CLSplusplus/releases"
 
 [tool.setuptools.packages.find]
 where = ["src"]
