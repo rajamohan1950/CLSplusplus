@@ -1,6 +1,6 @@
 {
   "name": "clsplusplus",
-  "version": "1.0.0",
+  "version": "4.0.0",
   "description": "Brain-inspired, model-agnostic persistent memory for LLMs",
   "type": "module",
   "main": "./dist/index.cjs",
