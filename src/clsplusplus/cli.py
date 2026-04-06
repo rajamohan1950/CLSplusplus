@@ -160,11 +160,14 @@ def cmd_init(args, cfg):
     # Test connection
     print("\nTesting connection...")
     try:
-        brain = _brain(new_cfg)
-        c = brain.count()
-        print(f"Connected. {c} memories stored for '{user}'.")
+        import httpx
+        resp = httpx.get(f"{new_cfg['url'].rstrip('/')}/v1/health", timeout=10)
+        if resp.status_code == 200:
+            print(f"Connected to {new_cfg['url']}.")
+        else:
+            print(f"Server responded with {resp.status_code}. Check your URL.")
     except Exception as e:
-        print(f"Warning: connection test failed ({e}). Config saved anyway.")
+        print(f"Warning: could not reach server ({e}). Config saved anyway.")
 
     _save_config(new_cfg)
     print("\nReady! Try: cls learn \"I prefer Python\"")

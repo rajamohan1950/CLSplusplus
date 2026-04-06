@@ -326,7 +326,7 @@ class Brain:
 
     def count(self) -> int:
         """How many things the brain remembers."""
-        return len(self.all(limit=10000))
+        return len(self.all(limit=100))
 
     def __repr__(self) -> str:
         return f"Brain('{self.user}')"
