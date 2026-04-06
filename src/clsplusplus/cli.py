@@ -1,19 +1,4 @@
-"""CLS++ CLI — Cross-model memory from your terminal.
-
-Usage:
-    cls init                              # Setup API key + LLM keys
-    cls chat --model gpt-4o "message"     # Chat with GPT-4 (memories auto-captured)
-    cls chat --model claude "message"     # Switch to Claude — it remembers everything
-    cls chat                              # Interactive chat session
-    cls learn "I prefer dark mode"        # Store a memory
-    cls ask "What are my preferences?"    # Query memories
-    cls memories                          # List all stored memories
-    cls who                               # Auto-generated user profile
-    cls status                            # Connection status + memory count
-    cls forget "old fact"                 # Delete a memory
-    cls absorb file.txt                   # Bulk-learn from a file
-    cls context "coding help"             # Get LLM-ready context string
-"""
+"""CLS++ CLI — Cross-model memory from your terminal."""
 
 from __future__ import annotations
 
@@ -389,13 +374,101 @@ def cmd_context(args, cfg):
         print("No relevant context found.")
 
 
+def cmd_models(args, cfg):
+    """List all supported models."""
+    print("SUPPORTED MODELS")
+    print("=" * 60)
+    print()
+    print("  OPENAI (requires OPENAI_API_KEY)")
+    print("  ---------------------------------")
+    print("    gpt-4o           GPT-4o (recommended)")
+    print("    gpt-4o-mini      GPT-4o Mini (fast, cheap)")
+    print("    gpt-4            GPT-4")
+    print("    gpt-4-turbo      GPT-4 Turbo")
+    print("    gpt-3.5-turbo    GPT-3.5 Turbo (legacy)")
+    print("    o1               OpenAI o1")
+    print("    o1-mini          OpenAI o1 Mini")
+    print()
+    print("  ANTHROPIC (requires ANTHROPIC_API_KEY)")
+    print("  --------------------------------------")
+    print("    claude           Claude Sonnet (default)")
+    print("    claude-sonnet    Claude Sonnet 4")
+    print("    claude-haiku     Claude Haiku 4.5 (fast)")
+    print("    claude-opus      Claude Opus 4")
+    print()
+    print("  GOOGLE (requires GOOGLE_API_KEY)")
+    print("  --------------------------------")
+    print("    gemini           Gemini 2.0 Flash (default)")
+    print("    gemini-pro       Gemini Pro")
+    print()
+    print("  SHORTCUTS")
+    print("  ---------")
+    print("    gpt    -> gpt-4o")
+    print("    sonnet -> claude-sonnet-4-20250514")
+    print("    haiku  -> claude-haiku-4-5-20251001")
+    print("    opus   -> claude-opus-4-20250514")
+    print()
+    print("  EXAMPLES")
+    print("  --------")
+    print('    cls chat -m gpt-4o "What is memory?"')
+    print('    cls chat -m claude "What did I just ask GPT?"')
+    print('    cls chat -m gemini "Summarize what you know about me"')
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
+
+MAIN_HELP = """\
+NAME
+    cls - CLS++ persistent memory for every AI model
+
+SYNOPSIS
+    cls <command> [options] [arguments]
+
+DESCRIPTION
+    CLS++ gives every AI model persistent memory. Tell something to GPT-4,
+    switch to Claude, it already knows. Memories persist across sessions,
+    models, and devices.
+
+COMMANDS
+    init              Setup API keys and configuration
+    chat              Chat with any LLM (memories auto-captured and injected)
+    learn             Store a memory
+    ask               Query memories semantically
+    memories          List all stored memories
+    models            List all supported models and shortcuts
+    who               Show auto-generated user profile
+    status            Show connection status, memory count, configured keys
+    forget            Delete a memory
+    absorb            Bulk-learn from a file
+    context           Get LLM-ready context string for prompts
+
+QUICK START
+    cls init --key YOUR_API_KEY
+    cls learn "I prefer Python and dark mode"
+    cls ask "What are my preferences?"
+
+CROSS-MODEL MEMORY TRANSFER
+    cls chat -m gpt-4o "My name is Raj and I love Python"
+    cls chat -m claude "What's my name and what do I love?"
+    # -> Claude knows: "Your name is Raj and you love Python."
+
+CONFIGURATION
+    Config file: ~/.clsplusplus
+    Environment variables: CLS_API_KEY, CLS_BASE_URL, CLS_USER,
+                           OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY
+
+SEE ALSO
+    cls <command> --help    Detailed help for a specific command
+    cls models              List all supported models
+    https://www.clsplusplus.com/integrate.html
+"""
+
 
 def main():
     parser = argparse.ArgumentParser(
         prog="cls",
-        description="CLS++ — Persistent memory across every AI model.",
-        epilog="Get started: cls init",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=MAIN_HELP,
     )
     parser.add_argument("--user", help="User identifier (overrides config)")
     parser.add_argument("--key", help="CLS++ API key (overrides config)")
@@ -404,7 +477,21 @@ def main():
     sub = parser.add_subparsers(dest="command")
 
     # init
-    p_init = sub.add_parser("init", help="Setup API keys and configuration")
+    p_init = sub.add_parser("init", formatter_class=argparse.RawDescriptionHelpFormatter,
+        help="Setup API keys and configuration",
+        description="""\
+NAME
+    cls init - Configure CLS++ API keys and connection
+
+DESCRIPTION
+    Interactive setup wizard. Saves configuration to ~/.clsplusplus.
+    After init, all other commands work without passing keys.
+
+EXAMPLES
+    cls init
+    cls init --key cls_live_xxx
+    cls init --key cls_live_xxx --openai-key sk-xxx --user raj
+""")
     p_init.add_argument("--key", dest="key", help="CLS++ API key")
     p_init.add_argument("--user", help="Username")
     p_init.add_argument("--url", help="Server URL")
@@ -413,39 +500,180 @@ def main():
     p_init.add_argument("--google-key", dest="google_key", help="Google API key")
 
     # chat
-    p_chat = sub.add_parser("chat", help="Chat with any LLM — memories transfer across models")
-    p_chat.add_argument("--model", "-m", default="gpt-4o", help="Model: gpt-4o, claude, gemini (default: gpt-4o)")
+    p_chat = sub.add_parser("chat", formatter_class=argparse.RawDescriptionHelpFormatter,
+        help="Chat with any LLM — memories transfer across models",
+        description="""\
+NAME
+    cls chat - Chat with any LLM with persistent cross-model memory
+
+DESCRIPTION
+    Send a message to any supported model. CLS++ automatically:
+      1. Retrieves relevant memories and injects them into the prompt
+      2. Forwards the request to the LLM (OpenAI, Anthropic, Google)
+      3. Captures the conversation as new memories
+      4. Returns the LLM's response
+
+    Memories persist across models. Tell GPT-4 your name, then ask
+    Claude — it already knows.
+
+    Omit the message to enter interactive mode.
+
+    Run 'cls models' to see all supported models.
+
+EXAMPLES
+    cls chat -m gpt-4o "My name is Raj and I love Python"
+    cls chat -m claude "What's my name?"
+    cls chat -m gemini "Summarize what you know about me"
+    cls chat                          # interactive mode
+    cls chat -m haiku "Quick question" # use shortcut names
+""")
+    p_chat.add_argument("--model", "-m", default="gpt-4o",
+        help="Model name or shortcut (default: gpt-4o). Run 'cls models' for full list")
     p_chat.add_argument("message", nargs="*", help="Message (omit for interactive mode)")
 
     # learn
-    p_learn = sub.add_parser("learn", help="Store a memory")
+    p_learn = sub.add_parser("learn", formatter_class=argparse.RawDescriptionHelpFormatter,
+        help="Store a memory",
+        description="""\
+NAME
+    cls learn - Teach CLS++ a fact to remember
+
+DESCRIPTION
+    Store any fact as a persistent memory. The memory is available
+    to all models and persists across sessions.
+
+EXAMPLES
+    cls learn "I prefer Python and dark mode"
+    cls learn "My project is called Atlas and uses FastAPI"
+    cls learn "Meeting with Alice on Friday at 3pm"
+""")
     p_learn.add_argument("fact", nargs="+", help="Fact to remember")
 
     # ask
-    p_ask = sub.add_parser("ask", help="Query memories")
+    p_ask = sub.add_parser("ask", formatter_class=argparse.RawDescriptionHelpFormatter,
+        help="Query memories semantically",
+        description="""\
+NAME
+    cls ask - Query memories using natural language
+
+DESCRIPTION
+    Semantic search across all stored memories. Returns the most
+    relevant matches ranked by confidence.
+
+EXAMPLES
+    cls ask "What are my coding preferences?"
+    cls ask "What meetings do I have?" -n 10
+    cls ask "Tell me about my project"
+""")
     p_ask.add_argument("question", nargs="+", help="Question to ask")
     p_ask.add_argument("--limit", "-n", type=int, default=5, help="Max results (default: 5)")
 
     # memories
-    p_mems = sub.add_parser("memories", help="List all stored memories")
+    p_mems = sub.add_parser("memories", formatter_class=argparse.RawDescriptionHelpFormatter,
+        help="List all stored memories",
+        description="""\
+NAME
+    cls memories - List all stored memories
+
+EXAMPLES
+    cls memories
+    cls memories -n 100
+""")
     p_mems.add_argument("--limit", "-n", type=int, default=50, help="Max results (default: 50)")
 
+    # models
+    sub.add_parser("models", formatter_class=argparse.RawDescriptionHelpFormatter,
+        help="List all supported models and shortcuts",
+        description="""\
+NAME
+    cls models - Show all supported LLM models
+
+DESCRIPTION
+    Lists every model CLS++ can route to, organized by provider,
+    with shortcut names for convenience.
+""")
+
     # who
-    sub.add_parser("who", help="Show auto-generated user profile")
+    sub.add_parser("who", formatter_class=argparse.RawDescriptionHelpFormatter,
+        help="Show auto-generated user profile",
+        description="""\
+NAME
+    cls who - Show auto-generated user profile
+
+DESCRIPTION
+    Generates a structured profile from all stored memories.
+    Shows facts, summary, and memory count.
+
+EXAMPLES
+    cls who
+""")
 
     # status
-    sub.add_parser("status", help="Show connection status and memory count")
+    sub.add_parser("status", formatter_class=argparse.RawDescriptionHelpFormatter,
+        help="Show connection status, memory count, configured keys",
+        description="""\
+NAME
+    cls status - Show connection and configuration status
+
+DESCRIPTION
+    Displays server URL, user, API key status, health check result,
+    memory count, and which LLM provider keys are configured.
+
+EXAMPLES
+    cls status
+""")
 
     # forget
-    p_forget = sub.add_parser("forget", help="Delete a memory")
-    p_forget.add_argument("fact", nargs="+", help="Fact to forget")
+    p_forget = sub.add_parser("forget", formatter_class=argparse.RawDescriptionHelpFormatter,
+        help="Delete a memory",
+        description="""\
+NAME
+    cls forget - Delete a memory
+
+DESCRIPTION
+    Remove a specific memory by its text or ID. Supports GDPR
+    right-to-be-forgotten compliance.
+
+EXAMPLES
+    cls forget "I work at Google"
+    cls forget "old-memory-id-here"
+""")
+    p_forget.add_argument("fact", nargs="+", help="Fact text or memory ID to forget")
 
     # absorb
-    p_absorb = sub.add_parser("absorb", help="Bulk-learn from a file")
+    p_absorb = sub.add_parser("absorb", formatter_class=argparse.RawDescriptionHelpFormatter,
+        help="Bulk-learn from a file",
+        description="""\
+NAME
+    cls absorb - Bulk-learn facts from a text file
+
+DESCRIPTION
+    Reads a file, splits into sentences/paragraphs, and stores
+    each as a separate memory. Good for importing notes, documents,
+    or conversation logs.
+
+EXAMPLES
+    cls absorb meeting-notes.txt
+    cls absorb ~/Documents/project-brief.md
+""")
     p_absorb.add_argument("file", help="Path to text file")
 
     # context
-    p_context = sub.add_parser("context", help="Get LLM-ready context string")
+    p_context = sub.add_parser("context", formatter_class=argparse.RawDescriptionHelpFormatter,
+        help="Get LLM-ready context string for prompts",
+        description="""\
+NAME
+    cls context - Generate context string for LLM prompts
+
+DESCRIPTION
+    Returns a formatted block of relevant memories suitable for
+    injecting into a system prompt. Use this when building custom
+    LLM integrations.
+
+EXAMPLES
+    cls context "coding help"
+    cls context "meeting preparation"
+""")
     p_context.add_argument("topic", nargs="*", help="Topic to get context for")
 
     args = parser.parse_args()
@@ -468,6 +696,7 @@ def main():
         "learn": cmd_learn,
         "ask": cmd_ask,
         "memories": cmd_memories,
+        "models": cmd_models,
         "who": cmd_who,
         "status": cmd_status,
         "forget": cmd_forget,
