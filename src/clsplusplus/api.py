@@ -783,6 +783,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Extension analytics unavailable: {str(e)[:200]}")
 
+    @app.get("/v1/stats/extension")
+    async def public_extension_stats():
+        """Public endpoint — returns extension install/active counts for social proof."""
+        try:
+            data = await _metrics.get_extension_analytics()
+            return {"installs": data.get("installs_this_month", 0), "dau": data.get("dau", 0), "mau": data.get("mau", 0)}
+        except Exception:
+            return {"installs": 0, "dau": 0, "mau": 0}
+
     @app.get("/admin/metrics/storage")
     async def admin_storage(request: Request):
         """Storage metering: item counts across L0/L1/L2, namespaces."""
