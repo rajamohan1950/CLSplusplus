@@ -52,6 +52,9 @@ dev = [
     "httpx>=0.26.0",
 ]
 
+[project.scripts]
+cls = "clsplusplus.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/rajamohan1950/CLSplusplus"
 Documentation = "https://github.com/rajamohan1950/CLSplusplus/wiki"
