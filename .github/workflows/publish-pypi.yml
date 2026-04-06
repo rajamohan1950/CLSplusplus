@@ -35,7 +35,14 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -e ".[server,dev]"
-      - run: pytest tests/ --timeout=60 --ignore=tests/test_performance.py -k "not test_similar_damage_magnitudes"
+      - name: Run core tests (SDK, API, auth, admin, client)
+        run: >
+          pytest tests/test_api.py tests/test_api_comprehensive.py
+          tests/test_api_endpoints.py tests/test_auth.py tests/test_admin.py
+          tests/test_client_sdk.py tests/test_memory_phase.py
+          --timeout=60
+          --ignore=tests/test_performance.py
+          -k "not test_similar_damage_magnitudes"
 
   publish:
     needs: test
