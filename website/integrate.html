@@ -81,6 +81,12 @@
     <div class="ig-sidebar">
       <input type="text" class="ig-search" placeholder="Search integrations..." oninput="filterIntegrations(this.value)">
 
+      <div class="ig-cat">Quick Start</div>
+      <div class="ig-item" onclick="document.getElementById('cli').scrollIntoView({behavior:'smooth'})">
+        <span class="ig-icon">&#x1F4BB;</span> CLI Package
+        <span class="ig-badge ig-badge-live">Live</span>
+      </div>
+
       <div class="ig-cat">Browser Extensions</div>
       <div class="ig-item active" onclick="showPanel('chrome')">
         <span class="ig-icon">🌐</span> Chrome Extension
@@ -184,6 +190,17 @@
           }
         }
       </script>
+
+      <!-- CLI Install -->
+      <div id="cli" style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius);padding:28px;margin-bottom:24px;">
+        <h2 style="font-size:1.2rem;margin-bottom:4px;">CLI — Memory from your terminal</h2>
+        <p style="color:var(--text-muted);font-size:0.9rem;margin:0 0 16px;">One command installs, configures, and tests. Then chat with any model — memories transfer automatically.</p>
+        <div class="ig-code" style="margin:0 0 16px;">pip install clsplusplus<button class="cp" onclick="navigator.clipboard.writeText('pip install clsplusplus');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1200)">Copy</button></div>
+        <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">Then run the one-click setup:</p>
+        <div class="ig-code" style="margin:0 0 16px;">cls init<button class="cp" onclick="navigator.clipboard.writeText('cls init');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1200)">Copy</button></div>
+        <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">Cross-model memory transfer in 3 lines:</p>
+        <div class="ig-code" style="margin:0;line-height:2;"><span style="color:var(--text-muted);"># Tell GPT-4 something</span><br>cls chat --model gpt-4o "My name is Raj and I love Python"<br><br><span style="color:var(--text-muted);"># Switch to Claude — it already knows</span><br>cls chat --model claude "What's my name?"<br><span style="color:#22c55e;"># → "Your name is Raj and you love Python."</span></div>
+      </div>
 
       <!-- Chrome Extension Panel (default) -->
       <div id="panel-chrome">
