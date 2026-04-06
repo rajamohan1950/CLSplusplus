@@ -4,23 +4,34 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clsplusplus"
-version = "4.0.0"
-description = "Brain-inspired, model-agnostic persistent memory architecture for LLMs"
+version = "4.0.1"
+description = "Brain-inspired, model-agnostic persistent memory for LLMs. Learn, recall, forget — like a brain. Works with OpenAI, Claude, Gemini, Llama."
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "Apache-2.0"}
 authors = [{name = "AlphaForge AI Labs", email = "contact@alphaforge.ai"}]
-keywords = ["llm", "memory", "ai", "cls", "continuous-learning", "langchain", "persistent-memory", "model-agnostic"]
+maintainers = [{name = "Rajamohan Jabbala", email = "contact@alphaforge.ai"}]
+keywords = [
+    "llm", "memory", "ai", "persistent-memory", "model-agnostic",
+    "brain", "openai", "anthropic", "claude", "gemini", "langchain",
+    "continuous-learning", "semantic-search", "vector-database",
+    "conversational-ai", "rag", "context-window",
+]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
 ]
 
 # SDK-only dependencies — lightweight client (~5 MB install)
@@ -62,11 +73,16 @@ dev = [
 cls = "clsplusplus.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/rajamohan1950/CLSplusplus"
-Documentation = "https://github.com/rajamohan1950/CLSplusplus/wiki"
+Homepage = "https://www.clsplusplus.com"
+Documentation = "https://www.clsplusplus.com/docs"
 Repository = "https://github.com/rajamohan1950/CLSplusplus"
 "Bug Tracker" = "https://github.com/rajamohan1950/CLSplusplus/issues"
 Changelog = "https://github.com/rajamohan1950/CLSplusplus/releases"
+"API Reference" = "https://www.clsplusplus.com/docs"
+"Live Demo" = "https://www.clsplusplus.com/chat"
+"npm Package" = "https://www.npmjs.com/package/clsplusplus"
+"Source Code" = "https://github.com/rajamohan1950/CLSplusplus/tree/main/src"
+Wiki = "https://github.com/rajamohan1950/CLSplusplus/wiki"
 
 [tool.setuptools.packages.find]
 where = ["src"]
