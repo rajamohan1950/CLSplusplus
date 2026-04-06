@@ -10,7 +10,7 @@
   const PAGES = [
     'index.html',
     'docs.html',
-    'integrations.html',
+    'integrate.html',
     'chat.html',
     'benchmark.html',
     'benchmark_v1_direct.html',
@@ -120,7 +120,7 @@
 
     // index.html has its own expanded nav
     if (currentPage === 'index.html') {
-      var requiredIndex = ['docs.html', 'integrations.html', 'chat.html', 'benchmark.html'];
+      var requiredIndex = ['docs.html', 'integrate.html', 'chat.html', 'benchmark.html'];
       requiredIndex.forEach(function (page) {
         if (hrefs.some(function (h) { return h === page || h.includes(page); })) {
           pass('Index nav has link to ' + page);
@@ -132,7 +132,7 @@
     }
 
     // All other sub-pages should have consistent nav
-    var requiredPages = ['index.html', 'docs.html', 'integrations.html', 'chat.html', 'benchmark.html'];
+    var requiredPages = ['index.html', 'docs.html', 'integrate.html', 'chat.html', 'benchmark.html'];
     requiredPages.forEach(function (page) {
       if (hrefs.some(function (h) { return h === page || h.includes(page); })) {
         pass('Nav has link to ' + page);
@@ -487,7 +487,7 @@
       // Page-specific tests
       if (page === 'index.html') testIndexSpecific(doc);
       else if (page === 'docs.html') testDocsSpecific(doc);
-      else if (page === 'integrations.html') testIntegrationsSpecific(doc);
+      else if (page === 'integrate.html') testIntegrationsSpecific(doc);
       else if (page === 'chat.html') testChatSpecific(doc);
       else if (page.includes('benchmark')) testBenchmarkSpecific(doc);
 

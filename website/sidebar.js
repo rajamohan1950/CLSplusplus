@@ -16,7 +16,7 @@
     { id: 'chat',      label: 'Chat',          icon: '\u{1F4AC}', href: '/chat.html' },
     { section: 'Developer' },
     { id: 'docs',         label: 'API Docs',       icon: '\u{1F4D6}', href: '/docs.html' },
-    { id: 'integrations', label: 'Integrations',   icon: '\u26A1',    href: '/integrations.html' },
+    { id: 'integrations', label: 'Integrations',   icon: '\u26A1',    href: '/integrate.html' },
   ];
 
   window.renderSidebar = async function (activePage) {
