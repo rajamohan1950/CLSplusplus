@@ -14,6 +14,7 @@
     { section: 'Tools' },
     { id: 'memory',    label: 'Memory Viewer', icon: '\u{1F9E0}', href: '/memory.html' },
     { id: 'chat',      label: 'Chat',          icon: '\u{1F4AC}', href: '/chat.html' },
+    { id: 'traces',    label: 'Traces',        icon: '\u{1F50D}', href: '/trace.html' },
     { section: 'Developer' },
     { id: 'docs',         label: 'API Docs',       icon: '\u{1F4D6}', href: '/docs.html' },
     { id: 'integrations', label: 'Integrations',   icon: '\u26A1',    href: '/integrate.html' },
