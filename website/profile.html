@@ -22,8 +22,10 @@
         <span class="tier-badge" id="tier-badge">Loading...</span>
       </div>
 
-      <!-- User Information -->
-      <div class="profile-section" id="section-info">
+      <!-- ============================================================ -->
+      <!-- Section: User Information (#info) -->
+      <!-- ============================================================ -->
+      <div class="profile-section" id="info">
         <h2>User Information</h2>
         <div id="profile-info">
           <div class="profile-row">
@@ -87,8 +89,10 @@
         </div>
       </div>
 
-      <!-- Preferences -->
-      <div class="profile-section" id="section-prefs">
+      <!-- ============================================================ -->
+      <!-- Section: Preferences (#prefs) -->
+      <!-- ============================================================ -->
+      <div class="profile-section" id="prefs">
         <h2>Preferences</h2>
         <div class="profile-row">
           <span class="profile-label">Default Namespace</span>
@@ -100,16 +104,71 @@
         </div>
       </div>
 
-      <!-- API Keys -->
-      <div class="profile-section" id="section-keys">
+      <!-- ============================================================ -->
+      <!-- Section: API Keys (#keys) -->
+      <!-- ============================================================ -->
+      <div class="profile-section" id="keys">
         <h2>API Keys</h2>
 
-        <!-- Integration selector -->
+        <!-- Instant Connect — one button to rule them all -->
+        <div style="margin-bottom:20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <button class="btn btn-primary" id="btn-instant-connect" onclick="instantConnect()">Instant Connect</button>
+          <span style="font-size:0.85rem;color:var(--text-muted);">One click. Get your API key, setup command, and code snippets.</span>
+        </div>
+
+        <!-- Instant Connect Panel (hidden until clicked) -->
+        <div class="instant-connect" id="ic-panel">
+          <h3>You're Connected</h3>
+          <p class="ic-sub">Your API key is ready. Choose how to use it:</p>
+
+          <div class="ic-options">
+            <div class="ic-option" onclick="icShowSetupCommand()">
+              <div class="ic-opt-icon">&#x1F4CB;</div>
+              <h4>Copy Setup Command</h4>
+              <p>One-liner for your terminal</p>
+            </div>
+            <div class="ic-option" onclick="icDownloadEnv()">
+              <div class="ic-opt-icon">&#x1F4E5;</div>
+              <h4>Download .env</h4>
+              <p>Drop into your project root</p>
+            </div>
+            <div class="ic-option" id="ic-ext-option" onclick="icLinkExtension()" style="display:none;">
+              <div class="ic-opt-icon">&#x1F9E9;</div>
+              <h4>Auto-Link Extension</h4>
+              <p>Zero copy-paste setup</p>
+            </div>
+          </div>
+
+          <!-- Result area -->
+          <div class="ic-result" id="ic-result">
+            <div id="ic-result-content"></div>
+            <button class="ic-copy-btn" id="ic-copy-btn" onclick="icCopyResult()">Copy</button>
+          </div>
+
+          <!-- Health check -->
+          <div class="ic-health-check" id="ic-health">
+            <span id="ic-health-icon"></span>
+            <span id="ic-health-text"></span>
+          </div>
+
+          <!-- Code snippets -->
+          <div class="ic-snippets" id="ic-snippets" style="display:none;">
+            <div class="ic-tab-bar">
+              <button class="ic-tab active" data-lang="python" onclick="icShowSnippet('python', this)">Python</button>
+              <button class="ic-tab" data-lang="javascript" onclick="icShowSnippet('javascript', this)">JavaScript</button>
+              <button class="ic-tab" data-lang="curl" onclick="icShowSnippet('curl', this)">cURL</button>
+            </div>
+            <pre id="ic-snippet-code"></pre>
+          </div>
+        </div>
+
+        <!-- Integration selector + new button -->
         <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
           <label for="key-integration" style="font-size:0.85rem;color:var(--text-muted);">Integration:</label>
           <select id="key-integration" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.85rem;font-family:inherit;outline:none;min-width:200px;">
             <option value="">Loading...</option>
           </select>
+          <button class="btn btn-outline btn-sm" onclick="createNewIntegration()" title="Create a new integration">+ New</button>
         </div>
 
         <!-- Generate key form -->
@@ -155,7 +214,7 @@
 
         <!-- Keys table -->
         <div id="keys-table-container">
-          <p style="color:var(--text-muted);font-size:0.85rem;">Select an integration to view keys.</p>
+          <p style="color:var(--text-muted);font-size:0.85rem;">Loading keys...</p>
         </div>
 
         <!-- Audit history -->
@@ -167,8 +226,10 @@
         </div>
       </div>
 
-      <!-- Billing & Subscription -->
-      <div class="profile-section" id="section-billing">
+      <!-- ============================================================ -->
+      <!-- Section: Billing & Subscription (#billing) -->
+      <!-- ============================================================ -->
+      <div class="profile-section" id="billing">
         <h2>Billing & Subscription</h2>
 
         <div id="billing-current" style="margin-bottom:20px;">

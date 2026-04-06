@@ -164,6 +164,27 @@
 
     <!-- RIGHT PANEL -->
     <div class="ig-main" id="ig-panel">
+      <!-- Instant Connect CTA -->
+      <div id="connect" style="background:linear-gradient(135deg,rgba(99,102,241,0.12),rgba(139,92,246,0.08));border:1px solid rgba(99,102,241,0.3);border-radius:var(--radius);padding:28px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+        <div>
+          <h2 style="font-size:1.2rem;margin-bottom:4px;">Get your API key in one click</h2>
+          <p style="color:var(--text-muted);font-size:0.9rem;margin:0;">Auto-creates your integration, generates a key, and gives you ready-to-use code.</p>
+        </div>
+        <button class="ig-dl" onclick="goToInstantConnect()">Connect Now</button>
+      </div>
+      <script>
+        function goToInstantConnect() {
+          if (typeof CLSAuth !== 'undefined') {
+            CLSAuth.getUser().then(function(u) {
+              if (u) { window.location.href = '/profile.html#keys'; }
+              else { window.location.href = '/login.html?next=/profile.html%23keys'; }
+            });
+          } else {
+            window.location.href = '/login.html?next=/profile.html%23keys';
+          }
+        }
+      </script>
+
       <!-- Chrome Extension Panel (default) -->
       <div id="panel-chrome">
         <!-- Social proof -->

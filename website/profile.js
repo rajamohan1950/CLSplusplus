@@ -1,6 +1,6 @@
 /**
  * CLS++ Profile Page Logic
- * Handles user info, API key CRUD, and billing.
+ * Handles user info, API key CRUD, instant connect, and billing.
  */
 (function () {
   'use strict';
@@ -8,6 +8,9 @@
   var _user = null;
   var _integrations = [];
   var _selectedIntegration = null;
+  var _instantKey = null; // key from instant connect
+
+  var API_URL = 'https://clsplusplus-api.onrender.com';
 
   async function loadProfile() {
     if (typeof CLSAuth !== 'undefined') {
@@ -33,8 +36,7 @@
     // User info
     renderUserInfo();
 
-    // Show change password button only for password-based accounts
-    // (Google-only accounts don't have a password)
+    // Show change password button
     var pwBtn = document.getElementById('btn-change-pw');
     if (pwBtn) pwBtn.style.display = 'inline-block';
 
@@ -42,7 +44,13 @@
     var ns = document.getElementById('pref-namespace');
     if (ns) ns.textContent = 'user-' + _user.id.slice(0, 8);
 
-    // Load integrations for API keys
+    // Detect extension
+    if (window.__CLS_EXTENSION_INSTALLED__ || document.querySelector('[data-cls-extension]')) {
+      var extOpt = document.getElementById('ic-ext-option');
+      if (extOpt) extOpt.style.display = 'block';
+    }
+
+    // Load integrations (auto-creates if none)
     await loadIntegrations();
 
     // Load billing info
@@ -51,17 +59,19 @@
     // Update plan cards
     updatePlanCards(_user.tier);
 
+    // Handle hash navigation
+    handleHash();
+
     // Check URL params for billing result
     var params = new URLSearchParams(window.location.search);
     if (params.get('billing') === 'success') {
-      showMsg('billing-msg', 'Subscription updated successfully!', 'var(--success)');
+      showInlineMsg('billing', 'Subscription updated successfully!', 'var(--success)');
     }
   }
 
   function renderUserInfo() {
     if (!_user) return;
 
-    // Avatar
     var avatarEl = document.getElementById('profile-avatar');
     if (avatarEl) {
       if (_user.avatar_url) {
@@ -76,7 +86,6 @@
     setText('profile-tier', _user.tier.charAt(0).toUpperCase() + _user.tier.slice(1));
     setText('profile-since', _user.created_at ? new Date(_user.created_at).toLocaleDateString() : '--');
 
-    // Pre-fill edit form
     var nameInput = document.getElementById('edit-name');
     var emailInput = document.getElementById('edit-email');
     if (nameInput) nameInput.value = _user.name || '';
@@ -88,13 +97,27 @@
     if (el) el.textContent = text;
   }
 
-  function showMsg(id, msg, color) {
-    var el = document.getElementById(id);
-    if (el) {
-      el.textContent = msg;
-      el.style.color = color || 'var(--text-muted)';
+  function showInlineMsg(section, msg, color) {
+    // Generic inline message near a section
+    var el = document.getElementById(section + '-msg') || document.getElementById('edit-profile-msg');
+    if (el) { el.textContent = msg; el.style.color = color || 'var(--text-muted)'; }
+  }
+
+  // ── Hash Navigation ────────────────────────────────────────────────────────
+
+  function handleHash() {
+    var hash = window.location.hash.replace('#', '');
+    if (hash) {
+      var target = document.getElementById(hash);
+      if (target) {
+        setTimeout(function () {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 150);
+      }
     }
   }
+
+  window.addEventListener('hashchange', handleHash);
 
   // ── Edit Profile ───────────────────────────────────────────────────────────
 
@@ -119,7 +142,7 @@
     if (name && name !== _user.name) body.name = name;
     if (email && email !== _user.email) body.email = email;
     if (!Object.keys(body).length) {
-      showMsg('edit-profile-msg', 'No changes to save.', 'var(--text-muted)');
+      showInlineMsg('edit-profile', 'No changes to save.', 'var(--text-muted)');
       return;
     }
 
@@ -134,13 +157,13 @@
         _user = await resp.json();
         renderUserInfo();
         document.getElementById('edit-profile-form').classList.remove('visible');
-        showMsg('edit-profile-msg', '', '');
+        showInlineMsg('edit-profile', '', '');
       } else {
         var err = await resp.json();
-        showMsg('edit-profile-msg', err.detail || 'Update failed', '#ef4444');
+        showInlineMsg('edit-profile', err.detail || 'Update failed', '#ef4444');
       }
     } catch (e) {
-      showMsg('edit-profile-msg', 'Network error', '#ef4444');
+      showInlineMsg('edit-profile', 'Network error', '#ef4444');
     }
   };
 
@@ -148,11 +171,11 @@
     var current = document.getElementById('pw-current').value;
     var newPw = document.getElementById('pw-new').value;
     if (!current || !newPw) {
-      showMsg('change-pw-msg', 'Both fields are required.', '#ef4444');
+      showInlineMsg('change-pw', 'Both fields are required.', '#ef4444');
       return;
     }
     if (newPw.length < 8) {
-      showMsg('change-pw-msg', 'Password must be at least 8 characters.', '#ef4444');
+      showInlineMsg('change-pw', 'Password must be at least 8 characters.', '#ef4444');
       return;
     }
 
@@ -164,23 +187,26 @@
         body: JSON.stringify({ password: newPw, current_password: current }),
       });
       if (resp.ok) {
-        showMsg('change-pw-msg', 'Password updated.', 'var(--success)');
+        var msgEl = document.getElementById('change-pw-msg');
+        if (msgEl) { msgEl.textContent = 'Password updated.'; msgEl.style.color = 'var(--success)'; }
         document.getElementById('pw-current').value = '';
         document.getElementById('pw-new').value = '';
         setTimeout(function () {
           document.getElementById('change-pw-form').classList.remove('visible');
-          showMsg('change-pw-msg', '', '');
+          if (msgEl) { msgEl.textContent = ''; }
         }, 1500);
       } else {
         var err = await resp.json();
-        showMsg('change-pw-msg', err.detail || 'Failed', '#ef4444');
+        var msgEl = document.getElementById('change-pw-msg');
+        if (msgEl) { msgEl.textContent = err.detail || 'Failed'; msgEl.style.color = '#ef4444'; }
       }
     } catch (e) {
-      showMsg('change-pw-msg', 'Network error', '#ef4444');
+      var msgEl = document.getElementById('change-pw-msg');
+      if (msgEl) { msgEl.textContent = 'Network error'; msgEl.style.color = '#ef4444'; }
     }
   };
 
-  // ── API Keys ───────────────────────────────────────────────────────────────
+  // ── Integrations & API Keys ────────────────────────────────────────────────
 
   async function loadIntegrations() {
     var select = document.getElementById('key-integration');
@@ -194,8 +220,35 @@
       _integrations = [];
     }
 
+    // Auto-create default integration if none exist
+    if (!_integrations.length && _user) {
+      try {
+        var ns = 'user-' + _user.id.slice(0, 8);
+        var createResp = await fetch('/v1/integrations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ name: 'My App', namespace: ns, owner_email: _user.email }),
+        });
+        if (createResp.ok) {
+          var createData = await createResp.json();
+          // Store the first key from auto-creation
+          if (createData.api_key && createData.api_key.key) {
+            _instantKey = createData.api_key.key;
+          }
+          // Reload integrations
+          var reloadResp = await fetch('/v1/user/integrations', { credentials: 'same-origin' });
+          if (reloadResp.ok) {
+            var reloadData = await reloadResp.json();
+            _integrations = reloadData.integrations || [];
+          }
+        }
+      } catch (e) { /* silent */ }
+    }
+
     if (!select) return;
     select.innerHTML = '';
+
     if (!_integrations.length) {
       select.innerHTML = '<option value="">No integrations yet</option>';
       return;
@@ -208,7 +261,6 @@
       select.appendChild(opt);
     });
 
-    // Auto-select first
     _selectedIntegration = _integrations[0].id;
     select.value = _selectedIntegration;
     select.addEventListener('change', function () {
@@ -221,10 +273,38 @@
     await loadKeyHistory();
   }
 
+  window.createNewIntegration = async function () {
+    var name = prompt('Integration name:');
+    if (!name || !name.trim()) return;
+
+    try {
+      var ns = 'user-' + _user.id.slice(0, 8);
+      var resp = await fetch('/v1/integrations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ name: name.trim(), namespace: ns, owner_email: _user.email }),
+      });
+      if (resp.ok) {
+        var data = await resp.json();
+        if (data.api_key && data.api_key.key) {
+          document.getElementById('new-key-value').textContent = data.api_key.key;
+          document.getElementById('new-key-box').classList.add('visible');
+        }
+        await loadIntegrations();
+      } else {
+        var err = await resp.json();
+        alert(err.detail || 'Failed to create integration');
+      }
+    } catch (e) {
+      alert('Network error');
+    }
+  };
+
   async function loadKeys() {
     var container = document.getElementById('keys-table-container');
     if (!_selectedIntegration) {
-      container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Select an integration to view keys.</p>';
+      container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">No integration selected.</p>';
       return;
     }
 
@@ -242,7 +322,7 @@
   function renderKeysTable(keys) {
     var container = document.getElementById('keys-table-container');
     if (!keys.length) {
-      container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">No API keys yet. Generate one above.</p>';
+      container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">No API keys yet. Generate one above or use Instant Connect.</p>';
       return;
     }
 
@@ -274,7 +354,7 @@
 
   window.generateKey = async function () {
     if (!_selectedIntegration) {
-      alert('Please select or create an integration first.');
+      alert('Please create an integration first using the "+ New" button.');
       return;
     }
 
@@ -400,6 +480,191 @@
     container.innerHTML = html;
   }
 
+  // ── Instant Connect ────────────────────────────────────────────────────────
+
+  window.instantConnect = async function () {
+    var panel = document.getElementById('ic-panel');
+    var btn = document.getElementById('btn-instant-connect');
+
+    // If we already have a key from auto-creation, use it
+    if (_instantKey) {
+      panel.classList.add('visible');
+      showSnippets(_instantKey);
+      runHealthCheck(_instantKey);
+      btn.textContent = 'Connected';
+      btn.disabled = true;
+      return;
+    }
+
+    // Otherwise create a new key
+    btn.textContent = 'Connecting...';
+    btn.disabled = true;
+
+    try {
+      // Ensure we have an integration
+      if (!_selectedIntegration && _integrations.length > 0) {
+        _selectedIntegration = _integrations[0].id;
+      }
+
+      if (!_selectedIntegration) {
+        // Create integration first
+        var ns = 'user-' + _user.id.slice(0, 8);
+        var intResp = await fetch('/v1/integrations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ name: 'My App', namespace: ns, owner_email: _user.email }),
+        });
+        if (intResp.ok) {
+          var intData = await intResp.json();
+          _instantKey = intData.api_key.key;
+          _selectedIntegration = intData.integration.id;
+          await loadIntegrations();
+        }
+      } else {
+        // Create a key on existing integration
+        var keyResp = await fetch('/v1/integrations/' + _selectedIntegration + '/keys', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ scopes: ['memories:read', 'memories:write'], label: 'Instant Connect' }),
+        });
+        if (keyResp.ok) {
+          var keyData = await keyResp.json();
+          _instantKey = keyData.key || (keyData.api_key && keyData.api_key.key);
+          await loadKeys();
+          await loadKeyHistory();
+        }
+      }
+
+      if (_instantKey) {
+        panel.classList.add('visible');
+        showSnippets(_instantKey);
+        runHealthCheck(_instantKey);
+        btn.textContent = 'Connected';
+      } else {
+        btn.textContent = 'Instant Connect';
+        btn.disabled = false;
+        alert('Failed to create API key. Please try again.');
+      }
+    } catch (e) {
+      btn.textContent = 'Instant Connect';
+      btn.disabled = false;
+      alert('Network error');
+    }
+  };
+
+  var _icCopyText = '';
+
+  window.icShowSetupCommand = function () {
+    if (!_instantKey) return;
+    var cmd = 'pip install clsplusplus && python -c "from clsplusplus import CLS; c=CLS(api_key=\'' + _instantKey + '\'); c.memories.encode(content=\'Hello from CLS++\'); print(\'Connected!\', c.memories.retrieve(query=\'hello\').items[0].text)"';
+    _icCopyText = cmd;
+    var result = document.getElementById('ic-result');
+    document.getElementById('ic-result-content').innerHTML = '<p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 6px;">Run this in your terminal:</p><pre>' + escapeHtml(cmd) + '</pre>';
+    result.classList.add('visible');
+  };
+
+  window.icDownloadEnv = function () {
+    if (!_instantKey) return;
+    var content = '# CLS++ Configuration\n# Generated ' + new Date().toISOString() + '\n\nCLS_API_KEY=' + _instantKey + '\nCLS_API_URL=' + API_URL + '\n';
+
+    var blob = new Blob([content], { type: 'text/plain' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = '.env';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    _icCopyText = content;
+    var result = document.getElementById('ic-result');
+    document.getElementById('ic-result-content').innerHTML = '<p style="font-size:0.8rem;color:var(--success);margin:0;">Downloaded .env file. Drop it in your project root.</p>';
+    result.classList.add('visible');
+  };
+
+  window.icLinkExtension = function () {
+    if (!_instantKey) return;
+    // Send key to extension via custom event
+    window.postMessage({ type: 'CLS_LINK_ACCOUNT', apiKey: _instantKey }, '*');
+    var result = document.getElementById('ic-result');
+    document.getElementById('ic-result-content').innerHTML = '<p style="font-size:0.8rem;color:var(--success);margin:0;">API key sent to CLS++ extension. Check the extension popup to confirm.</p>';
+    result.classList.add('visible');
+  };
+
+  window.icCopyResult = function () {
+    if (!_icCopyText) return;
+    navigator.clipboard.writeText(_icCopyText).then(function () {
+      var btn = document.getElementById('ic-copy-btn');
+      if (btn) { btn.textContent = 'Copied!'; setTimeout(function () { btn.textContent = 'Copy'; }, 1500); }
+    });
+  };
+
+  function showSnippets(key) {
+    var container = document.getElementById('ic-snippets');
+    container.style.display = 'block';
+    icShowSnippet('python');
+  }
+
+  var _snippets = {};
+  function _buildSnippets(key) {
+    _snippets.python = 'from clsplusplus import CLS\n\nclient = CLS(api_key="' + key + '")\n\n# Store a memory\nclient.memories.encode(content="User prefers dark mode")\n\n# Retrieve memories\nresults = client.memories.retrieve(query="user preferences")\nfor item in results.items:\n    print(item.text, item.confidence)';
+    _snippets.javascript = 'const res = await fetch("' + API_URL + '/v1/memories/encode", {\n  method: "POST",\n  headers: {\n    "Content-Type": "application/json",\n    "Authorization": "Bearer ' + key + '"\n  },\n  body: JSON.stringify({ text: "User prefers dark mode", namespace: "default" })\n});\n\nconst read = await fetch("' + API_URL + '/v1/memories/retrieve", {\n  method: "POST",\n  headers: {\n    "Content-Type": "application/json",\n    "Authorization": "Bearer ' + key + '"\n  },\n  body: JSON.stringify({ query: "user preferences", namespace: "default" })\n});';
+    _snippets.curl = '# Store a memory\ncurl -X POST ' + API_URL + '/v1/memories/encode \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ' + key + '" \\\n  -d \'{"text": "User prefers dark mode", "namespace": "default"}\'\n\n# Retrieve memories\ncurl -X POST ' + API_URL + '/v1/memories/retrieve \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ' + key + '" \\\n  -d \'{"query": "user preferences", "namespace": "default"}\'';
+  }
+
+  window.icShowSnippet = function (lang, tabEl) {
+    if (_instantKey && !_snippets.python) _buildSnippets(_instantKey);
+    var code = document.getElementById('ic-snippet-code');
+    if (code) code.textContent = _snippets[lang] || '';
+    _icCopyText = _snippets[lang] || '';
+    // Update active tab
+    document.querySelectorAll('.ic-tab').forEach(function (t) { t.classList.remove('active'); });
+    if (tabEl) tabEl.classList.add('active');
+    else {
+      document.querySelectorAll('.ic-tab').forEach(function (t) {
+        if (t.getAttribute('data-lang') === lang) t.classList.add('active');
+      });
+    }
+  };
+
+  async function runHealthCheck(key) {
+    var healthEl = document.getElementById('ic-health');
+    var iconEl = document.getElementById('ic-health-icon');
+    var textEl = document.getElementById('ic-health-text');
+
+    healthEl.className = 'ic-health-check visible';
+    iconEl.textContent = '\u23F3';
+    textEl.textContent = 'Testing connection...';
+
+    try {
+      var resp = await fetch('/v1/health', {
+        headers: { 'Authorization': 'Bearer ' + key },
+      });
+      if (resp.ok) {
+        healthEl.classList.add('success');
+        iconEl.textContent = '\u2705';
+        textEl.textContent = 'Connection verified. Your API key is working.';
+      } else {
+        healthEl.classList.add('fail');
+        iconEl.textContent = '\u274C';
+        textEl.textContent = 'Health check returned ' + resp.status + '. Key may need a moment to activate.';
+      }
+    } catch (e) {
+      healthEl.classList.add('fail');
+      iconEl.textContent = '\u274C';
+      textEl.textContent = 'Could not reach API. Check your connection.';
+    }
+  }
+
+  function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
   // ── Billing ────────────────────────────────────────────────────────────────
 
   var TIER_PRICES = { free: '$0', pro: '$9', business: '$29', enterprise: '$149' };
@@ -416,7 +681,6 @@
       }
     } catch (e) { /* ignore */ }
 
-    // Show manage subscription button for paid tiers
     if (_user.tier !== 'free') {
       var btn = document.getElementById('btn-manage-billing');
       if (btn) btn.style.display = 'inline-block';
@@ -454,10 +718,7 @@
       });
       if (resp.ok) {
         var data = await resp.json();
-        if (data.url) {
-          window.location.href = data.url;
-          return;
-        }
+        if (data.url) { window.location.href = data.url; return; }
       }
       var err = await resp.json().catch(function () { return {}; });
       alert(err.detail || 'Billing service unavailable. Please try again later.');
@@ -472,10 +733,7 @@
       var resp = await fetch('/v1/billing/portal', { credentials: 'same-origin' });
       if (resp.ok) {
         var data = await resp.json();
-        if (data.url) {
-          window.location.href = data.url;
-          return;
-        }
+        if (data.url) { window.location.href = data.url; return; }
       }
       alert('Could not open billing portal. Please try again.');
     } catch (e) {
