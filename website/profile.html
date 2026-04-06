@@ -110,49 +110,26 @@
       <div class="profile-section" id="keys">
         <h2>API Keys</h2>
 
-        <!-- Instant Connect — one button to rule them all -->
+        <!-- Instant Connect — one button, everything automatic -->
         <div style="margin-bottom:20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
           <button class="btn btn-primary" id="btn-instant-connect" onclick="instantConnect()">Instant Connect</button>
-          <span style="font-size:0.85rem;color:var(--text-muted);">One click. Get your API key, setup command, and code snippets.</span>
+          <span style="font-size:0.85rem;color:var(--text-muted);">One click does everything: creates key, downloads .env, verifies connection.</span>
         </div>
 
-        <!-- Instant Connect Panel (hidden until clicked) -->
+        <!-- Instant Connect Panel (auto-populates on click) -->
         <div class="instant-connect" id="ic-panel">
-          <h3>You're Connected</h3>
-          <p class="ic-sub">Your API key is ready. Choose how to use it:</p>
+          <!-- Live status feed — each step appears as it completes -->
+          <div id="ic-status"></div>
 
-          <div class="ic-options">
-            <div class="ic-option" onclick="icShowSetupCommand()">
-              <div class="ic-opt-icon">&#x1F4CB;</div>
-              <h4>Copy Setup Command</h4>
-              <p>One-liner for your terminal</p>
-            </div>
-            <div class="ic-option" onclick="icDownloadEnv()">
-              <div class="ic-opt-icon">&#x1F4E5;</div>
-              <h4>Download .env</h4>
-              <p>Drop into your project root</p>
-            </div>
-            <div class="ic-option" id="ic-ext-option" onclick="icLinkExtension()" style="display:none;">
-              <div class="ic-opt-icon">&#x1F9E9;</div>
-              <h4>Auto-Link Extension</h4>
-              <p>Zero copy-paste setup</p>
-            </div>
+          <!-- Done message -->
+          <div id="ic-done" style="display:none;margin-top:16px;padding:16px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:10px;">
+            <p style="margin:0;font-weight:600;color:var(--success);font-size:0.95rem;">All done. Your .env is in Downloads. API key is on your clipboard.</p>
+            <p style="margin:6px 0 0;font-size:0.8rem;color:var(--text-muted);">Drop the .env file into your project root and start coding.</p>
           </div>
 
-          <!-- Result area -->
-          <div class="ic-result" id="ic-result">
-            <div id="ic-result-content"></div>
-            <button class="ic-copy-btn" id="ic-copy-btn" onclick="icCopyResult()">Copy</button>
-          </div>
-
-          <!-- Health check -->
-          <div class="ic-health-check" id="ic-health">
-            <span id="ic-health-icon"></span>
-            <span id="ic-health-text"></span>
-          </div>
-
-          <!-- Code snippets -->
+          <!-- Code snippets (reference only — shown automatically) -->
           <div class="ic-snippets" id="ic-snippets" style="display:none;">
+            <p style="font-size:0.8rem;color:var(--text-muted);margin:16px 0 8px;">Ready-to-use code (your key is pre-filled):</p>
             <div class="ic-tab-bar">
               <button class="ic-tab active" data-lang="python" onclick="icShowSnippet('python', this)">Python</button>
               <button class="ic-tab" data-lang="javascript" onclick="icShowSnippet('javascript', this)">JavaScript</button>

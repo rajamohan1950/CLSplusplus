@@ -480,133 +480,136 @@
     container.innerHTML = html;
   }
 
-  // ── Instant Connect ────────────────────────────────────────────────────────
+  // ── Instant Connect — One button, everything automatic ──────────────────
 
   window.instantConnect = async function () {
     var panel = document.getElementById('ic-panel');
     var btn = document.getElementById('btn-instant-connect');
+    var statusEl = document.getElementById('ic-status');
 
-    // If we already have a key from auto-creation, use it
-    if (_instantKey) {
-      panel.classList.add('visible');
-      showSnippets(_instantKey);
-      runHealthCheck(_instantKey);
-      btn.textContent = 'Connected';
-      btn.disabled = true;
-      return;
-    }
-
-    // Otherwise create a new key
     btn.textContent = 'Connecting...';
     btn.disabled = true;
+    panel.classList.add('visible');
+    statusEl.innerHTML = '';
+
+    function addStatus(icon, text) {
+      statusEl.innerHTML += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.85rem;"><span>' + icon + '</span><span>' + text + '</span></div>';
+    }
 
     try {
-      // Ensure we have an integration
-      if (!_selectedIntegration && _integrations.length > 0) {
-        _selectedIntegration = _integrations[0].id;
+      // Step 1: Get or create API key
+      addStatus('\u23F3', 'Creating API key...');
+
+      if (!_instantKey) {
+        if (!_selectedIntegration && _integrations.length > 0) {
+          _selectedIntegration = _integrations[0].id;
+        }
+
+        if (!_selectedIntegration) {
+          var ns = 'user-' + _user.id.slice(0, 8);
+          var intResp = await fetch('/v1/integrations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ name: 'My App', namespace: ns, owner_email: _user.email }),
+          });
+          if (intResp.ok) {
+            var intData = await intResp.json();
+            _instantKey = intData.api_key.key;
+            _selectedIntegration = intData.integration.id;
+            await loadIntegrations();
+          }
+        } else {
+          var keyResp = await fetch('/v1/integrations/' + _selectedIntegration + '/keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ scopes: ['memories:read', 'memories:write'], label: 'Instant Connect' }),
+          });
+          if (keyResp.ok) {
+            var keyData = await keyResp.json();
+            _instantKey = keyData.key || (keyData.api_key && keyData.api_key.key);
+            await loadKeys();
+            await loadKeyHistory();
+          }
+        }
       }
 
-      if (!_selectedIntegration) {
-        // Create integration first
-        var ns = 'user-' + _user.id.slice(0, 8);
-        var intResp = await fetch('/v1/integrations', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({ name: 'My App', namespace: ns, owner_email: _user.email }),
-        });
-        if (intResp.ok) {
-          var intData = await intResp.json();
-          _instantKey = intData.api_key.key;
-          _selectedIntegration = intData.integration.id;
-          await loadIntegrations();
-        }
-      } else {
-        // Create a key on existing integration
-        var keyResp = await fetch('/v1/integrations/' + _selectedIntegration + '/keys', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({ scopes: ['memories:read', 'memories:write'], label: 'Instant Connect' }),
-        });
-        if (keyResp.ok) {
-          var keyData = await keyResp.json();
-          _instantKey = keyData.key || (keyData.api_key && keyData.api_key.key);
-          await loadKeys();
-          await loadKeyHistory();
-        }
-      }
-
-      if (_instantKey) {
-        panel.classList.add('visible');
-        showSnippets(_instantKey);
-        runHealthCheck(_instantKey);
-        btn.textContent = 'Connected';
-      } else {
+      if (!_instantKey) {
+        addStatus('\u274C', 'Failed to create API key.');
         btn.textContent = 'Instant Connect';
         btn.disabled = false;
-        alert('Failed to create API key. Please try again.');
+        return;
       }
+
+      addStatus('\u2705', 'API key created.');
+
+      // Step 2: Auto-copy key to clipboard
+      try {
+        await navigator.clipboard.writeText(_instantKey);
+        addStatus('\u2705', 'API key copied to clipboard.');
+      } catch (e) {
+        addStatus('\u26A0\uFE0F', 'Could not copy to clipboard (browser blocked it).');
+      }
+
+      // Step 3: Auto-download .env file
+      try {
+        var envContent = '# CLS++ Configuration\n# Generated ' + new Date().toISOString() + '\n\nCLS_API_KEY=' + _instantKey + '\nCLS_API_URL=' + API_URL + '\n';
+        var blob = new Blob([envContent], { type: 'text/plain' });
+        var dlUrl = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = dlUrl;
+        a.download = '.env';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(dlUrl);
+        addStatus('\u2705', '.env file downloaded to your Downloads folder.');
+      } catch (e) {
+        addStatus('\u26A0\uFE0F', 'Could not auto-download .env.');
+      }
+
+      // Step 4: Auto-link extension if detected
+      if (window.__CLS_EXTENSION_INSTALLED__ || document.querySelector('[data-cls-extension]')) {
+        window.postMessage({ type: 'CLS_LINK_ACCOUNT', apiKey: _instantKey }, '*');
+        addStatus('\u2705', 'Chrome extension auto-linked.');
+      }
+
+      // Step 5: Health check
+      addStatus('\u23F3', 'Verifying connection...');
+      try {
+        var healthResp = await fetch('/v1/health', {
+          headers: { 'Authorization': 'Bearer ' + _instantKey },
+        });
+        if (healthResp.ok) {
+          addStatus('\u2705', 'Connection verified. Everything is working.');
+        } else {
+          addStatus('\u26A0\uFE0F', 'Health check returned ' + healthResp.status + '. May need a moment.');
+        }
+      } catch (e) {
+        addStatus('\u26A0\uFE0F', 'Could not verify. Server may be waking up.');
+      }
+
+      // Step 6: Show code snippets (reference, no action needed)
+      _buildSnippets(_instantKey);
+      document.getElementById('ic-snippets').style.display = 'block';
+      _icShowTab('python');
+
+      // Done
+      btn.textContent = 'Connected';
+      document.getElementById('ic-done').style.display = 'block';
+
     } catch (e) {
+      addStatus('\u274C', 'Network error. Please try again.');
       btn.textContent = 'Instant Connect';
       btn.disabled = false;
-      alert('Network error');
+    }
+
+    // Always show done if we have a key, even if some steps had issues
+    if (_instantKey && btn.textContent === 'Connected') {
+      document.getElementById('ic-done').style.display = 'block';
     }
   };
-
-  var _icCopyText = '';
-
-  window.icShowSetupCommand = function () {
-    if (!_instantKey) return;
-    var cmd = 'pip install clsplusplus && python -c "from clsplusplus import CLS; c=CLS(api_key=\'' + _instantKey + '\'); c.memories.encode(content=\'Hello from CLS++\'); print(\'Connected!\', c.memories.retrieve(query=\'hello\').items[0].text)"';
-    _icCopyText = cmd;
-    var result = document.getElementById('ic-result');
-    document.getElementById('ic-result-content').innerHTML = '<p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 6px;">Run this in your terminal:</p><pre>' + escapeHtml(cmd) + '</pre>';
-    result.classList.add('visible');
-  };
-
-  window.icDownloadEnv = function () {
-    if (!_instantKey) return;
-    var content = '# CLS++ Configuration\n# Generated ' + new Date().toISOString() + '\n\nCLS_API_KEY=' + _instantKey + '\nCLS_API_URL=' + API_URL + '\n';
-
-    var blob = new Blob([content], { type: 'text/plain' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = '.env';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    _icCopyText = content;
-    var result = document.getElementById('ic-result');
-    document.getElementById('ic-result-content').innerHTML = '<p style="font-size:0.8rem;color:var(--success);margin:0;">Downloaded .env file. Drop it in your project root.</p>';
-    result.classList.add('visible');
-  };
-
-  window.icLinkExtension = function () {
-    if (!_instantKey) return;
-    // Send key to extension via custom event
-    window.postMessage({ type: 'CLS_LINK_ACCOUNT', apiKey: _instantKey }, '*');
-    var result = document.getElementById('ic-result');
-    document.getElementById('ic-result-content').innerHTML = '<p style="font-size:0.8rem;color:var(--success);margin:0;">API key sent to CLS++ extension. Check the extension popup to confirm.</p>';
-    result.classList.add('visible');
-  };
-
-  window.icCopyResult = function () {
-    if (!_icCopyText) return;
-    navigator.clipboard.writeText(_icCopyText).then(function () {
-      var btn = document.getElementById('ic-copy-btn');
-      if (btn) { btn.textContent = 'Copied!'; setTimeout(function () { btn.textContent = 'Copy'; }, 1500); }
-    });
-  };
-
-  function showSnippets(key) {
-    var container = document.getElementById('ic-snippets');
-    container.style.display = 'block';
-    icShowSnippet('python');
-  }
 
   var _snippets = {};
   function _buildSnippets(key) {
@@ -615,49 +618,18 @@
     _snippets.curl = '# Store a memory\ncurl -X POST ' + API_URL + '/v1/memories/encode \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ' + key + '" \\\n  -d \'{"text": "User prefers dark mode", "namespace": "default"}\'\n\n# Retrieve memories\ncurl -X POST ' + API_URL + '/v1/memories/retrieve \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ' + key + '" \\\n  -d \'{"query": "user preferences", "namespace": "default"}\'';
   }
 
-  window.icShowSnippet = function (lang, tabEl) {
-    if (_instantKey && !_snippets.python) _buildSnippets(_instantKey);
+  function _icShowTab(lang) {
     var code = document.getElementById('ic-snippet-code');
     if (code) code.textContent = _snippets[lang] || '';
-    _icCopyText = _snippets[lang] || '';
-    // Update active tab
-    document.querySelectorAll('.ic-tab').forEach(function (t) { t.classList.remove('active'); });
-    if (tabEl) tabEl.classList.add('active');
-    else {
-      document.querySelectorAll('.ic-tab').forEach(function (t) {
-        if (t.getAttribute('data-lang') === lang) t.classList.add('active');
-      });
-    }
-  };
-
-  async function runHealthCheck(key) {
-    var healthEl = document.getElementById('ic-health');
-    var iconEl = document.getElementById('ic-health-icon');
-    var textEl = document.getElementById('ic-health-text');
-
-    healthEl.className = 'ic-health-check visible';
-    iconEl.textContent = '\u23F3';
-    textEl.textContent = 'Testing connection...';
-
-    try {
-      var resp = await fetch('/v1/health', {
-        headers: { 'Authorization': 'Bearer ' + key },
-      });
-      if (resp.ok) {
-        healthEl.classList.add('success');
-        iconEl.textContent = '\u2705';
-        textEl.textContent = 'Connection verified. Your API key is working.';
-      } else {
-        healthEl.classList.add('fail');
-        iconEl.textContent = '\u274C';
-        textEl.textContent = 'Health check returned ' + resp.status + '. Key may need a moment to activate.';
-      }
-    } catch (e) {
-      healthEl.classList.add('fail');
-      iconEl.textContent = '\u274C';
-      textEl.textContent = 'Could not reach API. Check your connection.';
-    }
+    document.querySelectorAll('.ic-tab').forEach(function (t) {
+      t.classList.toggle('active', t.getAttribute('data-lang') === lang);
+    });
   }
+
+  window.icShowSnippet = function (lang, tabEl) {
+    if (_instantKey && !_snippets.python) _buildSnippets(_instantKey);
+    _icShowTab(lang);
+  };
 
   function escapeHtml(text) {
     var div = document.createElement('div');
