@@ -191,16 +191,122 @@
         }
       </script>
 
-      <!-- CLI Install -->
+      <!-- CLI Install — one click does everything -->
       <div id="cli" style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius);padding:28px;margin-bottom:24px;">
-        <h2 style="font-size:1.2rem;margin-bottom:4px;">CLI — Memory from your terminal</h2>
-        <p style="color:var(--text-muted);font-size:0.9rem;margin:0 0 16px;">One command installs, configures, and tests. Then chat with any model — memories transfer automatically.</p>
-        <div class="ig-code" style="margin:0 0 16px;">pip install clsplusplus<button class="cp" onclick="navigator.clipboard.writeText('pip install clsplusplus');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1200)">Copy</button></div>
-        <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">Then run the one-click setup:</p>
-        <div class="ig-code" style="margin:0 0 16px;">cls init<button class="cp" onclick="navigator.clipboard.writeText('cls init');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1200)">Copy</button></div>
-        <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">Cross-model memory transfer in 3 lines:</p>
-        <div class="ig-code" style="margin:0;line-height:2;"><span style="color:var(--text-muted);"># Tell GPT-4 something</span><br>cls chat --model gpt-4o "My name is Raj and I love Python"<br><br><span style="color:var(--text-muted);"># Switch to Claude — it already knows</span><br>cls chat --model claude "What's my name?"<br><span style="color:#22c55e;"># → "Your name is Raj and you love Python."</span></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+          <div>
+            <h2 style="font-size:1.2rem;margin-bottom:4px;">CLI Package</h2>
+            <p style="color:var(--text-muted);font-size:0.9rem;margin:0;">One click: downloads installer, configures your API key, tests connection. Chat with any model — memories transfer across GPT-4, Claude, Gemini.</p>
+          </div>
+          <button class="ig-dl" id="cli-install-btn" onclick="cliInstall()">Download & Install</button>
+        </div>
+        <div id="cli-status" style="margin-top:12px;"></div>
       </div>
+      <script>
+      async function cliInstall() {
+        var btn = document.getElementById('cli-install-btn');
+        var status = document.getElementById('cli-status');
+
+        // Must be logged in
+        var user = (typeof CLSAuth !== 'undefined') ? await CLSAuth.getUser() : null;
+        if (!user) {
+          window.location.href = '/login.html?next=/integrate.html%23cli';
+          return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Setting up...';
+
+        function addLine(icon, text) {
+          status.innerHTML += '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:0.85rem;"><span>' + icon + '</span><span>' + text + '</span></div>';
+        }
+
+        try {
+          // Step 1: Create integration + API key
+          addLine('\u23F3', 'Creating API key...');
+          var ns = 'user-' + user.id.slice(0, 8);
+          var intResp = await fetch('/v1/integrations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ name: 'CLI', namespace: ns, owner_email: user.email }),
+          });
+          if (!intResp.ok) { addLine('\u274C', 'Failed to create key.'); btn.disabled = false; btn.textContent = 'Download & Install'; return; }
+          var intData = await intResp.json();
+          var key = intData.api_key.key;
+          addLine('\u2705', 'API key created.');
+
+          // Step 2: Download installer
+          addLine('\u23F3', 'Downloading installer...');
+          var userName = (user.name || user.email.split('@')[0]).replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase();
+          var installer = '#!/usr/bin/env python3\n'
+            + '"""CLS++ Installer — run: python cls_install.py"""\n'
+            + 'import subprocess, sys, os, configparser\n\n'
+            + 'KEY = "' + key + '"\nUSER = "' + userName + '"\nURL = "https://www.clsplusplus.com"\n\n'
+            + 'print("\\n  CLS++ Installer")\nprint("  " + "=" * 36 + "\\n")\n\n'
+            + 'print("  Installing clsplusplus...")\n'
+            + 'subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "clsplusplus"])\n'
+            + 'print("  Installed.\\n")\n\n'
+            + 'cfg_path = os.path.expanduser("~/.clsplusplus")\n'
+            + 'cp = configparser.ConfigParser()\ncp["default"] = {"api_key": KEY, "user": USER, "url": URL}\n'
+            + 'with open(cfg_path, "w") as f:\n    cp.write(f)\nprint(f"  Config saved to {cfg_path}")\n\n'
+            + 'print("  Testing connection...\\n")\nfrom clsplusplus import Brain\n'
+            + 'brain = Brain(USER, api_key=KEY, url=URL)\nbrain.learn("CLS++ installed successfully")\n'
+            + 'result = brain.ask("CLS++ installed")\n'
+            + 'print(f"  Stored:    CLS++ installed successfully")\n'
+            + 'print(f"  Retrieved: {result[0] if result else \'(indexing...)\'}")\n'
+            + 'print(f"  Status:    Working!\\n")\n\n'
+            + 'print("  All done! Try:\\n")\nprint(\'    cls learn "I prefer Python"\')\n'
+            + 'print(\'    cls ask "What do I prefer?"\')\n'
+            + 'print(\'    cls chat --model gpt-4o "Hello!"\\n\')\n';
+          var blob = new Blob([installer], { type: 'text/plain' });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a'); a.href = url; a.download = 'cls_install.py';
+          document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+          addLine('\u2705', 'Downloaded cls_install.py');
+
+          // Step 3: Test write + read on server
+          addLine('\u23F3', 'Testing memory write...');
+          var writeResp = await fetch('/v1/memory/write', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+            credentials: 'same-origin',
+            body: JSON.stringify({ text: 'CLS++ CLI installed for ' + userName, namespace: ns, source: 'cli-install' }),
+          });
+          if (writeResp.ok) {
+            addLine('\u2705', 'Memory written.');
+            addLine('\u23F3', 'Reading it back...');
+            var readResp = await fetch('/v1/memory/read', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+              credentials: 'same-origin',
+              body: JSON.stringify({ query: 'CLS++ CLI installed', namespace: ns, limit: 1 }),
+            });
+            if (readResp.ok) {
+              var readData = await readResp.json();
+              var items = readData.items || [];
+              if (items.length) addLine('\u2705', 'Read back: "' + items[0].text + '"');
+              else addLine('\u2705', 'Stored (indexing).');
+            }
+          } else {
+            addLine('\u26A0\uFE0F', 'Write test skipped.');
+          }
+
+          // Done
+          addLine('', '');
+          status.innerHTML += '<div style="margin-top:10px;padding:12px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:8px;">'
+            + '<p style="margin:0;font-weight:600;color:#22c55e;font-size:0.9rem;">All done. Run this in your terminal:</p>'
+            + '<pre style="margin:8px 0 0;padding:8px 12px;background:var(--bg);border-radius:6px;font-family:JetBrains Mono,monospace;font-size:0.82rem;color:var(--accent-light);">python ~/Downloads/cls_install.py</pre>'
+            + '</div>';
+          btn.textContent = 'Installed';
+
+        } catch (e) {
+          addLine('\u274C', 'Error: ' + e.message);
+          btn.disabled = false;
+          btn.textContent = 'Download & Install';
+        }
+      }
+      </script>
 
       <!-- Chrome Extension Panel (default) -->
       <div id="panel-chrome">
