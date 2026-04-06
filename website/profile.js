@@ -558,53 +558,7 @@
         addStatus('\u2705', 'Chrome extension auto-linked.');
       }
 
-      // Step 4: Live integration test — write a memory, read it back
-      addStatus('\u23F3', 'Running live test: writing a memory...');
-      var testNs = 'user-' + _user.id.slice(0, 8);
-      var writeOk = false;
-      var readResult = null;
-      try {
-        var writeResp = await fetch(API_URL + '/v1/memory/write', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _instantKey },
-          body: JSON.stringify({ text: 'CLS++ integration test: Hello from ' + _user.name, namespace: testNs, source: 'instant-connect' }),
-        });
-        if (writeResp.ok) {
-          writeOk = true;
-          addStatus('\u2705', 'Memory written successfully.');
-        } else {
-          addStatus('\u26A0\uFE0F', 'Write returned ' + writeResp.status + '.');
-        }
-      } catch (e) {
-        addStatus('\u26A0\uFE0F', 'Write test failed (server may be waking up).');
-      }
-
-      if (writeOk) {
-        addStatus('\u23F3', 'Reading it back...');
-        try {
-          var readResp = await fetch(API_URL + '/v1/memory/read', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _instantKey },
-            body: JSON.stringify({ query: 'integration test hello', namespace: testNs, limit: 1 }),
-          });
-          if (readResp.ok) {
-            var readData = await readResp.json();
-            var items = readData.items || [];
-            if (items.length > 0) {
-              readResult = items[0].text;
-              addStatus('\u2705', 'Read back: "' + readResult.slice(0, 60) + '"');
-            } else {
-              addStatus('\u2705', 'Read succeeded (memory is being indexed).');
-            }
-          } else {
-            addStatus('\u26A0\uFE0F', 'Read returned ' + readResp.status + '.');
-          }
-        } catch (e) {
-          addStatus('\u26A0\uFE0F', 'Read test failed.');
-        }
-      }
-
-      // Step 5: Auto-download .env AND quickstart.py
+      // Step 4: Auto-download .env AND quickstart.py
       addStatus('\u23F3', 'Downloading project files...');
       try {
         // Download .env
@@ -635,6 +589,19 @@
       _buildSnippets(_instantKey);
       document.getElementById('ic-snippets').style.display = 'block';
       _icShowTab('python');
+
+      // Step 7: Inline prompt — try storing a memory, right in the flow
+      statusEl.innerHTML += '<div style="margin-top:12px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">'
+        + '<div style="font-size:0.85rem;margin-bottom:8px;">Now try it \u2014 type anything to remember:</div>'
+        + '<div style="display:flex;gap:8px;">'
+        + '  <input type="text" id="ic-prompt" placeholder="e.g. I prefer Python and dark mode" maxlength="500" style="flex:1;padding:8px 12px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.85rem;font-family:inherit;outline:none;">'
+        + '  <button class="btn btn-primary btn-sm" id="ic-try-btn" onclick="icTryMemory()">Remember</button>'
+        + '</div>'
+        + '<div id="ic-try-result"></div>'
+        + '</div>';
+      var promptEl = document.getElementById('ic-prompt');
+      promptEl.focus();
+      promptEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') icTryMemory(); });
 
       // Done
       btn.textContent = 'Connected';
@@ -670,6 +637,73 @@
   window.icShowSnippet = function (lang, tabEl) {
     if (_instantKey && !_snippets.python) _buildSnippets(_instantKey);
     _icShowTab(lang);
+  };
+
+  window.icTryMemory = async function () {
+    var input = document.getElementById('ic-prompt');
+    var text = input.value.trim();
+    if (!text) { input.focus(); return; }
+
+    var btn = document.getElementById('ic-try-btn');
+    var resultEl = document.getElementById('ic-try-result');
+    btn.disabled = true;
+    btn.textContent = 'Storing...';
+    resultEl.innerHTML = '<p style="font-size:0.85rem;color:var(--text-muted);">\u23F3 Writing memory...</p>';
+
+    var testNs = 'user-' + _user.id.slice(0, 8);
+
+    try {
+      // Write
+      var writeResp = await fetch(API_URL + '/v1/memory/write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _instantKey },
+        body: JSON.stringify({ text: text, namespace: testNs, source: 'instant-connect' }),
+      });
+
+      if (!writeResp.ok) {
+        resultEl.innerHTML = '<p style="font-size:0.85rem;color:#ef4444;">\u274C Write failed (' + writeResp.status + ')</p>';
+        btn.disabled = false;
+        btn.textContent = 'Remember';
+        return;
+      }
+
+      resultEl.innerHTML = '<p style="font-size:0.85rem;color:var(--text-muted);">\u2705 Stored. \u23F3 Reading it back...</p>';
+
+      // Read back
+      var readResp = await fetch(API_URL + '/v1/memory/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _instantKey },
+        body: JSON.stringify({ query: text, namespace: testNs, limit: 1 }),
+      });
+
+      if (readResp.ok) {
+        var readData = await readResp.json();
+        var items = readData.items || [];
+        if (items.length > 0) {
+          var mem = items[0];
+          resultEl.innerHTML = '<div style="padding:12px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:8px;margin-top:8px;">'
+            + '<p style="margin:0 0 6px;font-weight:600;color:var(--success);font-size:0.9rem;">\u2705 Memory stored and retrieved!</p>'
+            + '<p style="margin:0;font-size:0.85rem;"><strong>Text:</strong> ' + escapeHtml(mem.text) + '</p>'
+            + '<p style="margin:4px 0 0;font-size:0.8rem;color:var(--text-muted);">Confidence: ' + (mem.confidence || 0).toFixed(2) + ' &bull; Store: ' + (mem.store_level || 'L1') + '</p>'
+            + '<a href="/memory.html" style="display:inline-block;margin-top:10px;color:var(--accent-light);text-decoration:none;font-size:0.85rem;font-weight:600;">See all your memories in Memory Viewer \u2192</a>'
+            + '</div>';
+        } else {
+          resultEl.innerHTML = '<p style="font-size:0.85rem;color:var(--success);">\u2705 Stored! Memory is being indexed. <a href="/memory.html" style="color:var(--accent-light);">Check Memory Viewer \u2192</a></p>';
+        }
+      } else {
+        resultEl.innerHTML = '<p style="font-size:0.85rem;color:var(--success);">\u2705 Stored! <a href="/memory.html" style="color:var(--accent-light);">Check Memory Viewer \u2192</a></p>';
+      }
+
+      // Reset for another try
+      input.value = '';
+      btn.disabled = false;
+      btn.textContent = 'Remember';
+
+    } catch (e) {
+      resultEl.innerHTML = '<p style="font-size:0.85rem;color:#ef4444;">\u274C Network error. Try again.</p>';
+      btn.disabled = false;
+      btn.textContent = 'Remember';
+    }
   };
 
   function _downloadFile(filename, content) {
