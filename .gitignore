@@ -47,6 +47,10 @@ extension/node_modules/
 extension/test-results/
 extension/playwright-report/
 
+# JavaScript SDK
+sdk-js/node_modules/
+sdk-js/dist/
+
 # Built installer artifacts
 prototype/downloads/
 

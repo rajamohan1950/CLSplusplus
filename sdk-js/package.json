@@ -1,0 +1,62 @@
+{
+  "name": "clsplusplus",
+  "version": "1.0.0",
+  "description": "Brain-inspired, model-agnostic persistent memory for LLMs",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "llm",
+    "memory",
+    "ai",
+    "cls",
+    "persistent-memory",
+    "model-agnostic",
+    "brain",
+    "langchain",
+    "openai",
+    "anthropic"
+  ],
+  "author": "AlphaForge AI Labs <contact@alphaforge.ai>",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rajamohan1950/CLSplusplus"
+  },
+  "homepage": "https://github.com/rajamohan1950/CLSplusplus",
+  "bugs": {
+    "url": "https://github.com/rajamohan1950/CLSplusplus/issues"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0"
+  }
+}
