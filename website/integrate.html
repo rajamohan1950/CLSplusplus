@@ -130,13 +130,13 @@
       </div>
 
       <div class="ig-cat">Packages</div>
-      <div class="ig-item disabled">
+      <div class="ig-item" onclick="showPanel('pypi')">
         <span class="ig-icon">🐍</span> PyPI (pip install)
-        <span class="ig-badge ig-badge-soon">Soon</span>
+        <span class="ig-badge ig-badge-live">Live</span>
       </div>
-      <div class="ig-item disabled">
+      <div class="ig-item" onclick="showPanel('npm')">
         <span class="ig-icon">📦</span> npm (npm install)
-        <span class="ig-badge ig-badge-soon">Soon</span>
+        <span class="ig-badge ig-badge-live">Live</span>
       </div>
       <div class="ig-item disabled">
         <span class="ig-icon">🐳</span> Docker Hub
@@ -402,6 +402,94 @@
         </div>
       </div>
 
+      <!-- PyPI Panel -->
+      <div id="panel-pypi" style="display:none;">
+        <h1>Python SDK</h1>
+        <p class="ig-sub">Brain-inspired persistent memory for any Python app. Zero config, two dependencies, works with OpenAI, Claude, Gemini, Llama.</p>
+
+        <div class="ig-card">
+          <h3>Install</h3>
+          <div class="ig-code">pip install clsplusplus<button class="cp" onclick="navigator.clipboard.writeText('pip install clsplusplus');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)">Copy</button></div>
+          <a href="https://pypi.org/project/clsplusplus/" target="_blank" class="ig-dl">View on PyPI</a>
+          <a href="https://github.com/rajamohan1950/CLSplusplus" target="_blank" class="ig-dl ig-dl-outline">GitHub</a>
+        </div>
+
+        <div class="ig-card">
+          <h3>Quick Start (3 lines)</h3>
+          <div class="ig-code"><span style="color:#8b8b9a;">from</span> clsplusplus <span style="color:#8b8b9a;">import</span> Brain<br><br>brain = Brain(<span style="color:#22c55e;">"alice"</span>)<br><br><span style="color:#8b8b9a;"># Teach it anything</span><br>brain.learn(<span style="color:#22c55e;">"I work at Google as a senior engineer"</span>)<br>brain.learn(<span style="color:#22c55e;">"I prefer Python over JavaScript"</span>)<br><br><span style="color:#8b8b9a;"># Ask it anything</span><br>brain.ask(<span style="color:#22c55e;">"What's my job?"</span>)<br><span style="color:#8b8b9a;"># ["I work at Google as a senior engineer"]</span><br><br><span style="color:#8b8b9a;"># Get context for any LLM prompt</span><br>brain.context(<span style="color:#22c55e;">"coding help"</span>)<br><br><span style="color:#8b8b9a;"># Forget (GDPR)</span><br>brain.forget(<span style="color:#22c55e;">"I work at Google as a senior engineer"</span>)</div>
+        </div>
+
+        <div class="ig-card">
+          <h3>Use with OpenAI</h3>
+          <div class="ig-code"><span style="color:#8b8b9a;">from</span> clsplusplus <span style="color:#8b8b9a;">import</span> Brain<br><br>brain = Brain(<span style="color:#22c55e;">"alice"</span>)<br><br><span style="color:#8b8b9a;"># Wrap any LLM function with auto-memory</span><br><span style="color:#c084fc;">@brain.wrap</span><br><span style="color:#8b8b9a;">def</span> <span style="color:#60a5fa;">chat</span>(system_prompt, user_message):<br>    <span style="color:#8b8b9a;">return</span> openai.chat(system=system_prompt, user=user_message)<br><br><span style="color:#8b8b9a;"># Brain auto-recalls memory, injects context, learns from reply</span><br>response = chat(<span style="color:#22c55e;">"You are a helper"</span>, <span style="color:#22c55e;">"Help me with Python"</span>)</div>
+        </div>
+
+        <div class="ig-card">
+          <h3>Full API</h3>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:0.85rem;">
+            <div class="ig-benefit"><span>✓</span> <code>brain.learn(fact)</code> — Teach a fact</div>
+            <div class="ig-benefit"><span>✓</span> <code>brain.ask(question)</code> — Recall facts</div>
+            <div class="ig-benefit"><span>✓</span> <code>brain.context(topic)</code> — LLM-ready context</div>
+            <div class="ig-benefit"><span>✓</span> <code>brain.forget(fact)</code> — GDPR forget</div>
+            <div class="ig-benefit"><span>✓</span> <code>brain.absorb(text)</code> — Bulk learn</div>
+            <div class="ig-benefit"><span>✓</span> <code>brain.who()</code> — User profile</div>
+            <div class="ig-benefit"><span>✓</span> <code>brain.correct(old, new)</code> — Update belief</div>
+            <div class="ig-benefit"><span>✓</span> <code>brain.chat(msg, llm)</code> — Full handler</div>
+            <div class="ig-benefit"><span>✓</span> <code>brain.teach(dict)</code> — Structured data</div>
+            <div class="ig-benefit"><span>✓</span> <code>brain.watch(messages)</code> — Learn from chat</div>
+            <div class="ig-benefit"><span>✓</span> <code>brain.wrap(fn)</code> — Auto-memory wrapper</div>
+            <div class="ig-benefit"><span>✓</span> <code>brain.all()</code> — Get all memories</div>
+          </div>
+        </div>
+
+        <div class="ig-stats">
+          <div class="ig-stat"><div class="ig-stat-val">Python 3.9+</div><div class="ig-stat-label">Supported</div></div>
+          <div class="ig-stat"><div class="ig-stat-val">2</div><div class="ig-stat-label">Dependencies</div></div>
+          <div class="ig-stat"><div class="ig-stat-val">Apache 2.0</div><div class="ig-stat-label">License</div></div>
+          <div class="ig-stat"><div class="ig-stat-val">v4.0.2</div><div class="ig-stat-label">Latest</div></div>
+        </div>
+      </div>
+
+      <!-- npm Panel -->
+      <div id="panel-npm" style="display:none;">
+        <h1>JavaScript / TypeScript SDK</h1>
+        <p class="ig-sub">Brain-inspired persistent memory for Node.js and browsers. Zero runtime dependencies, native fetch, full TypeScript types.</p>
+
+        <div class="ig-card">
+          <h3>Install</h3>
+          <div class="ig-code">npm install clsplusplus<button class="cp" onclick="navigator.clipboard.writeText('npm install clsplusplus');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)">Copy</button></div>
+          <a href="https://www.npmjs.com/package/clsplusplus" target="_blank" class="ig-dl">View on npm</a>
+          <a href="https://github.com/rajamohan1950/CLSplusplus" target="_blank" class="ig-dl ig-dl-outline">GitHub</a>
+        </div>
+
+        <div class="ig-card">
+          <h3>Quick Start</h3>
+          <div class="ig-code"><span style="color:#8b8b9a;">import</span> { Brain } <span style="color:#8b8b9a;">from</span> <span style="color:#22c55e;">"clsplusplus"</span>;<br><br><span style="color:#8b8b9a;">const</span> brain = <span style="color:#8b8b9a;">new</span> <span style="color:#60a5fa;">Brain</span>(<span style="color:#22c55e;">"alice"</span>);<br><br><span style="color:#8b8b9a;">// Teach it anything</span><br><span style="color:#8b8b9a;">await</span> brain.learn(<span style="color:#22c55e;">"I work at Google as a senior engineer"</span>);<br><span style="color:#8b8b9a;">await</span> brain.learn(<span style="color:#22c55e;">"I prefer TypeScript over JavaScript"</span>);<br><br><span style="color:#8b8b9a;">// Ask it anything</span><br><span style="color:#8b8b9a;">const</span> facts = <span style="color:#8b8b9a;">await</span> brain.ask(<span style="color:#22c55e;">"What's my job?"</span>);<br><span style="color:#8b8b9a;">// ["I work at Google as a senior engineer"]</span><br><br><span style="color:#8b8b9a;">// Get LLM-ready context</span><br><span style="color:#8b8b9a;">const</span> ctx = <span style="color:#8b8b9a;">await</span> brain.context(<span style="color:#22c55e;">"coding help"</span>);<br><br><span style="color:#8b8b9a;">// Forget</span><br><span style="color:#8b8b9a;">await</span> brain.forget(<span style="color:#22c55e;">"I work at Google as a senior engineer"</span>);</div>
+        </div>
+
+        <div class="ig-card">
+          <h3>Use with OpenAI</h3>
+          <div class="ig-code"><span style="color:#8b8b9a;">import</span> OpenAI <span style="color:#8b8b9a;">from</span> <span style="color:#22c55e;">"openai"</span>;<br><span style="color:#8b8b9a;">import</span> { Brain } <span style="color:#8b8b9a;">from</span> <span style="color:#22c55e;">"clsplusplus"</span>;<br><br><span style="color:#8b8b9a;">const</span> openai = <span style="color:#8b8b9a;">new</span> <span style="color:#60a5fa;">OpenAI</span>();<br><span style="color:#8b8b9a;">const</span> brain = <span style="color:#8b8b9a;">new</span> <span style="color:#60a5fa;">Brain</span>(<span style="color:#22c55e;">"alice"</span>);<br><br><span style="color:#8b8b9a;">const</span> response = <span style="color:#8b8b9a;">await</span> brain.chat(<br>  <span style="color:#22c55e;">"Help me pick a framework"</span>,<br>  <span style="color:#8b8b9a;">async</span> (system, message) => {<br>    <span style="color:#8b8b9a;">const</span> res = <span style="color:#8b8b9a;">await</span> openai.chat.completions.create({<br>      model: <span style="color:#22c55e;">"gpt-4"</span>,<br>      messages: [<br>        { role: <span style="color:#22c55e;">"system"</span>, content: system },<br>        { role: <span style="color:#22c55e;">"user"</span>, content: message },<br>      ],<br>    });<br>    <span style="color:#8b8b9a;">return</span> res.choices[0].message.content;<br>  },<br>);</div>
+        </div>
+
+        <div class="ig-card">
+          <h3>Also Works In</h3>
+          <div class="ig-benefits">
+            <div class="ig-benefit"><span>✓</span> <div><strong>Node.js 18+</strong><br>Native fetch, zero dependencies</div></div>
+            <div class="ig-benefit"><span>✓</span> <div><strong>Browsers</strong><br>ESM import, works everywhere</div></div>
+            <div class="ig-benefit"><span>✓</span> <div><strong>Deno & Bun</strong><br>Standard fetch API compatible</div></div>
+            <div class="ig-benefit"><span>✓</span> <div><strong>TypeScript</strong><br>Full type declarations included</div></div>
+          </div>
+        </div>
+
+        <div class="ig-stats">
+          <div class="ig-stat"><div class="ig-stat-val">Node 18+</div><div class="ig-stat-label">Supported</div></div>
+          <div class="ig-stat"><div class="ig-stat-val">0</div><div class="ig-stat-label">Dependencies</div></div>
+          <div class="ig-stat"><div class="ig-stat-val">ESM + CJS</div><div class="ig-stat-label">Dual Output</div></div>
+          <div class="ig-stat"><div class="ig-stat-val">v4.0.2</div><div class="ig-stat-label">Latest</div></div>
+        </div>
+      </div>
+
       <!-- Coming Soon Panel (shown for greyed-out items) -->
       <div id="panel-soon" style="display:none;">
         <div class="ig-empty">
@@ -418,12 +506,18 @@
   // Show panel for selected integration
   function showPanel(id) {
     document.querySelectorAll('.ig-item').forEach(function(el) { el.classList.remove('active'); });
-    if (id === 'chrome') {
-      document.getElementById('panel-chrome').style.display = 'block';
-      document.getElementById('panel-soon').style.display = 'none';
-      document.querySelectorAll('.ig-item')[0].classList.add('active');
+    // Hide all panels
+    ['panel-chrome', 'panel-pypi', 'panel-npm', 'panel-soon'].forEach(function(p) {
+      var el = document.getElementById(p);
+      if (el) el.style.display = 'none';
+    });
+
+    var livePanel = document.getElementById('panel-' + id);
+    if (livePanel) {
+      livePanel.style.display = 'block';
+      // Highlight the clicked sidebar item
+      event && event.target && event.target.closest('.ig-item') && event.target.closest('.ig-item').classList.add('active');
     } else {
-      document.getElementById('panel-chrome').style.display = 'none';
       document.getElementById('panel-soon').style.display = 'block';
       var names = {
         langchain: ['LangChain / LangGraph', '24.8K GitHub stars, 34.5M monthly downloads. Memory provider integration for every agent developer evaluating solutions.'],
