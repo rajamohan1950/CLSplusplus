@@ -590,18 +590,8 @@
       document.getElementById('ic-snippets').style.display = 'block';
       _icShowTab('python');
 
-      // Step 7: Inline prompt — try storing a memory, right in the flow
-      statusEl.innerHTML += '<div style="margin-top:12px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">'
-        + '<div style="font-size:0.85rem;margin-bottom:8px;">Now try it \u2014 type anything to remember:</div>'
-        + '<div style="display:flex;gap:8px;">'
-        + '  <input type="text" id="ic-prompt" placeholder="e.g. I prefer Python and dark mode" maxlength="500" style="flex:1;padding:8px 12px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.85rem;font-family:inherit;outline:none;">'
-        + '  <button class="btn btn-primary btn-sm" id="ic-try-btn" onclick="icTryMemory()">Remember</button>'
-        + '</div>'
-        + '<div id="ic-try-result"></div>'
-        + '</div>';
-      var promptEl = document.getElementById('ic-prompt');
-      promptEl.focus();
-      promptEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') icTryMemory(); });
+      // Step 7: Show popup — ask user to type a memory
+      _showMemoryPopup();
 
       // Done
       btn.textContent = 'Connected';
@@ -639,16 +629,45 @@
     _icShowTab(lang);
   };
 
-  window.icTryMemory = async function () {
-    var input = document.getElementById('ic-prompt');
+  function _showMemoryPopup() {
+    // Create overlay popup
+    var overlay = document.createElement('div');
+    overlay.id = 'ic-popup-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);';
+
+    var box = document.createElement('div');
+    box.style.cssText = 'background:var(--bg-elevated);border:1px solid var(--border);border-radius:16px;padding:32px;width:90%;max-width:480px;text-align:center;';
+
+    box.innerHTML = '<h3 style="font-size:1.1rem;margin-bottom:6px;">What should CLS++ remember?</h3>'
+      + '<p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:16px;">Type anything. Hit Enter.</p>'
+      + '<input type="text" id="ic-popup-input" placeholder="e.g. I prefer Python and dark mode" maxlength="500" style="width:100%;padding:12px 16px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:1rem;font-family:inherit;outline:none;text-align:center;">'
+      + '<div id="ic-popup-status" style="margin-top:12px;font-size:0.85rem;min-height:20px;"></div>';
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    var input = document.getElementById('ic-popup-input');
+    input.focus();
+
+    // Close on overlay click (not box)
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) overlay.remove();
+    });
+
+    // Submit on Enter
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') _submitPopupMemory();
+    });
+  }
+
+  async function _submitPopupMemory() {
+    var input = document.getElementById('ic-popup-input');
+    var statusEl = document.getElementById('ic-popup-status');
     var text = input.value.trim();
     if (!text) { input.focus(); return; }
 
-    var btn = document.getElementById('ic-try-btn');
-    var resultEl = document.getElementById('ic-try-result');
-    btn.disabled = true;
-    btn.textContent = 'Storing...';
-    resultEl.innerHTML = '<p style="font-size:0.85rem;color:var(--text-muted);">\u23F3 Writing memory...</p>';
+    input.disabled = true;
+    statusEl.innerHTML = '\u23F3 Storing...';
 
     var testNs = 'user-' + _user.id.slice(0, 8);
 
@@ -661,50 +680,52 @@
       });
 
       if (!writeResp.ok) {
-        resultEl.innerHTML = '<p style="font-size:0.85rem;color:#ef4444;">\u274C Write failed (' + writeResp.status + ')</p>';
-        btn.disabled = false;
-        btn.textContent = 'Remember';
+        statusEl.innerHTML = '<span style="color:#ef4444;">\u274C Failed (' + writeResp.status + '). Try again.</span>';
+        input.disabled = false;
+        input.focus();
         return;
       }
 
-      resultEl.innerHTML = '<p style="font-size:0.85rem;color:var(--text-muted);">\u2705 Stored. \u23F3 Reading it back...</p>';
+      statusEl.innerHTML = '\u2705 Stored! Reading it back...';
 
-      // Read back
+      // Read back to prove it
       var readResp = await fetch(API_URL + '/v1/memory/read', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _instantKey },
         body: JSON.stringify({ query: text, namespace: testNs, limit: 1 }),
       });
 
+      var readText = '';
+      var confidence = '';
       if (readResp.ok) {
         var readData = await readResp.json();
         var items = readData.items || [];
         if (items.length > 0) {
-          var mem = items[0];
-          resultEl.innerHTML = '<div style="padding:12px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:8px;margin-top:8px;">'
-            + '<p style="margin:0 0 6px;font-weight:600;color:var(--success);font-size:0.9rem;">\u2705 Memory stored and retrieved!</p>'
-            + '<p style="margin:0;font-size:0.85rem;"><strong>Text:</strong> ' + escapeHtml(mem.text) + '</p>'
-            + '<p style="margin:4px 0 0;font-size:0.8rem;color:var(--text-muted);">Confidence: ' + (mem.confidence || 0).toFixed(2) + ' &bull; Store: ' + (mem.store_level || 'L1') + '</p>'
-            + '<a href="/memory.html" style="display:inline-block;margin-top:10px;color:var(--accent-light);text-decoration:none;font-size:0.85rem;font-weight:600;">See all your memories in Memory Viewer \u2192</a>'
-            + '</div>';
-        } else {
-          resultEl.innerHTML = '<p style="font-size:0.85rem;color:var(--success);">\u2705 Stored! Memory is being indexed. <a href="/memory.html" style="color:var(--accent-light);">Check Memory Viewer \u2192</a></p>';
+          readText = items[0].text;
+          confidence = (items[0].confidence || 0).toFixed(2);
         }
-      } else {
-        resultEl.innerHTML = '<p style="font-size:0.85rem;color:var(--success);">\u2705 Stored! <a href="/memory.html" style="color:var(--accent-light);">Check Memory Viewer \u2192</a></p>';
       }
 
-      // Reset for another try
-      input.value = '';
-      btn.disabled = false;
-      btn.textContent = 'Remember';
+      // Show proof in popup
+      var box = document.querySelector('#ic-popup-overlay > div');
+      box.innerHTML = '<div style="text-align:center;">'
+        + '<div style="font-size:2rem;margin-bottom:8px;">\u2705</div>'
+        + '<h3 style="font-size:1.1rem;margin-bottom:12px;color:var(--success);">Memory stored and verified!</h3>'
+        + (readText ? '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:left;margin-bottom:12px;">'
+          + '<div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:4px;">Retrieved from CLS++:</div>'
+          + '<div style="font-size:0.95rem;">' + escapeHtml(readText) + '</div>'
+          + '<div style="font-size:0.8rem;color:var(--text-muted);margin-top:6px;">Confidence: ' + confidence + '</div>'
+          + '</div>' : '')
+        + '<p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:16px;">This memory now persists across every AI model you use.</p>'
+        + '<a href="/memory.html" style="display:inline-block;padding:10px 24px;background:var(--accent);color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.9rem;">Open Memory Viewer</a>'
+        + '</div>';
 
     } catch (e) {
-      resultEl.innerHTML = '<p style="font-size:0.85rem;color:#ef4444;">\u274C Network error. Try again.</p>';
-      btn.disabled = false;
-      btn.textContent = 'Remember';
+      statusEl.innerHTML = '<span style="color:#ef4444;">\u274C Network error. Try again.</span>';
+      input.disabled = false;
+      input.focus();
     }
-  };
+  }
 
   function _downloadFile(filename, content) {
     var blob = new Blob([content], { type: 'text/plain' });
