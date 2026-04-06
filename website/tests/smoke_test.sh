@@ -1,9 +1,9 @@
 #!/bin/bash
 # CLS++ Production Smoke Test
 # Usage: ./smoke_test.sh [BASE_URL]
-# Default: https://clsplusplus-api.onrender.com
+# Default: https://www.clsplusplus.com
 
-BASE="${1:-https://clsplusplus-api.onrender.com}"
+BASE="${1:-https://www.clsplusplus.com}"
 PASS=0
 FAIL=0
 TOTAL=0

@@ -10,7 +10,7 @@
   var _selectedIntegration = null;
   var _instantKey = null; // key from instant connect
 
-  var API_URL = 'https://clsplusplus-api.onrender.com';
+  var API_URL = 'https://www.clsplusplus.com';
 
   async function loadProfile() {
     if (typeof CLSAuth !== 'undefined') {

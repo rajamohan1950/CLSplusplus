@@ -1,6 +1,6 @@
 # API Reference
 
-Base URL: `https://clsplusplus-api.onrender.com` (or `http://localhost:8080` for local)
+Base URL: `https://www.clsplusplus.com` (or `http://localhost:8080` for local)
 
 ---
 
@@ -88,8 +88,8 @@ Authorization: Bearer cls_live_xxxxxxxxxxxxxxxxxxxxxxxx
 
 ## Interactive Docs
 
-- **Swagger UI:** https://clsplusplus-api.onrender.com/docs
-- **ReDoc:** https://clsplusplus-api.onrender.com/redoc
+- **Swagger UI:** https://www.clsplusplus.com/docs
+- **ReDoc:** https://www.clsplusplus.com/redoc
 
 ---
 

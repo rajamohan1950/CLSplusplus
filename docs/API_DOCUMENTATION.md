@@ -2,7 +2,7 @@
 
 Brain-inspired, model-agnostic persistent memory for LLMs. Store, retrieve, and manage context across any model.
 
-**Base URL:** `https://clsplusplus-api.onrender.com` (or `http://localhost:8080` for local)
+**Base URL:** `https://www.clsplusplus.com` (or `http://localhost:8080` for local)
 
 ---
 
@@ -19,7 +19,7 @@ pip install clsplusplus
 ```python
 from clsplusplus.client import CLSClient
 
-with CLSClient("https://clsplusplus-api.onrender.com", api_key="cls_live_xxx") as client:
+with CLSClient("https://www.clsplusplus.com", api_key="cls_live_xxx") as client:
     client.write("User prefers dark mode", namespace="user:123")
     results = client.read("user preferences", namespace="user:123")
     for item in results.items:
@@ -30,13 +30,13 @@ with CLSClient("https://clsplusplus-api.onrender.com", api_key="cls_live_xxx") a
 
 ```bash
 # Write
-curl -X POST https://clsplusplus-api.onrender.com/v1/memory/write \
+curl -X POST https://www.clsplusplus.com/v1/memory/write \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer cls_live_xxx" \
   -d '{"text": "User prefers dark mode", "namespace": "user:123"}'
 
 # Read
-curl -X POST https://clsplusplus-api.onrender.com/v1/memory/read \
+curl -X POST https://www.clsplusplus.com/v1/memory/read \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer cls_live_xxx" \
   -d '{"query": "user preferences", "namespace": "user:123"}'
@@ -179,7 +179,7 @@ Delete a memory by ID (Right to be Forgotten).
 ```python
 from clsplusplus.client import CLSClient
 
-client = CLSClient("https://clsplusplus-api.onrender.com", api_key="cls_live_xxx")
+client = CLSClient("https://www.clsplusplus.com", api_key="cls_live_xxx")
 client.write("User prefers dark mode", namespace="user:123")
 results = client.read("preferences", namespace="user:123")
 client.forget("item-id", namespace="user:123")
@@ -189,7 +189,7 @@ client.close()
 ### Python (context manager)
 
 ```python
-with CLSClient("https://clsplusplus-api.onrender.com", api_key="cls_live_xxx") as c:
+with CLSClient("https://www.clsplusplus.com", api_key="cls_live_xxx") as c:
     c.write("Fact: project X uses Python")
     items = c.read("project tech stack")
 ```
@@ -197,7 +197,7 @@ with CLSClient("https://clsplusplus-api.onrender.com", api_key="cls_live_xxx") a
 ### JavaScript / fetch
 
 ```javascript
-const API = "https://clsplusplus-api.onrender.com";
+const API = "https://www.clsplusplus.com";
 const KEY = "cls_live_xxx";
 
 // Write
@@ -250,5 +250,5 @@ response = llm.complete(prompt)
 
 ## Interactive Docs
 
-- **Swagger UI:** https://clsplusplus-api.onrender.com/docs
-- **ReDoc:** https://clsplusplus-api.onrender.com/redoc
+- **Swagger UI:** https://www.clsplusplus.com/docs
+- **ReDoc:** https://www.clsplusplus.com/redoc

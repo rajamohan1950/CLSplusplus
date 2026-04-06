@@ -31,13 +31,13 @@ Render allows **only 1 free Postgres** and **1 free Redis** per account. This bl
 ## URLs After Deploy
 
 - **Website:** `https://clsplusplus-website.onrender.com`
-- **API:** `https://clsplusplus-api.onrender.com`
-- **API docs:** `https://clsplusplus-api.onrender.com/docs`
+- **API:** `https://www.clsplusplus.com`
+- **API docs:** `https://www.clsplusplus.com/docs`
 
 ---
 
 ## Test the API
 
 ```bash
-curl https://clsplusplus-api.onrender.com/v1/memory/health
+curl https://www.clsplusplus.com/v1/memory/health
 ```

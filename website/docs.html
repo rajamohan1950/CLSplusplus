@@ -87,26 +87,26 @@
       <main class="docs-content">
         <section id="quickstart" class="docs-section">
           <h2>Quick Start</h2>
-          <p>Base URL: <code>https://clsplusplus-api.onrender.com</code> (or <code>http://localhost:8080</code> for local)</p>
+          <p>Base URL: <code>https://www.clsplusplus.com</code> (or <code>http://localhost:8080</code> for local)</p>
           <h3>1. Install the Python SDK</h3>
           <div class="code-block"><code>pip install git+https://github.com/rajamohan1950/CLSplusplus.git</code></div>
           <h3>2. Write and read in 3 lines</h3>
           <div class="code-block"><pre><code>from clsplusplus.client import CLSClient
 
-with CLSClient("https://clsplusplus-api.onrender.com", api_key="cls_live_xxx") as client:
+with CLSClient("https://www.clsplusplus.com", api_key="cls_live_xxx") as client:
     client.write("User prefers dark mode", namespace="user:123")
     results = client.read("user preferences", namespace="user:123")
     for item in results.items:
         print(item.text, item.confidence)</code></pre></div>
           <h3>3. Or use curl</h3>
           <div class="code-block"><pre><code># Write
-curl -X POST https://clsplusplus-api.onrender.com/v1/memory/write \
+curl -X POST https://www.clsplusplus.com/v1/memory/write \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer cls_live_xxx" \
   -d '{"text": "User prefers dark mode", "namespace": "user:123"}'
 
 # Read
-curl -X POST https://clsplusplus-api.onrender.com/v1/memory/read \
+curl -X POST https://www.clsplusplus.com/v1/memory/read \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer cls_live_xxx" \
   -d '{"query": "user preferences", "namespace": "user:123"}'</code></pre></div>
@@ -166,7 +166,7 @@ curl -X POST https://clsplusplus-api.onrender.com/v1/memory/read \
   "text": "User prefers dark mode"
 }</code></pre></div>
           <h3>Example</h3>
-          <div class="code-block"><pre><code>curl -X POST https://clsplusplus-api.onrender.com/v1/memory/write \
+          <div class="code-block"><pre><code>curl -X POST https://www.clsplusplus.com/v1/memory/write \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer cls_live_xxx" \
   -d '{
@@ -224,7 +224,7 @@ curl -X POST https://clsplusplus-api.onrender.com/v1/memory/read \
           <h2>Health</h2>
           <p>Check API and store status. No auth required.</p>
           <div class="endpoint"><span class="method method-get">GET</span><span class="path">/v1/memory/health</span></div>
-          <div class="code-block"><pre><code>curl https://clsplusplus-api.onrender.com/v1/memory/health</code></pre></div>
+          <div class="code-block"><pre><code>curl https://www.clsplusplus.com/v1/memory/health</code></pre></div>
         </section>
 
         <section id="integrations" class="docs-section">
@@ -232,17 +232,17 @@ curl -X POST https://clsplusplus-api.onrender.com/v1/memory/read \
           <h3>Python (sync)</h3>
           <div class="code-block"><pre><code>from clsplusplus.client import CLSClient
 
-client = CLSClient("https://clsplusplus-api.onrender.com", api_key="cls_live_xxx")
+client = CLSClient("https://www.clsplusplus.com", api_key="cls_live_xxx")
 client.write("User prefers dark mode", namespace="user:123")
 results = client.read("preferences", namespace="user:123")
 client.forget("item-id", namespace="user:123")
 client.close()</code></pre></div>
           <h3>Python (context manager)</h3>
-          <div class="code-block"><pre><code>with CLSClient("https://clsplusplus-api.onrender.com", api_key="cls_live_xxx") as c:
+          <div class="code-block"><pre><code>with CLSClient("https://www.clsplusplus.com", api_key="cls_live_xxx") as c:
     c.write("Fact: project X uses Python")
     items = c.read("project tech stack")</code></pre></div>
           <h3>JavaScript / fetch</h3>
-          <div class="code-block"><pre><code>const API = "https://clsplusplus-api.onrender.com";
+          <div class="code-block"><pre><code>const API = "https://www.clsplusplus.com";
 const KEY = "cls_live_xxx";
 
 // Write

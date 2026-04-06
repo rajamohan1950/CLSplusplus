@@ -17,7 +17,7 @@
 
 <p align="center">
   <a href="https://render.com/deploy?repo=https://github.com/rajamohan1950/CLSplusplus"><img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render" height="32" /></a>
-  <a href="https://clsplusplus-api.onrender.com/docs"><img src="https://img.shields.io/badge/API-Live-22c55e?style=flat-square" alt="API" /></a>
+  <a href="https://www.clsplusplus.com/docs"><img src="https://img.shields.io/badge/API-Live-22c55e?style=flat-square" alt="API" /></a>
   <a href="https://github.com/rajamohan1950/CLSplusplus/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat-square" alt="License" /></a>
   <a href="https://github.com/rajamohan1950/CLSplusplus"><img src="https://img.shields.io/badge/Patent-Oct%202025-blue?style=flat-square" alt="Patent" /></a>
 </p>

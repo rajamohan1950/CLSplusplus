@@ -7,7 +7,7 @@
 ```python
 from clsplusplus.client import CLSClient
 
-with CLSClient("https://clsplusplus-api.onrender.com", api_key="cls_live_xxx") as client:
+with CLSClient("https://www.clsplusplus.com", api_key="cls_live_xxx") as client:
     client.write("User prefers dark mode", namespace="user:123")
     results = client.read("user preferences", namespace="user:123")
     for item in results.items:
@@ -32,7 +32,7 @@ response = llm.complete(prompt)
 ## JavaScript / fetch
 
 ```javascript
-const API = "https://clsplusplus-api.onrender.com";
+const API = "https://www.clsplusplus.com";
 const KEY = "cls_live_xxx";
 
 // Write
@@ -64,13 +64,13 @@ console.log(data.items);
 
 ```bash
 # Write
-curl -X POST https://clsplusplus-api.onrender.com/v1/memory/write \
+curl -X POST https://www.clsplusplus.com/v1/memory/write \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer cls_live_xxx" \
   -d '{"text": "User prefers dark mode", "namespace": "user:123"}'
 
 # Read
-curl -X POST https://clsplusplus-api.onrender.com/v1/memory/read \
+curl -X POST https://www.clsplusplus.com/v1/memory/read \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer cls_live_xxx" \
   -d '{"query": "user preferences", "namespace": "user:123"}'
