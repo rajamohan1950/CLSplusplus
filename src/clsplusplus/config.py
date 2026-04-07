@@ -101,7 +101,16 @@ class Settings(BaseSettings):
     # blend weight for strong recency signals ("recently", "last week", "yesterday")
     temporal_recency_alpha_strong: float = 0.5
 
-    # Stripe billing
+    # Site
+    site_base_url: str = "https://www.clsplusplus.com"  # CLS_SITE_BASE_URL
+    cookie_secure: bool = True  # CLS_COOKIE_SECURE (False for local dev only)
+
+    # Razorpay billing (active payment gateway)
+    razorpay_key_id: str = ""               # CLS_RAZORPAY_KEY_ID
+    razorpay_key_secret: str = ""           # CLS_RAZORPAY_KEY_SECRET
+    razorpay_webhook_secret: str = ""       # CLS_RAZORPAY_WEBHOOK_SECRET
+
+    # Stripe billing (parked — not active)
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
     stripe_price_pro: str = ""            # Stripe Price ID for Pro tier

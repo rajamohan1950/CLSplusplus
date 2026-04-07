@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$PLUGIN_DIR/scripts/cls-memory-recall.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$PLUGIN_DIR/scripts/cls-memory-store.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

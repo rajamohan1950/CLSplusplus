@@ -421,6 +421,15 @@ class TierUpgradeRequest(BaseModel):
     tier: str = Field(..., pattern="^(free|pro|business|enterprise)$")
 
 
+class RazorpayVerifyRequest(BaseModel):
+    """Request to verify a Razorpay payment after checkout."""
+
+    order_id: str = Field(..., min_length=1, max_length=64)
+    payment_id: str = Field(..., min_length=1, max_length=64)
+    signature: str = Field(..., min_length=1, max_length=128)
+    tier: str = Field(..., pattern="^(pro|business|enterprise)$")
+
+
 class UserProfileUpdateRequest(BaseModel):
     """Request to update user profile fields."""
 

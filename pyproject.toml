@@ -58,6 +58,7 @@ server = [
     "PyJWT>=2.8.0",
     "bcrypt>=4.1.0",
     "stripe>=7.0.0",
+    "razorpay>=1.4.0",
     "minio>=7.2.0",
     "pyarrow>=14.0.0",
 ]

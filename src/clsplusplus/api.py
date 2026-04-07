@@ -31,6 +31,7 @@ from clsplusplus.models import (
     HealthResponse,
     IntegrationCreate,
     MemoryCycleRequest,
+    RazorpayVerifyRequest,
     ReadRequest,
     ReadResponse,
     TierUpgradeRequest,
@@ -61,13 +62,17 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         redoc_url="/redoc",
     )
 
+    cors_origins = [
+        settings.site_base_url,
+        settings.site_base_url.replace("www.", ""),  # allow both www and non-www
+    ] if settings.site_base_url else ["*"]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "DELETE", "OPTIONS", "HEAD"],
-        allow_headers=["*"],
-        expose_headers=["*"],
+        allow_headers=["Content-Type", "Authorization", "X-Request-Id", "X-Trace-Id"],
+        expose_headers=["X-Request-Id", "X-RateLimit-Limit", "X-RateLimit-Remaining"],
     )
     # Middleware execution order: outermost (added last) runs first.
     # TracingMiddleware → RequestId → RateLimit → Auth → Quota → route handler
@@ -472,7 +477,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             key="cls_session",
             value=token,
             httponly=True,
-            secure=False,  # Set True in production (HTTPS)
+            secure=settings.cookie_secure,
             samesite="lax",
             max_age=7 * 86400,  # 7 days
             path="/",
@@ -704,6 +709,80 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             logger.error("Stripe webhook error: %s", e)
+            raise HTTPException(status_code=500, detail="Webhook processing failed")
+
+    # =========================================================================
+    # Billing — Razorpay (active payment gateway)
+    # =========================================================================
+
+    @app.post("/v1/billing/order")
+    async def billing_order(req: TierUpgradeRequest, request: Request):
+        """Create a Razorpay Order for tier upgrade."""
+        user_id = getattr(request.state, "user_id", None)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        if req.tier == "free":
+            raise HTTPException(status_code=400, detail="Cannot create order for the free tier")
+        try:
+            from clsplusplus.razorpay_service import create_order
+            order = await create_order(
+                user_id=user_id,
+                tier=req.tier,
+                settings=settings,
+            )
+            # Include prefill data for Razorpay checkout modal
+            order["prefill"] = {
+                "email": getattr(request.state, "user_email", ""),
+            }
+            return order
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error("Razorpay order error: %s", e)
+            raise HTTPException(status_code=500, detail="Billing service unavailable")
+
+    @app.post("/v1/billing/verify")
+    async def billing_verify(req: RazorpayVerifyRequest, request: Request):
+        """Verify Razorpay payment signature and upgrade user tier."""
+        user_id = getattr(request.state, "user_id", None)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        try:
+            from clsplusplus.razorpay_service import verify_payment
+            await verify_payment(
+                order_id=req.order_id,
+                payment_id=req.payment_id,
+                signature=req.signature,
+                settings=settings,
+                user_service=user_service,
+                tier=req.tier,
+                user_id=user_id,
+            )
+            return {"status": "ok", "tier": req.tier}
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error("Razorpay verify error: %s", e)
+            raise HTTPException(status_code=500, detail="Payment verification failed")
+
+    @app.post("/v1/billing/razorpay-webhook")
+    async def billing_razorpay_webhook(request: Request):
+        """Handle Razorpay webhook events (backup verification)."""
+        payload = await request.body()
+        sig = request.headers.get("x-razorpay-signature", "")
+        try:
+            from clsplusplus.razorpay_service import handle_webhook as rp_handle_webhook
+            await rp_handle_webhook(
+                payload=payload,
+                sig=sig,
+                settings=settings,
+                user_service=user_service,
+            )
+            return {"status": "ok"}
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error("Razorpay webhook error: %s", e)
             raise HTTPException(status_code=500, detail="Webhook processing failed")
 
     # =========================================================================

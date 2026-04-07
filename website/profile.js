@@ -65,7 +65,11 @@
     // Check URL params for billing result
     var params = new URLSearchParams(window.location.search);
     if (params.get('billing') === 'success') {
-      showInlineMsg('billing', 'Subscription updated successfully!', 'var(--success)');
+      showBillingSuccess();
+      window.history.replaceState({}, '', '/profile.html#billing');
+    } else if (params.get('billing') === 'cancel') {
+      showBillingCancel();
+      window.history.replaceState({}, '', '/profile.html#billing');
     }
   }
 
@@ -294,10 +298,10 @@
         await loadIntegrations();
       } else {
         var err = await resp.json();
-        alert(err.detail || 'Failed to create integration');
+        showToast(err.detail || 'Failed to create integration', 'error');
       }
     } catch (e) {
-      alert('Network error');
+      showToast('Network error. Please try again.', 'error');
     }
   };
 
@@ -354,7 +358,7 @@
 
   window.generateKey = async function () {
     if (!_selectedIntegration) {
-      alert('Please create an integration first using the "+ New" button.');
+      showToast('Please create an integration first using the "+ New" button.', 'warning');
       return;
     }
 
@@ -364,7 +368,7 @@
     var scopes = [];
     scopeBoxes.forEach(function (cb) { scopes.push(cb.value); });
     if (!scopes.length) {
-      alert('Please select at least one scope.');
+      showToast('Please select at least one scope.', 'warning');
       return;
     }
 
@@ -388,10 +392,10 @@
         await loadKeyHistory();
       } else {
         var err = await resp.json();
-        alert(err.detail || 'Failed to create key');
+        showToast(err.detail || 'Failed to create key', 'error');
       }
     } catch (e) {
-      alert('Network error');
+      showToast('Network error. Please try again.', 'error');
     }
   };
 
@@ -420,10 +424,10 @@
         await loadKeyHistory();
       } else {
         var err = await resp.json();
-        alert(err.detail || 'Rotation failed');
+        showToast(err.detail || 'Rotation failed', 'error');
       }
     } catch (e) {
-      alert('Network error');
+      showToast('Network error. Please try again.', 'error');
     }
   };
 
@@ -440,10 +444,10 @@
         await loadKeyHistory();
       } else {
         var err = await resp.json();
-        alert(err.detail || 'Revocation failed');
+        showToast(err.detail || 'Revocation failed', 'error');
       }
     } catch (e) {
-      alert('Network error');
+      showToast('Network error. Please try again.', 'error');
     }
   };
 
@@ -804,26 +808,94 @@
 
   window.startCheckout = async function (tier) {
     var btn = document.querySelector('.plan-btn[data-tier="' + tier + '"]');
-    if (btn) { btn.disabled = true; btn.textContent = 'Loading...'; }
+    if (btn) {
+      if (btn.dataset.loading) return;
+      btn.dataset.loading = 'true';
+      btn.disabled = true;
+      btn.textContent = 'Loading...';
+    }
+
+    showPaymentOverlay();
 
     try {
-      var resp = await fetch('/v1/billing/checkout', {
+      var resp = await fetch('/v1/billing/order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify({ tier: tier }),
       });
-      if (resp.ok) {
-        var data = await resp.json();
-        if (data.url) { window.location.href = data.url; return; }
+      if (!resp.ok) {
+        hidePaymentOverlay();
+        var err = await resp.json().catch(function () { return {}; });
+        showToast(err.detail || 'Billing service unavailable. Please try again later.', 'error');
+        if (btn) { btn.disabled = false; btn.textContent = 'Upgrade'; delete btn.dataset.loading; }
+        return;
       }
-      var err = await resp.json().catch(function () { return {}; });
-      alert(err.detail || 'Billing service unavailable. Please try again later.');
+
+      var order = await resp.json();
+      hidePaymentOverlay();
+
+      var options = {
+        key: order.key_id,
+        amount: order.amount,
+        currency: order.currency,
+        name: 'CLS++',
+        description: tier.charAt(0).toUpperCase() + tier.slice(1) + ' Plan',
+        order_id: order.order_id,
+        prefill: order.prefill || {},
+        theme: { color: '#6366f1', backdrop_color: 'rgba(10,10,15,0.92)' },
+        modal: { ondismiss: function () {
+          showBillingCancel();
+          if (btn) { btn.disabled = false; btn.textContent = 'Upgrade'; delete btn.dataset.loading; }
+        }},
+        handler: function (response) {
+          _verifyPayment(response.razorpay_order_id, response.razorpay_payment_id, response.razorpay_signature, tier, btn);
+        },
+      };
+
+      var rzp = new Razorpay(options);
+      rzp.on('payment.failed', function (response) {
+        showBillingFailure(response.error.description || 'Payment failed. Please try again.');
+        if (btn) { btn.disabled = false; btn.textContent = 'Upgrade'; delete btn.dataset.loading; }
+      });
+      rzp.open();
     } catch (e) {
-      alert('Network error. Please try again.');
+      hidePaymentOverlay();
+      showToast('Network error. Please try again.', 'error');
+      if (btn) { btn.disabled = false; btn.textContent = 'Upgrade'; delete btn.dataset.loading; }
     }
-    if (btn) { btn.disabled = false; btn.textContent = 'Upgrade'; }
   };
+
+  async function _verifyPayment(orderId, paymentId, signature, tier, btn) {
+    showPaymentOverlay();
+    try {
+      var resp = await fetch('/v1/billing/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          order_id: orderId,
+          payment_id: paymentId,
+          signature: signature,
+          tier: tier,
+        }),
+      });
+      hidePaymentOverlay();
+      if (resp.ok) {
+        showBillingSuccess();
+        // Reload billing info to reflect new tier
+        await loadBilling();
+        updatePlanCards(tier);
+      } else {
+        var err = await resp.json().catch(function () { return {}; });
+        showBillingFailure(err.detail || 'Payment verification failed. Contact support if you were charged.');
+      }
+    } catch (e) {
+      hidePaymentOverlay();
+      showBillingFailure('Network error during verification. Contact support if you were charged.');
+    }
+    if (btn) { btn.disabled = false; btn.textContent = 'Upgrade'; delete btn.dataset.loading; }
+  }
 
   window.openBillingPortal = async function () {
     try {
@@ -832,9 +904,9 @@
         var data = await resp.json();
         if (data.url) { window.location.href = data.url; return; }
       }
-      alert('Could not open billing portal. Please try again.');
+      showToast('Could not open billing portal. Please try again.', 'error');
     } catch (e) {
-      alert('Network error');
+      showToast('Network error. Please try again.', 'error');
     }
   };
 

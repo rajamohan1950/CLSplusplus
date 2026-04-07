@@ -375,5 +375,94 @@
   <!-- namespace.js must load before demo.js — sets window.CLS_USER_NAMESPACE -->
   <script src="namespace.js"></script>
   <script src="demo.js"></script>
+
+  <!-- Razorpay checkout for logged-in users on pricing cards -->
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script src="toast.js"></script>
+  <script src="billing-ui.js"></script>
+  <script>
+  (function () {
+    function isLoggedIn() {
+      return document.cookie.indexOf('cls_session=') !== -1;
+    }
+    if (!isLoggedIn()) return;
+
+    var tierMap = { 'tier-1': 'pro', 'tier-2': 'business' };
+    Object.keys(tierMap).forEach(function (cardId) {
+      var card = document.getElementById(cardId);
+      if (!card) return;
+      var link = card.querySelector('.btn-primary');
+      if (!link) return;
+
+      link.href = '#pricing';
+      link.textContent = 'Upgrade Now';
+      link.addEventListener('click', function (e) {
+        e.preventDefault();
+        var tier = tierMap[cardId];
+        if (this.dataset.loading) return;
+        this.dataset.loading = 'true';
+        this.textContent = 'Loading...';
+        var self = this;
+
+        showPaymentOverlay();
+
+        fetch('/v1/billing/order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ tier: tier }),
+        })
+        .then(function (resp) {
+          if (!resp.ok) return resp.json().then(function (err) { throw new Error(err.detail || 'Billing unavailable'); });
+          return resp.json();
+        })
+        .then(function (order) {
+          hidePaymentOverlay();
+          var rzp = new Razorpay({
+            key: order.key_id,
+            amount: order.amount,
+            currency: order.currency,
+            name: 'CLS++',
+            description: tier.charAt(0).toUpperCase() + tier.slice(1) + ' Plan',
+            order_id: order.order_id,
+            prefill: order.prefill || {},
+            theme: { color: '#6366f1', backdrop_color: 'rgba(10,10,15,0.92)' },
+            modal: { ondismiss: function () {
+              showBillingCancel();
+              self.textContent = 'Upgrade Now'; delete self.dataset.loading;
+            }},
+            handler: function (response) {
+              showPaymentOverlay();
+              fetch('/v1/billing/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                  order_id: response.razorpay_order_id,
+                  payment_id: response.razorpay_payment_id,
+                  signature: response.razorpay_signature,
+                  tier: tier,
+                }),
+              })
+              .then(function (r) { hidePaymentOverlay(); if (r.ok) { showBillingSuccess(); } else { return r.json().then(function (err) { showBillingFailure(err.detail); }); } })
+              .catch(function () { hidePaymentOverlay(); showBillingFailure('Network error during verification. Contact support if charged.'); });
+              self.textContent = 'Upgrade Now'; delete self.dataset.loading;
+            },
+          });
+          rzp.on('payment.failed', function (resp) {
+            showBillingFailure(resp.error.description || 'Payment failed.');
+            self.textContent = 'Upgrade Now'; delete self.dataset.loading;
+          });
+          rzp.open();
+        })
+        .catch(function (err) {
+          hidePaymentOverlay();
+          showToast(err.message || 'Network error. Please try again.', 'error');
+          self.textContent = 'Upgrade Now'; delete self.dataset.loading;
+        });
+      });
+    });
+  })();
+  </script>
 </body>
 </html>
