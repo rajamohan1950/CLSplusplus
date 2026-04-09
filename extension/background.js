@@ -236,21 +236,34 @@ async function syncChatGPTCustomInstructions() {
   const apiKey = _cachedApiKey || (await chrome.storage.local.get('cls_api_key')).cls_api_key;
   if (!apiKey) { console.log('[CLS++] CI sync: no API key'); return; }
 
-  // 1. Fetch CLS++ memories
+  // 1. Fetch CLS++ memories — multiple queries for diverse coverage
   let facts = [];
-  try {
-    const r = await fetch(`${API}/v1/memory/read`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ query: 'user identity preferences facts relationships', limit: 10 }),
-    });
-    if (r.ok) {
-      const d = await r.json();
-      facts = (d.items || [])
-        .map(i => i.text || '')
-        .filter(t => t.length > 3 && !t.startsWith('[Schema:'));
-    }
-  } catch (e) { console.log('[CLS++] CI sync: memory fetch failed', e); return; }
+  const seen = new Set();
+  const queries = [
+    'personal name identity who am I',
+    'preferences likes dislikes favorites movies music perfume',
+    'family mother father relationships friends people',
+    'recent work project decisions current status',
+  ];
+  for (const q of queries) {
+    try {
+      const r = await fetch(`${API}/v1/memory/read`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({ query: q, limit: 5 }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        for (const item of (d.items || [])) {
+          const t = item.text || '';
+          if (t.length > 3 && !t.startsWith('[Schema:') && !seen.has(t)) {
+            seen.add(t);
+            facts.push(t);
+          }
+        }
+      }
+    } catch (e) {}
+  }
 
   console.log('[CLS++] CI sync: got', facts.length, 'memories');
   if (!facts.length) return;
@@ -284,9 +297,11 @@ async function syncChatGPTCustomInstructions() {
     const r = await fetch('https://chatgpt.com/backend-api/user_system_messages', {
       headers: { 'Authorization': `Bearer ${accessToken}` },
     });
-    if (!r.ok) return;
+    console.log('[CLS++] CI sync: read CI status', r.status);
+    if (!r.ok) { console.log('[CLS++] CI sync: read failed', r.status, await r.text().catch(() => '')); return; }
     current = await r.json();
-  } catch (e) { return; }
+    console.log('[CLS++] CI sync: current about_user length', (current.about_user_message || '').length);
+  } catch (e) { console.log('[CLS++] CI sync: read error', e.message); return; }
 
   let aboutUser = current.about_user_message || '';
 
@@ -299,11 +314,13 @@ async function syncChatGPTCustomInstructions() {
 
   // Append new block
   const newAboutUser = (aboutUser ? aboutUser + '\n\n' : '') + memBlock;
-  if (newAboutUser === (current.about_user_message || '')) return; // No change
+  if (newAboutUser === (current.about_user_message || '')) { console.log('[CLS++] CI sync: no change needed'); return; }
+
+  console.log('[CLS++] CI sync: writing', newAboutUser.length, 'chars');
 
   // 5. Write updated Custom Instructions
   try {
-    await fetch('https://chatgpt.com/backend-api/user_system_messages', {
+    const wr = await fetch('https://chatgpt.com/backend-api/user_system_messages', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -315,7 +332,10 @@ async function syncChatGPTCustomInstructions() {
         enabled: true,
       }),
     });
-  } catch (e) {}
+    console.log('[CLS++] CI sync: write status', wr.status);
+    if (wr.ok) console.log('[CLS++] CI sync: SUCCESS — memories written to ChatGPT Custom Instructions');
+    else console.log('[CLS++] CI sync: write failed', wr.status, await wr.text().catch(() => ''));
+  } catch (e) { console.log('[CLS++] CI sync: write error', e.message); }
 }
 
 // Use chrome.alarms for reliable MV3 wake-up (setInterval dies when SW sleeps)
