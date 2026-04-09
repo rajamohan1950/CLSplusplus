@@ -27,12 +27,18 @@ function showToast(msg, type, duration) {
 // ── Initialize ──────────────────────────────────────────────────────────
 
 resolveAPI((api) => {
-  chrome.storage.local.get(['autoInject', 'cls_local', 'cls_api_key', 'cls_user'], (r) => {
+  chrome.storage.local.get(['autoInject', 'cls_local', 'cls_api_url', 'cls_api_key', 'cls_user'], (r) => {
     r = r || {};
     document.getElementById('generate-key-link').href = `${api}/profile.html#keys`;
     document.getElementById('view-btn').href = `${api}/memory.html`;
     document.getElementById('toggle-local').checked = !!r.cls_local;
     document.getElementById('toggle-inject').checked = r.autoInject !== false;
+
+    // Show/hide local URL input
+    if (r.cls_local) {
+      document.getElementById('local-url-box').style.display = 'block';
+      document.getElementById('local-url-input').value = r.cls_api_url || 'http://localhost:8181';
+    }
 
     // Memory count
     chrome.runtime.sendMessage({ type: 'GET_COUNT' }, (resp) => {
@@ -206,7 +212,27 @@ document.getElementById('toggle-inject').addEventListener('change', e => {
 });
 
 document.getElementById('toggle-local').addEventListener('change', e => {
-  chrome.storage.local.set({ cls_local: e.target.checked }, () => {
-    chrome.runtime.reload();
-  });
+  const isLocal = e.target.checked;
+  if (isLocal) {
+    document.getElementById('local-url-box').style.display = 'block';
+    const url = document.getElementById('local-url-input').value.trim() || 'http://localhost:8181';
+    chrome.storage.local.set({ cls_local: true, cls_api_url: url }, () => {
+      chrome.runtime.reload();
+    });
+  } else {
+    document.getElementById('local-url-box').style.display = 'none';
+    chrome.storage.local.set({ cls_local: false, cls_api_url: '' }, () => {
+      chrome.runtime.reload();
+    });
+  }
+});
+
+document.getElementById('local-url-input').addEventListener('change', e => {
+  const url = e.target.value.trim();
+  if (url) {
+    chrome.storage.local.set({ cls_api_url: url }, () => {
+      showToast('Server URL saved: ' + url, 'success', 2000);
+      chrome.runtime.reload();
+    });
+  }
 });

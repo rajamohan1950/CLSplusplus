@@ -147,12 +147,17 @@
   <div class="toggle">
     <div>
       <div class="toggle-label">Local mode</div>
-      <div class="toggle-sub">Use localhost:8181 instead of cloud</div>
+      <div class="toggle-sub">Use your own server instead of cloud</div>
     </div>
     <label class="switch">
       <input type="checkbox" id="toggle-local"/>
       <span class="slider"></span>
     </label>
+  </div>
+
+  <div id="local-url-box" style="display:none;margin-bottom:10px;">
+    <input type="text" id="local-url-input" class="key-input" placeholder="http://localhost:8181" style="font-size:10px;"/>
+    <div style="font-size:9px;color:rgba(240,240,248,.3);margin-top:2px;">Server URL (saved automatically)</div>
   </div>
 
   <a id="view-btn" class="view-btn" href="#" target="_blank">
