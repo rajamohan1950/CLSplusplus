@@ -85,7 +85,20 @@ async function storeMessage(text, source, model, tabId) {
   const uid = await getUID();
   const headers = await getAuthHeaders();
 
-  // 1. Store via local API
+  // 1. Always persist via authenticated /v1/memory/write (survives restarts)
+  const apiKey = _cachedApiKey || (await chrome.storage.local.get('cls_api_key')).cls_api_key;
+  if (apiKey) {
+    try {
+      await fetch(`${API}/v1/memory/write`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({ text, source: model || 'extension' }),
+      });
+    } catch (_) {}
+    _cachedApiKey = apiKey;  // Cache it for next time
+  }
+
+  // 2. Also store via local API (backward compatible for anonymous users)
   try {
     await fetch(`${API}/api/store/${uid}`, {
       method: 'POST',
@@ -94,7 +107,7 @@ async function storeMessage(text, source, model, tabId) {
     });
   } catch (_) {}
 
-  // 2. Feed into TRG + PhaseMemoryEngine
+  // 3. Feed into TRG + PhaseMemoryEngine
   if (_cachedApiKey) {
     const sessionId = getSessionId(model, tabId);
     _seqCounter++;
