@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/cls-memory-store.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

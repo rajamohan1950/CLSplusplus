@@ -4,16 +4,50 @@
   <meta charset="UTF-8"/>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{width:260px;background:#06060c;color:#f0f0f8;
+    body{width:280px;background:#06060c;color:#f0f0f8;
       font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif;
-      -webkit-font-smoothing:antialiased;padding:20px}
-    .logo{display:flex;align-items:center;gap:8px;margin-bottom:16px}
-    .dot{width:8px;height:8px;border-radius:50%;background:#5de0c5;
-      box-shadow:0 0 7px #5de0c5;animation:blink 1.8s ease-in-out infinite}
-    @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+      -webkit-font-smoothing:antialiased;padding:16px}
+
+    /* ── Top bar: server + user ── */
+    .top-bar{display:flex;align-items:center;gap:8px;margin-bottom:14px;
+      padding:10px 12px;background:rgba(93,224,197,.06);border:1px solid rgba(93,224,197,.15);
+      border-radius:10px}
+    .top-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;
+      background:#f05d9a;box-shadow:0 0 6px #f05d9a;transition:all .3s}
+    .top-dot.online{background:#5de0c5;box-shadow:0 0 8px #5de0c5}
+    .top-info{flex:1;min-width:0}
+    .top-server{font-size:10px;color:rgba(240,240,248,.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .top-user{font-size:12px;font-weight:700;color:#5de0c5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .top-user.offline{color:#f05d9a}
+    .top-tier{font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+      background:rgba(124,110,240,.15);color:#a89cf7;padding:2px 6px;border-radius:6px;flex-shrink:0}
+
+    .logo{display:flex;align-items:center;gap:8px;margin-bottom:14px}
     .logo-text{font-size:13px;font-weight:700}
     .count{font-size:36px;font-weight:800;letter-spacing:-.04em;color:#7c6ef0;margin-bottom:2px}
     .count-label{font-size:11px;color:rgba(240,240,248,.45);margin-bottom:16px}
+
+    /* ── Account section ── */
+    .account-box{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);
+      border-radius:10px;padding:12px;margin-bottom:14px}
+    .account-box.linked{background:rgba(93,224,197,.06);border-color:rgba(93,224,197,.15)}
+    .key-input{width:100%;padding:7px 10px;background:rgba(0,0,0,.3);
+      border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#f0f0f8;
+      font-size:11px;margin-bottom:6px;outline:none;font-family:monospace}
+    .key-input:disabled{opacity:.4;cursor:not-allowed}
+    .link-btn{width:100%;padding:7px;border:none;border-radius:8px;color:#fff;
+      font-size:11px;font-weight:600;cursor:pointer;transition:all .2s}
+    .link-btn.active{background:#7c6ef0}
+    .link-btn.active:hover{background:#6b5de0}
+    .link-btn.disabled{background:rgba(255,255,255,.1);color:rgba(240,240,248,.3);cursor:not-allowed}
+    .unlink-btn{width:100%;padding:6px;background:transparent;
+      border:1px solid rgba(255,255,255,.12);border-radius:8px;
+      color:rgba(240,240,248,.5);font-size:10px;cursor:pointer;margin-top:8px}
+    .linked-badge{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+    .linked-check{width:16px;height:16px;background:#5de0c5;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0}
+
+    /* ── Toggles ── */
     .toggle{display:flex;align-items:center;justify-content:space-between;
       background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);
       border-radius:10px;padding:10px 12px;margin-bottom:10px}
@@ -27,35 +61,55 @@
       left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
     input:checked+.slider{background:#7c6ef0}
     input:checked+.slider:before{transform:translateX(16px)}
+
     .view-btn{display:block;width:100%;padding:10px;background:rgba(124,110,240,.12);
       border:1px solid rgba(124,110,240,.25);border-radius:10px;color:#a89cf7;
       font-size:12px;font-weight:600;cursor:pointer;text-align:center;
       text-decoration:none;transition:all .18s;margin-top:6px}
     .view-btn:hover{background:rgba(124,110,240,.2)}
-    .status{font-size:10px;color:rgba(240,240,248,.3);text-align:center;
-      margin-top:12px;display:flex;align-items:center;justify-content:center;gap:5px}
-    .status-dot{width:5px;height:5px;border-radius:50%}
+
+    .err-text{font-size:10px;color:#f05d9a;margin-top:4px;display:none}
+    .hint{font-size:9px;color:rgba(240,240,248,.3);margin-top:6px;text-align:center}
   </style>
 </head>
 <body>
+
+  <!-- ── Top Bar: Connection Status + User ── -->
+  <div class="top-bar">
+    <div class="top-dot" id="top-dot"></div>
+    <div class="top-info">
+      <div class="top-server" id="top-server">Connecting...</div>
+      <div class="top-user offline" id="top-user">Not linked</div>
+    </div>
+    <div class="top-tier" id="top-tier" style="display:none">FREE</div>
+  </div>
+
   <div class="logo">
     <span style="font-size:18px">🧠</span>
     <span class="logo-text">CLS++ Memory</span>
   </div>
 
-  <!-- Account Link -->
-  <div id="account-unlinked" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;margin-bottom:14px;">
-    <div style="font-size:12px;font-weight:600;margin-bottom:6px;">Link your account</div>
-    <input type="text" id="api-key-input" placeholder="Paste your API key" style="width:100%;padding:7px 10px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#f0f0f8;font-size:11px;margin-bottom:6px;outline:none;font-family:monospace;"/>
-    <button id="link-btn" onclick="linkAccount()" style="width:100%;padding:7px;background:#7c6ef0;border:none;border-radius:8px;color:#fff;font-size:11px;font-weight:600;cursor:pointer;">Link Account</button>
-    <div style="font-size:9px;color:rgba(240,240,248,.3);margin-top:6px;text-align:center;">Get your key at <a href="#" id="dashboard-link" style="color:#a89cf7;" target="_blank">your dashboard</a></div>
-    <div id="link-error" style="font-size:10px;color:#f05d9a;margin-top:4px;display:none;"></div>
-  </div>
-  <div id="account-linked" style="background:rgba(124,110,240,.08);border:1px solid rgba(124,110,240,.2);border-radius:10px;padding:12px;margin-bottom:14px;display:none;">
-    <div style="font-size:12px;font-weight:600;color:#a89cf7;">Linked</div>
-    <div id="linked-email" style="font-size:11px;margin-top:3px;"></div>
-    <div id="linked-tier" style="font-size:10px;color:rgba(240,240,248,.4);margin-top:2px;"></div>
-    <button onclick="unlinkAccount()" style="width:100%;padding:6px;background:transparent;border:1px solid rgba(255,255,255,.12);border-radius:8px;color:rgba(240,240,248,.5);font-size:10px;cursor:pointer;margin-top:8px;">Unlink Account</button>
+  <!-- ── Account Link ── -->
+  <div class="account-box" id="account-box">
+    <div id="account-unlinked">
+      <div style="font-size:12px;font-weight:600;margin-bottom:6px;">Link your account</div>
+      <input type="password" id="api-key-input" class="key-input" placeholder="Paste your API key" autocomplete="off"/>
+      <button id="link-btn" class="link-btn active">Link Account</button>
+      <div class="hint">Get your key at <a href="#" id="dashboard-link" style="color:#a89cf7;" target="_blank">your dashboard</a></div>
+      <div id="link-error" class="err-text"></div>
+    </div>
+    <div id="account-linked" style="display:none;">
+      <div class="linked-badge">
+        <div class="linked-check">✓</div>
+        <div>
+          <div id="linked-email" style="font-size:12px;font-weight:600;color:#5de0c5;"></div>
+          <div id="linked-tier-text" style="font-size:10px;color:rgba(240,240,248,.4);margin-top:1px;"></div>
+        </div>
+      </div>
+      <input type="password" id="api-key-display" class="key-input" value="************************" disabled/>
+      <button id="link-btn-disabled" class="link-btn disabled" disabled>Account Linked</button>
+      <button id="unlink-btn" class="unlink-btn">Unlink Account</button>
+    </div>
   </div>
 
   <div class="count" id="count">0</div>
@@ -75,7 +129,7 @@
   <div class="toggle">
     <div>
       <div class="toggle-label">Local mode</div>
-      <div class="toggle-sub">Use localhost:8080 instead of cloud</div>
+      <div class="toggle-sub">Use localhost:8181 instead of cloud</div>
     </div>
     <label class="switch">
       <input type="checkbox" id="toggle-local"/>
@@ -83,14 +137,9 @@
     </label>
   </div>
 
-  <a id="view-btn" class="view-btn" href="https://clsplusplus.onrender.com/memory.html" target="_blank">
+  <a id="view-btn" class="view-btn" href="#" target="_blank">
     View My Memories →
   </a>
-
-  <div class="status">
-    <div class="status-dot" id="status-dot" style="background:#5de0c5"></div>
-    <span id="status-text">Connected</span>
-  </div>
 
 <script src="popup.js"></script>
 </body>

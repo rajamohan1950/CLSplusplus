@@ -5,12 +5,16 @@ const MEMORY_PREFIX = '[MEMORY — VERIFIED USER FACTS]';
 // Detect API endpoint: localStorage pages use localhost, AI sites check storage flag.
 let CLSPP_API = 'https://clsplusplus.onrender.com';
 if (typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) {
-  CLSPP_API = `http://${location.hostname}:${location.port || '8080'}`;
+  CLSPP_API = `http://${location.hostname}:${location.port || '8181'}`;
 }
 // Override to localhost if user toggled "Local mode" in popup
-chrome.storage.local.get('cls_local', (r) => {
-  if (r.cls_local) CLSPP_API = 'http://localhost:8080';
-});
+try {
+  chrome.storage.local.get(['cls_local', 'cls_api_url'], (r) => {
+    if (!r) return;
+    if (r.cls_api_url) CLSPP_API = r.cls_api_url;
+    else if (r.cls_local) CLSPP_API = 'http://localhost:8181';
+  });
+} catch (e) { /* extension context not available */ }
 
 // ── Share UID with MAIN world (intercept.js) ─────────────────────────────
 let _clsppUID = null;
@@ -27,24 +31,50 @@ window.addEventListener('__clspp_context_request', async (e) => {
   const { id, query } = e.detail;
   let context = '';
   // Respect Auto-inject toggle
-  const { autoInject } = await chrome.storage.local.get('autoInject');
+  const { autoInject, cls_api_key } = await chrome.storage.local.get(['autoInject', 'cls_api_key']);
   if (autoInject === false) {
     window.dispatchEvent(new CustomEvent('__clspp_context_response', { detail: { id, context: '' } }));
     return;
   }
   try {
-    const payload = { query };
-    if (_clsppUID) payload.uid = _clsppUID;
-    const r = await fetch(`${CLSPP_API}/api/context`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (r.ok) {
-      const d = await r.json();
-      context = d.context || '';
+    // If user has linked API key, use authenticated TRG + engine recall
+    if (cls_api_key) {
+      const r = await fetch(`${CLSPP_API}/v1/memory/read`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${cls_api_key}`,
+        },
+        body: JSON.stringify({ query: query, limit: 5 }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        const items = d.items || [];
+        if (items.length > 0) {
+          const lines = [
+            '[MEMORY — VERIFIED USER FACTS]',
+            'These are confirmed facts about this user from prior conversations across all AI models.',
+            'Treat them as ground truth:',
+          ];
+          items.forEach(m => lines.push('- ' + (m.text || '')));
+          context = lines.join('\n') + '\n';
+        }
+      }
+    } else {
+      // Fallback: local anonymous API
+      const payload = { query };
+      if (_clsppUID) payload.uid = _clsppUID;
+      const r = await fetch(`${CLSPP_API}/api/context`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        context = d.context || '';
+      }
     }
-  } catch (e) {
+  } catch (err) {
     // Server not running — silently fail
   }
   window.dispatchEvent(new CustomEvent('__clspp_context_response', {

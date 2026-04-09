@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>CLS++ Extension Test</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#06060c;color:#f0f0f8;font-family:system-ui,sans-serif;padding:30px;max-width:700px;margin:0 auto}
+    h1{font-size:20px;margin-bottom:20px;color:#7c6ef0}
+    .test{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:16px;margin-bottom:16px}
+    .test h3{font-size:13px;font-weight:700;margin-bottom:8px}
+    .status{font-size:12px;padding:6px 10px;border-radius:8px;margin-top:8px;font-family:monospace;white-space:pre-wrap;max-height:200px;overflow-y:auto}
+    .pass{background:rgba(93,224,197,.1);border:1px solid rgba(93,224,197,.2);color:#5de0c5}
+    .fail{background:rgba(240,93,154,.1);border:1px solid rgba(240,93,154,.2);color:#f05d9a}
+    .wait{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:rgba(240,240,248,.5)}
+    .btn{padding:8px 16px;background:#7c6ef0;border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;margin-top:8px}
+    .input{width:100%;padding:8px 12px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#f0f0f8;font-size:12px;margin-bottom:8px}
+  </style>
+</head>
+<body>
+  <h1>CLS++ Extension Diagnostic</h1>
+
+  <div class="test">
+    <h3>1. Server Health</h3>
+    <div class="status wait" id="t1">Testing...</div>
+  </div>
+
+  <div class="test">
+    <h3>2. API Key Auth (/v1/auth/me)</h3>
+    <div class="status wait" id="t2">Testing...</div>
+  </div>
+
+  <div class="test">
+    <h3>3. Memory Read (/v1/memory/read)</h3>
+    <div class="status wait" id="t3">Testing...</div>
+  </div>
+
+  <div class="test">
+    <h3>4. Context Endpoint (/api/context)</h3>
+    <div class="status wait" id="t4">Testing...</div>
+  </div>
+
+  <div class="test">
+    <h3>5. Extension Bridge (content_common.js)</h3>
+    <div class="status wait" id="t5">Waiting for extension bridge...</div>
+  </div>
+
+  <div class="test">
+    <h3>6. Extension Context Injection Test</h3>
+    <input class="input" id="test-query" placeholder="Type a query like: who comes to raj house" value="who comes to raj house on birthday"/>
+    <button class="btn" id="test-btn">Test Context Injection</button>
+    <div class="status wait" id="t6">Click button to test</div>
+  </div>
+
+  <div class="test">
+    <h3>7. Chrome Storage State</h3>
+    <div class="status wait" id="t7">Checking...</div>
+  </div>
+
+<script>
+const API = window.location.origin;
+
+function setStatus(id, cls, text) {
+  const el = document.getElementById(id);
+  el.className = 'status ' + cls;
+  el.textContent = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
+}
+
+// Test 1: Server health
+fetch(API + '/health').then(r => r.json()).then(d => {
+  setStatus('t1', 'pass', 'Server OK: ' + JSON.stringify(d));
+}).catch(e => setStatus('t1', 'fail', 'Server unreachable: ' + e));
+
+// Test 2: Auth
+fetch(API + '/v1/auth/me', {
+  headers: {'Authorization': 'Bearer cls_live_y1tVT3zjyMftM0xLYoVfCgnt2qDXPOcYsuPcZ1ItJR4'}
+}).then(r => r.json()).then(d => {
+  if (d.email) setStatus('t2', 'pass', 'User: ' + d.email + ' | Tier: ' + d.tier + ' | NS: ' + d.namespace);
+  else setStatus('t2', 'fail', 'Auth failed: ' + JSON.stringify(d));
+}).catch(e => setStatus('t2', 'fail', 'Auth error: ' + e));
+
+// Test 3: Memory read
+fetch(API + '/v1/memory/read', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer cls_live_y1tVT3zjyMftM0xLYoVfCgnt2qDXPOcYsuPcZ1ItJR4'},
+  body: JSON.stringify({query: 'raj dingu ruchi birthday perfume movies', limit: 5})
+}).then(r => r.json()).then(d => {
+  const items = d.items || [];
+  const texts = items.map(i => '- ' + i.text.slice(0, 80)).join('\n');
+  setStatus('t3', items.length > 0 ? 'pass' : 'fail', items.length + ' memories found:\n' + texts);
+}).catch(e => setStatus('t3', 'fail', 'Read error: ' + e));
+
+// Test 4: Context endpoint
+fetch(API + '/api/context', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({query: 'who comes to raj house birthday', uid: 'user-79a40cd1'})
+}).then(r => r.json()).then(d => {
+  setStatus('t4', d.count > 0 ? 'pass' : 'fail', 'Count: ' + d.count + '\n' + (d.context || '(empty)').slice(0, 300));
+}).catch(e => setStatus('t4', 'fail', 'Context error: ' + e));
+
+// Test 5: Extension bridge
+let bridgeReady = false;
+window.addEventListener('__clspp_bridge_ready', () => {
+  bridgeReady = true;
+  setStatus('t5', 'pass', 'Extension bridge connected! content_common.js is loaded.');
+});
+setTimeout(() => {
+  if (!bridgeReady) setStatus('t5', 'fail', 'Extension bridge NOT detected.\nMake sure:\n1. Extension is loaded in chrome://extensions\n2. This page is on localhost (extension needs host_permissions)\n3. Reload this page after loading extension');
+}, 3000);
+
+// Test 6: Context injection via extension bridge
+document.getElementById('test-btn').addEventListener('click', () => {
+  const query = document.getElementById('test-query').value;
+  setStatus('t6', 'wait', 'Requesting context from extension bridge...');
+
+  const id = Date.now();
+  const timer = setTimeout(() => {
+    setStatus('t6', 'fail', 'Extension bridge timeout (4s).\nThe extension content script did NOT respond.\nCheck:\n1. Is extension loaded?\n2. Is Local mode ON?\n3. Is API key linked?');
+  }, 4000);
+
+  window.addEventListener('__clspp_context_response', function handler(e) {
+    if (e.detail.id !== id) return;
+    window.removeEventListener('__clspp_context_response', handler);
+    clearTimeout(timer);
+    const ctx = e.detail.context || '';
+    if (ctx) {
+      setStatus('t6', 'pass', 'INJECTION WORKING!\n\nContext that would be prepended to your prompt:\n\n' + ctx.slice(0, 500));
+    } else {
+      setStatus('t6', 'fail', 'Extension returned EMPTY context.\nCheck:\n1. Is Auto-inject toggled ON?\n2. Is the API key linked?\n3. Open extension popup and check status');
+    }
+  });
+
+  window.dispatchEvent(new CustomEvent('__clspp_context_request', {
+    detail: { id, query }
+  }));
+});
+
+// Test 7: Chrome storage
+if (typeof chrome !== 'undefined' && chrome.storage) {
+  chrome.storage.local.get(['cls_local', 'cls_api_key', 'cls_user', 'cls_api_url', 'autoInject'], (r) => {
+    setStatus('t7', r.cls_api_key ? 'pass' : 'fail',
+      'cls_local: ' + (r.cls_local || false) +
+      '\ncls_api_url: ' + (r.cls_api_url || '(not set)') +
+      '\ncls_api_key: ' + (r.cls_api_key ? r.cls_api_key.slice(0,12) + '...' : 'NOT SET') +
+      '\ncls_user: ' + (r.cls_user ? r.cls_user.email : 'NOT LINKED') +
+      '\nautoInject: ' + (r.autoInject !== false));
+  });
+} else {
+  setStatus('t7', 'fail', 'chrome.storage not available.\nThis test must run from the extension context.\nOpen this page at: ' + API + '/extension-test.html');
+}
+</script>
+</body>
+</html>

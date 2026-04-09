@@ -428,3 +428,35 @@ class UserProfileUpdateRequest(BaseModel):
     email: Optional[str] = Field(default=None, max_length=256)
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     current_password: Optional[str] = Field(default=None, max_length=128)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Prompt Ingestion — Cross-LLM Context Pipeline
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class PromptEntryModel(BaseModel):
+    """A single prompt/response in a conversation."""
+    role: str = Field(..., pattern="^(user|assistant|system)$")
+    content: str = Field(..., min_length=1, max_length=MAX_TEXT_LEN)
+    sequence_num: int = Field(default=0, ge=0)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class PromptIngestRequest(BaseModel):
+    """Batch ingest prompts from an LLM session.
+
+    Called by Claude Code hooks, browser extension, SDKs.
+    Supports batch ingestion for efficiency (single HTTP call per hook fire).
+    """
+    session_id: str = Field(..., min_length=1, max_length=128)
+    entries: list[PromptEntryModel] = Field(..., min_length=1, max_length=200)
+    llm_provider: str = Field(default="unknown", max_length=64)
+    llm_model: Optional[str] = Field(default=None, max_length=128)
+    client_type: str = Field(default="hook", max_length=32)
+    namespace: str = Field(default="default", min_length=1, max_length=MAX_NAMESPACE_LEN)
+
+    @field_validator("namespace")
+    @classmethod
+    def ns_valid(cls, v: str) -> str:
+        return _validate_namespace(v)

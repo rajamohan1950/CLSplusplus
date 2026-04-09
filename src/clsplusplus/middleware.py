@@ -49,12 +49,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
     """Dual auth: API key (Bearer) or JWT cookie (cls_session).
 
     Sets request.state.api_key when API key is valid.
+    Sets request.state.namespace when key resolves to an integration.
     Sets request.state.user_id, user_email, is_admin when JWT is valid.
     """
 
-    def __init__(self, app, settings: Settings):
+    def __init__(self, app, settings: Settings, integration_store=None):
         super().__init__(app)
         self.settings = settings
+        self.integration_store = integration_store
 
     async def dispatch(self, request: Request, call_next) -> Response:
         if _is_public(request.url.path, request.method):
@@ -63,11 +65,25 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # --- Path 1: API key auth ---
         auth_header = request.headers.get("Authorization")
         key = get_api_key_from_request(auth_header)
-        if key and validate_api_key(key, self.settings):
-            request.state.api_key = key
-            # API key users get all scopes (legacy compat — scoped keys enforced via integration store)
-            request.state.scopes = None  # None = no enforcement (backward compat)
-            return await call_next(request)
+
+        if key:
+            # 1a: Check legacy env-var keys
+            if validate_api_key(key, self.settings):
+                request.state.api_key = key
+                request.state.scopes = None  # backward compat
+                return await call_next(request)
+
+            # 1b: Check database-stored keys (integration store)
+            if self.integration_store:
+                try:
+                    namespace = await self.integration_store.resolve_namespace_from_key(key)
+                    if namespace:
+                        request.state.api_key = key
+                        request.state.namespace = namespace
+                        request.state.scopes = None
+                        return await call_next(request)
+                except Exception:
+                    pass  # DB failure — fall through to JWT or 401
 
         # --- Path 2: JWT cookie auth ---
         if self.settings.jwt_secret:
