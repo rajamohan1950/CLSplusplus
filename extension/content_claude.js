@@ -1,9 +1,13 @@
 // CLS++ content script — Claude (claude.ai)
-// CAPTURE: watches DOM for messages and stores them to CLS++ production.
-// INJECT: handled by intercept.js (fetch hook, payload-based detection).
+// TWO JOBS:
+// 1. CAPTURE messages from DOM → store to CLS++ production
+// 2. Attempt to inject via fetch intercept (intercept.js handles this)
+//    If intercept fails, memories still available via proxy/MCP/Claude Code
 
 const SITE = 'claude';
 const _seen = new Set();
+
+// ── JOB 1: CAPTURE ──────────────────────────────────────────────────────
 
 function getAllMessages() {
   const msgs = [];
@@ -68,4 +72,4 @@ function startWatching() {
 if (document.readyState === 'complete') startWatching();
 else window.addEventListener('load', startWatching);
 
-console.log('[CLS++] Claude capture loaded');
+console.log('[CLS++] Claude loaded (capture + intercept.js handles injection)');
