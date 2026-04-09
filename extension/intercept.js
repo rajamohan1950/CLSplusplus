@@ -1,10 +1,7 @@
-// CLS++ Fetch Interceptor — runs in MAIN world at document_start
-// Hooks window.fetch BEFORE any page code can capture a reference.
-// When the page sends a message to the LLM API, this intercept:
-// 1. Extracts the user's query from the request body
-// 2. Requests memory context via CustomEvent bridge (CSP-safe)
-// 3. Prepends the memory context to the user's message
-// The user sees NOTHING — injection happens at the API payload level.
+// CLS++ Fetch Interceptor v3 — Hardened
+// Runs in MAIN world at document_start.
+// Hooks window.fetch AND XMLHttpRequest for maximum coverage.
+// Visual indicator shows when memory is injected.
 
 (function () {
   'use strict';
@@ -13,29 +10,45 @@
 
   const _origFetch = window.fetch;
 
-  // Detect which site we're on
+  // Detect site
   const host = location.hostname;
   let site = 'unknown';
   if (host.includes('chatgpt') || host.includes('chat.openai')) site = 'chatgpt';
   else if (host.includes('claude.ai')) site = 'claude';
   else if (host.includes('gemini.google')) site = 'gemini';
-  // Local E2E harness (prototype/extension-e2e.html + extension/e2e/)
-  else if (
-    (host === 'localhost' || host === '127.0.0.1') &&
-    location.pathname.includes('extension-e2e')
-  ) {
+  else if ((host === 'localhost' || host === '127.0.0.1') &&
+    (location.pathname.includes('extension-e2e') || location.pathname.includes('chat-test'))) {
     site = 'e2e';
   }
 
-  // ── Context bridge: request from content script (bypasses page CSP) ─────
-  // MAIN world can't fetch localhost on sites with strict CSP (ChatGPT).
-  // So we ask the ISOLATED world content script to fetch for us.
+  // ── Visual injection indicator ─────────────────────────────────────────
+  // Shows a small green banner when memory is successfully injected
+  function showInjectionBanner(count) {
+    let banner = document.getElementById('__clspp_banner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = '__clspp_banner';
+      banner.style.cssText = 'position:fixed;top:8px;right:8px;z-index:999999;' +
+        'background:rgba(16,24,16,0.95);border:1px solid rgba(93,224,197,0.4);' +
+        'border-radius:8px;padding:6px 12px;font-size:12px;font-family:system-ui;' +
+        'color:#5de0c5;pointer-events:none;transition:opacity 0.3s;opacity:0;' +
+        'box-shadow:0 4px 12px rgba(0,0,0,0.3);display:flex;align-items:center;gap:6px;';
+      document.body.appendChild(banner);
+    }
+    banner.innerHTML = '<span style="font-size:14px">🧠</span> CLS++ injected ' + count + ' memories';
+    banner.style.opacity = '1';
+    clearTimeout(banner._timer);
+    banner._timer = setTimeout(() => { banner.style.opacity = '0'; }, 3000);
+  }
+
+  // ── Context bridge ─────────────────────────────────────────────────────
   let _ctxId = 0;
   const _ctxCallbacks = {};
   let _bridgeReady = false;
 
   window.addEventListener('__clspp_bridge_ready', () => { _bridgeReady = true; });
   window.addEventListener('__clspp_context_response', (e) => {
+    if (!e.detail) return;
     const { id, context } = e.detail;
     if (_ctxCallbacks[id]) {
       _ctxCallbacks[id](context || '');
@@ -43,56 +56,44 @@
     }
   });
 
-  // Wait for bridge to be ready (content_common.js loaded), then dispatch
-  function _dispatchContextRequest(id, query) {
-    window.dispatchEvent(new CustomEvent('__clspp_context_request', {
-      detail: { id, query }
-    }));
-  }
-
   function getContext(query) {
     return new Promise((resolve) => {
       const id = ++_ctxId;
+      // Shorter timeout: 3s. Don't delay user's message too long.
       const timer = setTimeout(() => {
         delete _ctxCallbacks[id];
+        console.log('[CLS++] Context bridge timeout — sending without memory');
         resolve('');
-      }, 4000);
+      }, 3000);
       _ctxCallbacks[id] = (ctx) => {
         clearTimeout(timer);
         resolve(ctx);
       };
+      const dispatch = () => {
+        window.dispatchEvent(new CustomEvent('__clspp_context_request', {
+          detail: { id, query }
+        }));
+      };
       if (_bridgeReady) {
-        _dispatchContextRequest(id, query);
+        dispatch();
       } else {
-        // Bridge not ready yet — wait up to 2s for it, then dispatch
-        const waitForBridge = () => {
-          _dispatchContextRequest(id, query);
-        };
-        const bridgeListener = () => {
+        const bridgeTimer = setTimeout(dispatch, 1500);
+        window.addEventListener('__clspp_bridge_ready', () => {
           clearTimeout(bridgeTimer);
-          waitForBridge();
-        };
-        const bridgeTimer = setTimeout(waitForBridge, 2000);
-        window.addEventListener('__clspp_bridge_ready', bridgeListener, { once: true });
+          dispatch();
+        }, { once: true });
       }
     });
   }
 
-  // ── Normalize fetch arguments ──────────────────────────────────────────
-  // Handles both fetch(url, opts) and fetch(Request) patterns
+  // ── Normalize fetch args ───────────────────────────────────────────────
   async function normalizeFetchArgs(args) {
-    let url = '';
-    let method = 'GET';
-    let body = null;
-
+    let url = '', method = 'GET', body = null;
     if (args[0] instanceof Request) {
       const req = args[0];
       url = req.url;
       method = req.method;
-      try {
-        const clone = req.clone();
-        body = await clone.text();
-      } catch (e) {}
+      try { body = await req.clone().text(); } catch (e) {}
       if (args[1] && args[1].body) {
         body = typeof args[1].body === 'string' ? args[1].body : null;
         method = args[1].method || method;
@@ -103,67 +104,97 @@
       method = opts.method || 'GET';
       body = typeof opts.body === 'string' ? opts.body : null;
     }
-
     return { url, method, body };
   }
 
-  // ── Rebuild fetch arguments with new body ─────────────────────────────
   function rebuildFetchArgs(args, newBody) {
     if (args[0] instanceof Request) {
-      const orig = args[0];
-      const newReq = new Request(orig, { body: newBody });
-      return [newReq];
-    } else {
-      const opts = { ...(args[1] || {}), body: newBody };
-      return [args[0], opts];
+      return [new Request(args[0], { body: newBody })];
     }
+    return [args[0], { ...(args[1] || {}), body: newBody }];
   }
 
-  // ── ChatGPT interceptor ──────────────────────────────────────────────────
-  function isChatGPTConversation(url) {
-    return (
-      typeof url === 'string' &&
-      (url.includes('/backend-api/conversation') ||
-        url.includes('/backend-api/f/conversation'))
+  // ── URL matchers — broadened for 2026 API changes ─────────────────────
+
+  function isChatGPTUrl(url) {
+    return typeof url === 'string' && (
+      url.includes('/backend-api/conversation') ||
+      url.includes('/backend-api/f/conversation') ||
+      url.includes('/backend-api/ce/conversation') ||
+      // Catch any future /backend-api/ conversation variants
+      (url.includes('/backend-api/') && url.includes('conversation'))
     );
   }
+
+  function isClaudeUrl(url) {
+    return typeof url === 'string' && url.includes('/api/') && (
+      url.includes('/chat_conversations/') ||
+      url.includes('/completion') ||
+      url.includes('/messages') ||
+      url.includes('/chat/') ||
+      // Claude.ai uses organization-scoped endpoints
+      url.includes('/organizations/') && (url.includes('/chat') || url.includes('/completion'))
+    );
+  }
+
+  function isGeminiUrl(url) {
+    return typeof url === 'string' && (
+      url.includes('batchexecute') ||
+      url.includes('BardFrontendService') ||
+      url.includes('StreamGenerate')
+    );
+  }
+
+  function isTargetUrl(rawUrl) {
+    const u = typeof rawUrl === 'string' ? rawUrl : (rawUrl instanceof Request ? rawUrl.url : '');
+    if (site === 'chatgpt') return isChatGPTUrl(u);
+    if (site === 'claude') return isClaudeUrl(u);
+    if (site === 'gemini') return isGeminiUrl(u);
+    if (site === 'e2e') return isChatGPTUrl(u) || isClaudeUrl(u);
+    return false;
+  }
+
+  // ── Query extractors ──────────────────────────────────────────────────
 
   function extractChatGPTQuery(body) {
     try {
       const b = JSON.parse(body);
+      // Standard: messages[].content.parts[]
       const msgs = b.messages;
-      if (!msgs || !msgs.length) return null;
-      const last = msgs[msgs.length - 1];
-      const parts = last && last.content && last.content.parts;
-      if (parts && typeof parts[0] === 'string' && parts[0].length > 3) {
-        return { parsed: b, query: parts[0], parts };
+      if (msgs && msgs.length) {
+        const last = msgs[msgs.length - 1];
+        const parts = last && last.content && last.content.parts;
+        if (parts && typeof parts[0] === 'string' && parts[0].length > 3) {
+          return { parsed: b, query: parts[0], parts, type: 'parts' };
+        }
+        // Alternative: messages[].content as string
+        if (last && typeof last.content === 'string' && last.content.length > 3) {
+          return { parsed: b, query: last.content, msg: last, type: 'string' };
+        }
+      }
+      // Fallback: prompt field
+      if (typeof b.prompt === 'string' && b.prompt.length > 3) {
+        return { parsed: b, query: b.prompt, type: 'prompt' };
       }
     } catch (e) {}
     return null;
   }
 
-  // ── Claude interceptor ───────────────────────────────────────────────────
-  function isClaudeConversation(url) {
-    return (
-      typeof url === 'string' &&
-      url.includes('/api/') &&
-      (url.includes('/chat_conversations/') || url.includes('/completion'))
-    );
-  }
-
   function extractClaudeQuery(body) {
     try {
       const b = JSON.parse(body);
-
+      // claude.ai: prompt field
       if (typeof b.prompt === 'string' && b.prompt.length > 3) {
         return { parsed: b, query: b.prompt, field: 'prompt' };
       }
+      // claude.ai: content array with text blocks
       if (Array.isArray(b.content)) {
-        const textBlock = b.content.find(c => c.type === 'text' && c.text);
-        if (textBlock && textBlock.text.length > 3) {
-          return { parsed: b, query: textBlock.text, field: 'content', block: textBlock };
+        const tb = b.content.find(c => c.type === 'text' && c.text);
+        if (tb && tb.text.length > 3) {
+          return { parsed: b, query: tb.text, field: 'content', block: tb };
         }
       }
+      // API format: messages array
       if (Array.isArray(b.messages) && b.messages.length > 0) {
         const last = b.messages[b.messages.length - 1];
         let q = '';
@@ -179,7 +210,20 @@
     return null;
   }
 
-  function injectClaudeContext(ex, ctx) {
+  // ── Injectors ─────────────────────────────────────────────────────────
+
+  function injectChatGPT(ex, ctx) {
+    if (ex.type === 'parts') {
+      ex.parts[0] = ctx + '\n\n' + ex.query;
+    } else if (ex.type === 'string') {
+      ex.msg.content = ctx + '\n\n' + ex.query;
+    } else if (ex.type === 'prompt') {
+      ex.parsed.prompt = ctx + '\n\n' + ex.query;
+    }
+    return JSON.stringify(ex.parsed);
+  }
+
+  function injectClaude(ex, ctx) {
     const b = ex.parsed;
     if (ex.field === 'prompt') {
       b.prompt = ctx + '\n\n' + b.prompt;
@@ -197,14 +241,6 @@
       }
     }
     return JSON.stringify(b);
-  }
-
-  // ── Gemini interceptor ───────────────────────────────────────────────────
-  function isGeminiConversation(url) {
-    return (
-      typeof url === 'string' &&
-      (url.includes('batchexecute') || url.includes('BardFrontendService'))
-    );
   }
 
   function extractGeminiQuery(body) {
@@ -230,88 +266,72 @@
     return null;
   }
 
-  // ── Quick URL check (synchronous, no async overhead) ────────────────────
-  function _isTargetUrl(rawUrl) {
-    const u = typeof rawUrl === 'string' ? rawUrl : (rawUrl instanceof Request ? rawUrl.url : '');
-    if (site === 'chatgpt') return u.includes('/backend-api/conversation') || u.includes('/backend-api/f/conversation');
-    if (site === 'claude') return u.includes('/api/') && (u.includes('/chat_conversations/') || u.includes('/completion'));
-    if (site === 'gemini') return u.includes('batchexecute') || u.includes('BardFrontendService');
-    if (site === 'e2e') return u.includes('/chat_conversations/') || u.includes('/backend-api/conversation') || u.includes('/backend-api/f/conversation');
-    return false;
+  // ── Count memories in context block ────────────────────────────────────
+  function countMemories(ctx) {
+    if (!ctx) return 0;
+    return (ctx.match(/^- /gm) || []).length;
   }
 
-  // ── Main fetch hook ──────────────────────────────────────────────────────
+  // ── Main fetch hook ────────────────────────────────────────────────────
   window.fetch = function (...args) {
-    const rawUrl = typeof args[0] === 'string' ? args[0] : (args[0] instanceof Request ? args[0].url : '');
-
-    // Log ALL POST requests to find the real API endpoint
-    if (args[1] && args[1].method === 'POST' || (args[0] instanceof Request && args[0].method === 'POST')) {
-      console.log('[CLS++ INTERCEPT] POST detected:', rawUrl.slice(0, 120), 'site=' + site, 'isTarget=' + _isTargetUrl(args[0]));
-    }
-
-    // Fast path: if URL doesn't match our targets, pass through immediately
-    if (!_isTargetUrl(args[0])) {
+    if (!isTargetUrl(args[0])) {
       return _origFetch.apply(this, args);
     }
 
-    console.log('[CLS++ INTERCEPT] TARGET URL matched:', rawUrl.slice(0, 120));
-
-    // Slow path: only for LLM API calls — async intercept
     return (async () => {
       const { url: urlStr, method, body } = await normalizeFetchArgs(args);
-      console.log('[CLS++ INTERCEPT] Normalized:', method, urlStr.slice(0, 120), 'bodyLen=' + (body ? body.length : 0));
 
       if (method === 'POST' && body) {
         try {
-          // ChatGPT (+ local E2E uses same payload shape)
-          if ((site === 'chatgpt' || site === 'e2e') && isChatGPTConversation(urlStr)) {
+          let ctx = '';
+          let injected = false;
+
+          // ChatGPT
+          if ((site === 'chatgpt' || site === 'e2e') && isChatGPTUrl(urlStr)) {
             const ex = extractChatGPTQuery(body);
-            console.log('[CLS++ INTERCEPT] ChatGPT extract:', ex ? 'query="' + ex.query.slice(0, 60) + '"' : 'FAILED to extract');
             if (ex) {
-              console.log('[CLS++ INTERCEPT] Requesting context for:', ex.query.slice(0, 60));
-              const ctx = await getContext(ex.query);
-              console.log('[CLS++ INTERCEPT] Context received:', ctx ? ctx.length + ' chars' : 'EMPTY');
+              ctx = await getContext(ex.query);
               if (ctx) {
-                ex.parts[0] = ctx + '\n\n' + ex.query;
-                args = rebuildFetchArgs(args, JSON.stringify(ex.parsed));
-                console.log('[CLS++] CONTEXT INJECTED into ChatGPT! (' + ctx.length + ' chars)');
-                window.dispatchEvent(new CustomEvent('__clspp_telemetry', { detail: { event: 'context_injected', site: 'chatgpt' } }));
+                args = rebuildFetchArgs(args, injectChatGPT(ex, ctx));
+                injected = true;
               }
             }
           }
 
-          // Claude (+ local E2E)
-          if ((site === 'claude' || site === 'e2e') && isClaudeConversation(urlStr)) {
+          // Claude
+          if ((site === 'claude' || site === 'e2e') && isClaudeUrl(urlStr)) {
             const ex = extractClaudeQuery(body);
-            console.log('[CLS++ INTERCEPT] Claude extract:', ex ? 'query="' + ex.query.slice(0, 60) + '" field=' + ex.field : 'FAILED to extract');
             if (ex) {
-              const ctx = await getContext(ex.query);
-              console.log('[CLS++ INTERCEPT] Context received:', ctx ? ctx.length + ' chars' : 'EMPTY');
+              ctx = await getContext(ex.query);
               if (ctx) {
-                const newBody = injectClaudeContext(ex, ctx);
-                args = rebuildFetchArgs(args, newBody);
-                console.log('[CLS++] CONTEXT INJECTED into Claude! (' + ctx.length + ' chars)');
-                window.dispatchEvent(new CustomEvent('__clspp_telemetry', { detail: { event: 'context_injected', site: 'claude' } }));
+                args = rebuildFetchArgs(args, injectClaude(ex, ctx));
+                injected = true;
               }
             }
           }
 
           // Gemini
-          if (site === 'gemini' && isGeminiConversation(urlStr)) {
+          if (site === 'gemini' && isGeminiUrl(urlStr)) {
             const ex = extractGeminiQuery(body);
-            console.log('[CLS++ INTERCEPT] Gemini extract:', ex ? 'query="' + ex.query.slice(0, 60) + '"' : 'FAILED');
             if (ex) {
-              const ctx = await getContext(ex.query);
+              ctx = await getContext(ex.query);
               if (ctx) {
-                const newBody = ex.body.replace(ex.query, ctx + '\n\n' + ex.query);
-                args = rebuildFetchArgs(args, newBody);
-                console.log('[CLS++] CONTEXT INJECTED into Gemini!');
-                window.dispatchEvent(new CustomEvent('__clspp_telemetry', { detail: { event: 'context_injected', site: 'gemini' } }));
+                args = rebuildFetchArgs(args, ex.body.replace(ex.query, ctx + '\n\n' + ex.query));
+                injected = true;
               }
             }
           }
+
+          if (injected) {
+            const n = countMemories(ctx);
+            showInjectionBanner(n);
+            console.log('[CLS++] Memory injected into ' + site + ': ' + n + ' facts');
+            window.dispatchEvent(new CustomEvent('__clspp_telemetry', {
+              detail: { event: 'context_injected', site }
+            }));
+          }
         } catch (e) {
-          console.error('[CLS++ INTERCEPT] ERROR:', e);
+          console.error('[CLS++] Intercept error:', e);
         }
       }
 
@@ -319,5 +339,25 @@
     })();
   };
 
-  console.log('[CLS++] fetch interceptor active on', site);
+  // ── Also hook XMLHttpRequest for sites that don't use fetch ────────────
+  const _origXHROpen = XMLHttpRequest.prototype.open;
+  const _origXHRSend = XMLHttpRequest.prototype.send;
+
+  XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+    this._clsppUrl = url;
+    this._clsppMethod = method;
+    return _origXHROpen.call(this, method, url, ...rest);
+  };
+
+  XMLHttpRequest.prototype.send = function (body) {
+    // Only intercept POST to target URLs
+    if (this._clsppMethod === 'POST' && typeof body === 'string' && isTargetUrl(this._clsppUrl)) {
+      console.log('[CLS++ XHR] Target POST detected:', (this._clsppUrl || '').slice(0, 80));
+      // For XHR, we can't easily make it async.
+      // Log it so we know it's happening, but delegate to fetch hook.
+    }
+    return _origXHRSend.call(this, body);
+  };
+
+  console.log('[CLS++] Interceptor v3 active on ' + site + ' (fetch + XHR)');
 })();

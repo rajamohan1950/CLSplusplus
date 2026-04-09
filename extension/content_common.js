@@ -3,7 +3,7 @@
 
 const MEMORY_PREFIX = '[MEMORY — VERIFIED USER FACTS]';
 // Detect API endpoint: localStorage pages use localhost, AI sites check storage flag.
-let CLSPP_API = 'https://clsplusplus.onrender.com';
+let CLSPP_API = 'https://www.clsplusplus.com';
 if (typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) {
   CLSPP_API = `http://${location.hostname}:${location.port || '8181'}`;
 }

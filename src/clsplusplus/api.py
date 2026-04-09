@@ -262,29 +262,47 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             result = await memory_service.read(req, trace_id=tid)
             items = result.items or []
 
+            # ── Layer 2b: Always supplement with L1 kNN to catch facts the
+            # engine consolidated away. Short personal facts like "dingu comes
+            # on her birthday" get merged by the engine's dedup but L1 keeps
+            # the original verbatim text. ──
+            try:
+                query_emb = memory_service.embedding_service.embed(req.query)
+                l1_items = await memory_service.l1.read(
+                    query_emb, req.namespace, limit=req.limit)
+                existing_ids = {i.id for i in items}
+                for l1_item in (l1_items or []):
+                    if l1_item.id not in existing_ids:
+                        items.append(l1_item)
+                        existing_ids.add(l1_item.id)
+                result.items = items
+            except Exception:
+                pass  # L1 supplement is best-effort
+
             # ── Quality filter: prioritize real facts over garbage schemas ──
             # L2 schemas like "[Schema: raj] raj property apartment house" are
             # token-soup abstractions. They help TRR scoring but are useless
             # as injected context. Prioritize L1 episodic memories (actual sentences)
             # and only include L2 schemas if they contain real readable content.
             real_facts = []
+            questions = []
             schema_filler = []
             for item in items:
                 text = item.text or ""
                 is_schema = text.startswith("[Schema:")
-                # Schema is garbage if it's just a list of unconnected tokens
-                # Real content has at least one verb or connecting word
+                is_question = text.rstrip().endswith("?")
                 if is_schema:
-                    # Check if schema text has actual sentence structure
                     words = text.split("]", 1)[-1].strip().split()
                     has_structure = any(len(w) > 5 for w in words) and len(words) > 3
                     if has_structure:
                         schema_filler.append(item)
-                    # else: drop garbage schemas entirely
+                elif is_question:
+                    # Questions are low-value as injected context — demote
+                    questions.append(item)
                 else:
                     real_facts.append(item)
-            # Real facts first, then quality schemas as filler
-            items = real_facts + schema_filler
+            # Priority: real statements > schemas > questions
+            items = real_facts + schema_filler + questions
             result.items = items[:req.limit]
             items = result.items
 

@@ -2,7 +2,7 @@
 // Handles identity, memory API calls, cross-tab state, and demo seeding
 
 // Use local server when CLS_LOCAL is set in storage, otherwise cloud
-let API = 'https://www.clsplusplus.com';
+let API = 'https://www.clsplusplus.com';  // Production default
 try {
   chrome.storage.local.get(['cls_local', 'cls_api_url'], (r) => {
     if (!r) return;

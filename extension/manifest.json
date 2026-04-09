@@ -6,6 +6,8 @@
 
   "permissions": ["storage", "alarms"],
   "host_permissions": [
+    "https://www.clsplusplus.com/*",
+    "https://clsplusplus.com/*",
     "https://clsplusplus.onrender.com/*",
     "https://chat.openai.com/*",
     "https://chatgpt.com/*",
@@ -75,7 +77,7 @@
       "all_frames": false
     },
     {
-      "matches": ["https://clsplusplus.onrender.com/*", "http://localhost/*", "http://127.0.0.1/*"],
+      "matches": ["https://www.clsplusplus.com/*", "https://clsplusplus.com/*", "https://clsplusplus.onrender.com/*", "http://localhost/*", "http://127.0.0.1/*"],
       "js": ["content_marker.js"],
       "run_at": "document_start",
       "all_frames": false
