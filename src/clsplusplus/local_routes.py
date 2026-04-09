@@ -245,24 +245,99 @@ def create_local_router(memory_service: MemoryService, settings: Settings, metri
         return {"ok": True}
 
     # ── OpenAI proxy ───────────────────────────────────────────────────────
+    # ── Shared: recall memories using full pipeline (TRG + engine + quality filter) ──
+    async def _recall_for_proxy(uid: str, query: str, model_name: str,
+                                session_id: str = "") -> list:
+        """Full recall pipeline for proxy injection. Returns list of fact strings."""
+        if not query or len(query.strip()) < 4:
+            return []
+
+        # 1. TRG cross-session recall (if session_id provided)
+        cross_facts = []
+        trg = getattr(memory_service, '_trg', None)
+        if trg and session_id:
+            try:
+                from clsplusplus.topical_resonance import TopicalResonanceGraph
+                cross = trg.recall_cross_session(session_id, query, uid, limit=3)
+                cross_facts = [entry.content[:200] for _, entry in cross]
+            except Exception:
+                pass
+
+        # 2. Engine search (local, sub-ms)
+        mems = engine.search(query, uid, limit=8) if query else []
+
+        # 3. Quality filter: real facts over schema garbage
+        facts = list(cross_facts)  # Cross-session first
+        for _, item in mems:
+            text = item.fact.raw_text
+            if text.startswith("[Schema:"):
+                words = text.split("]", 1)[-1].strip().split()
+                if not (any(len(w) > 5 for w in words) and len(words) > 3):
+                    continue  # Skip garbage schemas
+            facts.append(text)
+
+        _log_context(uid, model_name, query, mems)
+        return facts[:8]
+
+    def _build_system_block(facts: list) -> str:
+        """Build the system message injection block."""
+        if not facts:
+            return ""
+        lines = [
+            "[CLS++ Memory — Verified User Facts]",
+            "These are confirmed facts about this user from previous conversations across all AI models.",
+            "Treat them as ground truth. If the user asks about these, answer from memory:",
+        ]
+        for f in facts:
+            lines.append(f"• {f[:200]}")
+        return "\n".join(lines)
+
+    # ── OpenAI proxy (GPT-4o, GPT-4, o1, etc.) ────────────────────────────
     @router.post("/v1/chat/completions")
     async def openai_chat(request: Request):
         body = await request.json()
         uid = _ns(request, body)
         model_name = body.get("model", "openai")
         query = _user_text(body.get("messages", []))
-        mems = engine.search(query, uid, limit=6) if query else []
+        session_id = request.headers.get("X-Session-Id", f"proxy-openai-{uid}")
 
-        _log_context(uid, model_name, query, mems)
-        body["messages"] = _inject(body.get("messages", []), mems)
+        # Recall memories using full pipeline
+        facts = await _recall_for_proxy(uid, query, model_name, session_id)
 
-        auth = request.headers.get("Authorization") or f"Bearer {OPENAI_API_KEY}"
-        async with httpx.AsyncClient(timeout=90) as client:
-            resp = await client.post(f"{OPENAI_BASE}/v1/chat/completions",
-                json=body, headers={"Authorization": auth, "Content-Type": "application/json"})
+        # Inject as SYSTEM message (LLM must obey system, unlike user text)
+        if facts:
+            block = _build_system_block(facts)
+            msgs = list(body.get("messages", []))
+            if msgs and msgs[0].get("role") == "system":
+                msgs[0] = {**msgs[0], "content": block + "\n\n" + msgs[0]["content"]}
+            else:
+                msgs.insert(0, {"role": "system", "content": block})
+            body["messages"] = msgs
 
+        # Store user prompt into TRG + engine
         if query:
             await _store(uid, query, model_name, "user")
+
+        # Proxy to OpenAI
+        auth = request.headers.get("Authorization") or f"Bearer {OPENAI_API_KEY}"
+        is_stream = body.get("stream", False)
+
+        async with httpx.AsyncClient(timeout=90) as client:
+            if is_stream:
+                # Streaming: forward chunks as Server-Sent Events
+                async with client.stream("POST", f"{OPENAI_BASE}/v1/chat/completions",
+                    json=body, headers={"Authorization": auth, "Content-Type": "application/json"}) as upstream:
+                    async def generate():
+                        async for chunk in upstream.aiter_bytes():
+                            yield chunk
+                    return StreamingResponse(generate(),
+                        media_type="text/event-stream",
+                        status_code=upstream.status_code)
+            else:
+                resp = await client.post(f"{OPENAI_BASE}/v1/chat/completions",
+                    json=body, headers={"Authorization": auth, "Content-Type": "application/json"})
+
+        # Extract assistant facts for memory
         try:
             content = resp.json()["choices"][0]["message"]["content"]
             for f in _assistant_facts(content):
@@ -272,30 +347,56 @@ def create_local_router(memory_service: MemoryService, settings: Settings, metri
         await _ext_metric(uid, "ext_llm_proxy_openai")
         return Response(content=resp.content, media_type="application/json", status_code=resp.status_code)
 
-    # ── Anthropic proxy ────────────────────────────────────────────────────
+    # ── Anthropic proxy (Claude Sonnet, Opus, Haiku, etc.) ─────────────────
     @router.post("/v1/messages")
     async def anthropic_messages(request: Request):
         body = await request.json()
         uid = _ns(request, body)
         model_name = body.get("model", "claude")
         query = _user_text(body.get("messages", []))
-        mems = engine.search(query, uid, limit=6) if query else []
+        session_id = request.headers.get("X-Session-Id", f"proxy-claude-{uid}")
 
-        _log_context(uid, model_name, query, mems)
-        if mems:
-            mem_block = "[CLS++ Memory]\n" + "\n".join(f"• {i.fact.raw_text}" for _, i in mems)
-            body["system"] = (mem_block + "\n\n" + body.get("system", "")).strip()
+        # Recall memories using full pipeline
+        facts = await _recall_for_proxy(uid, query, model_name, session_id)
 
+        # Inject as SYSTEM instruction (Anthropic uses top-level "system" field)
+        if facts:
+            block = _build_system_block(facts)
+            existing_system = body.get("system", "")
+            if isinstance(existing_system, list):
+                # Claude can have system as array of content blocks
+                existing_system = " ".join(
+                    b.get("text", "") for b in existing_system if isinstance(b, dict))
+            body["system"] = (block + "\n\n" + existing_system).strip()
+
+        # Store user prompt
+        if query:
+            await _store(uid, query, model_name, "user")
+
+        # Proxy to Anthropic
         auth_key = (request.headers.get("x-api-key")
                     or request.headers.get("Authorization", "").replace("Bearer ", "")
                     or ANTHROPIC_API_KEY)
-        async with httpx.AsyncClient(timeout=90) as client:
-            resp = await client.post(f"{ANTHROPIC_BASE}/v1/messages", json=body,
-                headers={"x-api-key": auth_key, "anthropic-version": "2023-06-01",
-                         "Content-Type": "application/json"})
+        is_stream = body.get("stream", False)
 
-        if query:
-            await _store(uid, query, model_name, "user")
+        async with httpx.AsyncClient(timeout=90) as client:
+            if is_stream:
+                async with client.stream("POST", f"{ANTHROPIC_BASE}/v1/messages",
+                    json=body,
+                    headers={"x-api-key": auth_key, "anthropic-version": "2023-06-01",
+                             "Content-Type": "application/json"}) as upstream:
+                    async def generate():
+                        async for chunk in upstream.aiter_bytes():
+                            yield chunk
+                    return StreamingResponse(generate(),
+                        media_type="text/event-stream",
+                        status_code=upstream.status_code)
+            else:
+                resp = await client.post(f"{ANTHROPIC_BASE}/v1/messages", json=body,
+                    headers={"x-api-key": auth_key, "anthropic-version": "2023-06-01",
+                             "Content-Type": "application/json"})
+
+        # Extract assistant facts
         try:
             content = resp.json()["content"][0]["text"]
             for f in _assistant_facts(content):
