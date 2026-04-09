@@ -160,6 +160,29 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     searchMemories(msg.query, msg.limit || 5).then(sendResponse);
     return true;
   }
+  if (msg.type === 'FETCH_MEMORIES') {
+    // Route /v1/memory/read through background to avoid CORS
+    (async () => {
+      const apiKey = _cachedApiKey || (await chrome.storage.local.get('cls_api_key')).cls_api_key;
+      if (!apiKey) { sendResponse({ items: [] }); return; }
+      try {
+        const r = await fetch(`${API}/v1/memory/read`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+          body: JSON.stringify({ query: msg.query || '*', limit: msg.limit || 10 }),
+        });
+        if (r.ok) {
+          const d = await r.json();
+          sendResponse({ items: d.items || [] });
+        } else {
+          sendResponse({ items: [] });
+        }
+      } catch (e) {
+        sendResponse({ items: [] });
+      }
+    })();
+    return true;
+  }
   if (msg.type === 'STORE_MESSAGE') {
     const tabId = sender && sender.tab ? sender.tab.id : null;
     storeMessage(msg.text, msg.source, msg.model, tabId).then(() => sendResponse({ ok: true }));

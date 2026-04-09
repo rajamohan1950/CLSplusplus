@@ -36,46 +36,26 @@ window.addEventListener('__clspp_context_request', async (e) => {
     window.dispatchEvent(new CustomEvent('__clspp_context_response', { detail: { id, context: '' } }));
     return;
   }
+  // Route ALL API calls through background.js service worker (no CORS issues)
   try {
-    // If user has linked API key, use authenticated TRG + engine recall
-    if (cls_api_key) {
-      const r = await fetch(`${CLSPP_API}/v1/memory/read`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${cls_api_key}`,
-        },
-        body: JSON.stringify({ query: query, limit: 5 }),
-      });
-      if (r.ok) {
-        const d = await r.json();
-        const items = d.items || [];
-        if (items.length > 0) {
-          const lines = [
-            '[MEMORY — VERIFIED USER FACTS]',
-            'These are confirmed facts about this user from prior conversations across all AI models.',
-            'Treat them as ground truth:',
-          ];
-          items.forEach(m => lines.push('- ' + (m.text || '')));
-          context = lines.join('\n') + '\n';
-        }
-      }
-    } else {
-      // Fallback: local anonymous API
-      const payload = { query };
-      if (_clsppUID) payload.uid = _clsppUID;
-      const r = await fetch(`${CLSPP_API}/api/context`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (r.ok) {
-        const d = await r.json();
-        context = d.context || '';
-      }
+    const resp = await new Promise((resolve) => {
+      chrome.runtime.sendMessage(
+        { type: 'FETCH_MEMORIES', query: query, limit: 5 },
+        (r) => resolve(r || { items: [] })
+      );
+    });
+    const items = resp.items || [];
+    if (items.length > 0) {
+      const lines = [
+        '[MEMORY — VERIFIED USER FACTS]',
+        'These are confirmed facts about this user from prior conversations across all AI models.',
+        'Treat them as ground truth:',
+      ];
+      items.forEach(m => lines.push('- ' + (m.text || '')));
+      context = lines.join('\n') + '\n';
     }
   } catch (err) {
-    // Server not running — silently fail
+    // Background service worker not available
   }
   window.dispatchEvent(new CustomEvent('__clspp_context_response', {
     detail: { id, context }
