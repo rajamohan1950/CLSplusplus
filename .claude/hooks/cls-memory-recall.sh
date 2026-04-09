@@ -5,6 +5,16 @@
 
 set -euo pipefail
 
+# Load API key from file if not in environment
+if [ -z "${CLS_API_KEY:-}" ] && [ -f "$HOME/.cls_api_key" ]; then
+  CLS_API_KEY=$(cat "$HOME/.cls_api_key")
+fi
+
+# Load API URL from file if not in environment
+if [ -z "${CLS_API_URL:-}" ] && [ -f "$HOME/.cls_api_url" ]; then
+  CLS_API_URL=$(cat "$HOME/.cls_api_url")
+fi
+
 # Skip if no API key configured
 if [ -z "${CLS_API_KEY:-}" ]; then
   exit 0
@@ -22,7 +32,6 @@ RESPONSE=$(curl -s --max-time 8 \
   -H "Content-Type: application/json" \
   -d '{
     "query": "Claude Code development session context, recent work, decisions, and status",
-    "namespace": "claude-code",
     "limit": 15
   }' 2>/dev/null) || exit 0
 

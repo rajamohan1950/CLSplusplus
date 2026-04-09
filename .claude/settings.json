@@ -1,17 +1,5 @@
 {
   "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/cls-memory-recall.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
     "Stop": [
       {
         "matcher": "",
@@ -19,7 +7,7 @@
           {
             "type": "command",
             "command": ".claude/hooks/cls-memory-store.sh",
-            "timeout": 10
+            "timeout": 15
           }
         ]
       }

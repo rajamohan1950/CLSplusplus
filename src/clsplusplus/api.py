@@ -31,6 +31,7 @@ from clsplusplus.models import (
     HealthResponse,
     IntegrationCreate,
     MemoryCycleRequest,
+    PromptIngestRequest,
     RazorpayVerifyRequest,
     ReadRequest,
     ReadResponse,
@@ -51,8 +52,27 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     settings = settings or Settings()
     memory_service = MemoryService(settings)
     sleep_orchestrator = SleepOrchestrator(settings, engine=memory_service.engine)
-    integration_service = IntegrationService(settings)
+    from clsplusplus.stores.integration_store import IntegrationStore
+    _integration_store = IntegrationStore(settings)
+    integration_service = IntegrationService(settings, store=_integration_store)
     user_service = UserService(settings)
+
+    # Context log for authenticated API reads (Claude Code hooks, etc.)
+    from collections import defaultdict
+    _api_context_log: dict[str, list[dict]] = defaultdict(list)
+
+    # ── Topical Resonance Graph — cross-LLM session coupling ──
+    from clsplusplus.topical_resonance import TopicalResonanceGraph
+    _trg = TopicalResonanceGraph(engine=memory_service.engine)
+
+    # ── Prompt Log & Context Log — persistent stores (Tier 2) ──
+    from clsplusplus.prompt_log import PromptLogStore, ContextLogStore
+    _prompt_log = PromptLogStore(settings)
+    _context_log_store = ContextLogStore(settings)
+
+    # ── Namespace Resolver — canonical namespace unification ──
+    from clsplusplus.namespace_resolver import NamespaceResolver
+    _namespace_resolver = NamespaceResolver(settings)
 
     app = FastAPI(
         title="CLS++ API",
@@ -62,22 +82,19 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         redoc_url="/redoc",
     )
 
-    cors_origins = [
-        settings.site_base_url,
-        settings.site_base_url.replace("www.", ""),  # allow both www and non-www
-    ] if settings.site_base_url else ["*"]
+    cors_origins = ["*"]  # Allow all origins — Chrome extensions, localhost, production
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
-        allow_credentials=True,
+        allow_credentials=False,  # Must be False when allow_origins=["*"]
         allow_methods=["GET", "POST", "DELETE", "OPTIONS", "HEAD"],
-        allow_headers=["Content-Type", "Authorization", "X-Request-Id", "X-Trace-Id"],
+        allow_headers=["Content-Type", "Authorization", "X-Request-Id", "X-Trace-Id", "X-Session-Id"],
         expose_headers=["X-Request-Id", "X-RateLimit-Limit", "X-RateLimit-Remaining"],
     )
     # Middleware execution order: outermost (added last) runs first.
     # TracingMiddleware → RequestId → RateLimit → Auth → Quota → route handler
     app.add_middleware(QuotaMiddleware, settings=settings)
-    app.add_middleware(AuthMiddleware, settings=settings)
+    app.add_middleware(AuthMiddleware, settings=settings, integration_store=_integration_store)
     app.add_middleware(RateLimitMiddleware, settings=settings)
     app.add_middleware(RequestIdMiddleware)
     app.add_middleware(TracingMiddleware)  # outermost: traces every /v1/* request
@@ -117,6 +134,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             or getattr(request.state, "request_id", None)
             or str(__import__("uuid").uuid4())
         )
+
+    def _resolve_namespace(req, request: Request):
+        """Override namespace with the API key's integration namespace when default."""
+        if req.namespace == "default":
+            ns = getattr(request.state, "namespace", None)
+            if ns:
+                req.namespace = ns
 
     # Detect website directory (in Docker: /app/website, local dev: ../website relative to src)
     _website_dir = os.environ.get("CLS_WEBSITE_DIR")
@@ -172,6 +196,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.post("/v1/memory/write")
     async def write_memory(req: WriteRequest, request: Request):
         """Write memory. Flows to L0, promotes to L1 if score warrants."""
+        _resolve_namespace(req, request)
         tid = _trace_id(request)
         with tracer.span(tid, "api.write", "api",
                          input=req.text[:200],
@@ -185,6 +210,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.post("/v1/memories/encode")
     async def encode_memory(req: WriteRequest, request: Request):
         """Product alias: POST /memories/encode -> write."""
+        _resolve_namespace(req, request)
         tid = _trace_id(request)
         with tracer.span(tid, "api.encode", "api",
                          input=req.text[:200],
@@ -197,22 +223,126 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.post("/v1/memory/read", response_model=ReadResponse)
     async def read_memory(req: ReadRequest, request: Request):
-        """Read memories by semantic query across all stores."""
+        """Read memories by semantic query across all stores + TRG cross-session.
+
+        Cascade recall:
+          1. TRG cross-session prompts (topically filtered, <0.1ms)
+          2. PhaseMemoryEngine + L1/L2/L3 (thermodynamic retrieval, <1ms hot)
+          3. Phase-weighted merge
+        """
+        _resolve_namespace(req, request)
         tid = _trace_id(request)
+        _t0 = _time.monotonic()
+
         with tracer.span(tid, "api.read", "api",
                          input=req.query[:200],
                          namespace=req.namespace, limit=req.limit) as api_hop:
+
+            # ── Layer 1: TRG cross-session recall (topically gated) ──
+            session_id = request.headers.get("X-Session-Id", "")
+            cross_items = []
+            if session_id:
+                from clsplusplus.topical_resonance import PromptEntry as TRGPromptEntry
+                cross_results = _trg.recall_cross_session(
+                    session_id, req.query, req.namespace, limit=5)
+                for score, entry in cross_results:
+                    from clsplusplus.models import MemoryItem, StoreLevel
+                    cross_items.append(MemoryItem(
+                        id=f"trg-{entry.session_id[:8]}-{entry.sequence_num}",
+                        text=entry.content[:500],
+                        namespace=req.namespace,
+                        store_level=StoreLevel.L0,
+                        source=entry.llm_provider,
+                        timestamp=datetime.utcfromtimestamp(entry.timestamp),
+                        confidence=min(1.0, score),
+                        subject=f"cross-session:{entry.llm_provider}",
+                    ))
+
+            # ── Layer 2: Deep memory (PhaseMemoryEngine + L1/L2/L3) ──
             result = await memory_service.read(req, trace_id=tid)
             items = result.items or []
+
+            # ── Quality filter: prioritize real facts over garbage schemas ──
+            # L2 schemas like "[Schema: raj] raj property apartment house" are
+            # token-soup abstractions. They help TRR scoring but are useless
+            # as injected context. Prioritize L1 episodic memories (actual sentences)
+            # and only include L2 schemas if they contain real readable content.
+            real_facts = []
+            schema_filler = []
+            for item in items:
+                text = item.text or ""
+                is_schema = text.startswith("[Schema:")
+                # Schema is garbage if it's just a list of unconnected tokens
+                # Real content has at least one verb or connecting word
+                if is_schema:
+                    # Check if schema text has actual sentence structure
+                    words = text.split("]", 1)[-1].strip().split()
+                    has_structure = any(len(w) > 5 for w in words) and len(words) > 3
+                    if has_structure:
+                        schema_filler.append(item)
+                    # else: drop garbage schemas entirely
+                else:
+                    real_facts.append(item)
+            # Real facts first, then quality schemas as filler
+            items = real_facts + schema_filler
+            result.items = items[:req.limit]
+            items = result.items
+
+            # ── Layer 3: Merge — cross-session first (fresh), then deep ──
+            if cross_items:
+                cross_limit = min(len(cross_items), max(2, req.limit * 4 // 10))
+                deep_limit = req.limit - cross_limit
+                merged = cross_items[:cross_limit] + items[:deep_limit]
+                result.items = merged[:req.limit]
+                items = result.items
+
+                # ── Promotion bridge: reinforce engine items via cross-session ──
+                # Feeds back into s(t) = exp(-Δt/τ) × (1 + β·ln(1+R))
+                # driving Gas→Liquid→Solid→Glass promotion pipeline
+                _trg.reinforce_cross_session(session_id, req.query, req.namespace)
+
             preview = items[0].text[:80] if items else "no results"
-            tracer.add_metadata(tid, api_hop, output=f"{len(items)} items: {preview}")
+            tracer.add_metadata(tid, api_hop,
+                                output=f"{len(items)} items (cross={len(cross_items)}): {preview}")
+
         await _record_usage("read", request)
         result.trace_id = tid
+        latency_ms = int((_time.monotonic() - _t0) * 1000)
+
+        # Log to context log (in-memory for backward compatibility + persistent)
+        if items:
+            source = request.headers.get("User-Agent", "")
+            model = "claude-code" if "curl" in source.lower() or not source else req.namespace
+            _api_context_log[req.namespace].append({
+                "model": model,
+                "query": req.query[:120],
+                "memories_sent": [i.text for i in items],
+                "count": len(items),
+                "ts": datetime.utcnow().isoformat(),
+            })
+            if len(_api_context_log[req.namespace]) > 100:
+                _api_context_log[req.namespace] = _api_context_log[req.namespace][-100:]
+
+            # Persistent context log (fire-and-forget)
+            user_id = getattr(request.state, "user_id", None) or "anonymous"
+            asyncio.create_task(_context_log_store.append(
+                user_id=str(user_id),
+                namespace=req.namespace,
+                session_id=session_id,
+                llm_provider=model,
+                query=req.query[:500],
+                memories_sent=[i.text for i in items[:20]],
+                memory_ids=[i.id for i in items[:20]],
+                memory_count=len(items),
+                latency_ms=latency_ms,
+            ))
+
         return result
 
     @app.post("/v1/memories/retrieve", response_model=ReadResponse)
     async def retrieve_memories(req: ReadRequest, request: Request):
         """Product alias: POST /memories/retrieve -> read."""
+        _resolve_namespace(req, request)
         tid = _trace_id(request)
         with tracer.span(tid, "api.retrieve", "api",
                          input=req.query[:200],
@@ -237,6 +367,147 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         await _record_usage("retrieve", request)
         result.trace_id = tid
         return result
+
+    @app.get("/v1/context-log")
+    async def get_api_context_log(request: Request):
+        """Return context injection history for Claude Code and API consumers."""
+        ns = getattr(request.state, "namespace", None) or "default"
+        return {
+            "namespace": ns,
+            "log": list(reversed(_api_context_log.get(ns, []))),
+        }
+
+    # ── Prompt Ingestion — Cross-LLM Context Pipeline ─────────────────
+
+    @app.post("/v1/prompts/ingest")
+    async def ingest_prompts(body: PromptIngestRequest, request: Request):
+        """Batch ingest prompts from an LLM session.
+
+        Three-tier pipeline:
+          Tier 0: TopicalResonanceGraph (in-process, <0.1ms)
+          Tier 1: PhaseMemoryEngine fact extraction (in-process, <0.5ms)
+          Tier 2: prompt_log PostgreSQL (fire-and-forget, async)
+        """
+        _resolve_namespace(body, request)
+        ns = body.namespace
+        user_id = getattr(request.state, "user_id", None) or "anonymous"
+
+        for entry in body.entries:
+            content = entry.content.strip()
+            if not content:
+                continue
+
+            # Tier 0: TRG — update session oscillator + cross-session coupling
+            _trg.on_prompt(
+                session_id=body.session_id,
+                content=content,
+                llm_provider=body.llm_provider,
+                namespace=ns,
+                role=entry.role,
+                sequence_num=entry.sequence_num,
+            )
+
+            # Tier 1: Extract facts for deep memory (user messages only, >=10 chars)
+            if entry.role == "user" and len(content) >= 10:
+                asyncio.create_task(memory_service.write(
+                    WriteRequest(
+                        text=content[:1000],
+                        namespace=ns,
+                        source=body.llm_provider,
+                        metadata={"session_id": body.session_id},
+                    ),
+                ))
+
+        # Tier 2: Persist to PostgreSQL (fire-and-forget)
+        asyncio.create_task(_prompt_log.batch_append(
+            user_id=str(user_id),
+            namespace=ns,
+            session_id=body.session_id,
+            llm_provider=body.llm_provider,
+            llm_model=body.llm_model or "",
+            client_type=body.client_type,
+            entries=[{"role": e.role, "content": e.content,
+                      "sequence_num": e.sequence_num,
+                      "metadata": e.metadata} for e in body.entries],
+        ))
+
+        await _record_usage("ingest", request)
+        return {"ok": True, "count": len(body.entries)}
+
+    @app.get("/v1/prompts/sessions")
+    async def list_prompt_sessions(request: Request, limit: int = Query(20, ge=1, le=100)):
+        """List recent LLM sessions for the authenticated user."""
+        ns = getattr(request.state, "namespace", None) or "default"
+        sessions = await _prompt_log.get_user_sessions_by_namespace(ns, limit)
+        # Serialize datetime fields
+        for s in sessions:
+            for k in ("started_at", "last_at"):
+                if k in s and s[k]:
+                    s[k] = s[k].isoformat()
+        return {"sessions": sessions, "namespace": ns}
+
+    @app.get("/v1/prompts/sessions/{session_id}")
+    async def get_prompt_session(session_id: str, limit: int = Query(100, ge=1, le=500)):
+        """Get full conversation for a session."""
+        messages = await _prompt_log.get_session(session_id, limit)
+        for m in messages:
+            if "created_at" in m and m["created_at"]:
+                m["created_at"] = m["created_at"].isoformat()
+            if "user_id" in m:
+                m["user_id"] = str(m["user_id"])
+            if "id" in m:
+                m["id"] = str(m["id"])
+        return {"session_id": session_id, "messages": messages}
+
+    @app.get("/v1/prompts/timeline")
+    async def get_prompt_timeline(request: Request,
+                                  limit: int = Query(50, ge=1, le=200)):
+        """Unified timeline of all prompts across sessions."""
+        ns = getattr(request.state, "namespace", None) or "default"
+        entries = await _prompt_log.get_timeline(ns, limit)
+        for e in entries:
+            if "created_at" in e and e["created_at"]:
+                e["created_at"] = e["created_at"].isoformat()
+            if "id" in e:
+                e["id"] = str(e["id"])
+        return {"entries": entries, "namespace": ns}
+
+    @app.get("/v1/trg/state")
+    async def get_trg_state(request: Request):
+        """Debug endpoint: current Topical Resonance Graph state."""
+        return _trg.debug_state()
+
+    @app.get("/v1/memory/list")
+    async def list_memories(request: Request, limit: int = Query(100, ge=1, le=500), namespace: str = Query("")):
+        """List all memories in the authenticated namespace (no semantic search)."""
+        ns = namespace or getattr(request.state, "namespace", None) or "default"
+        await memory_service.ensure_loaded(ns)
+        engine = memory_service.engine
+        items = engine._items.get(ns, [])
+        # Filter alive items, sort by birth_order (most recent first)
+        alive = [i for i in items if i.consolidation_strength >= engine.STRENGTH_FLOOR]
+        alive.sort(key=lambda i: i.birth_order, reverse=True)
+        result_items = []
+        for i in alive[:limit]:
+            raw = i.fact.raw_text
+            # Detect Claude Code hook source from text prefix
+            source = "claude-code-hook" if raw.startswith("[User prompt]") or raw.startswith("[Assistant]") else "user"
+            result_items.append({
+                "id": i.id,
+                "text": raw,
+                "source": source,
+                "namespace": i.namespace,
+                "store_level": "L1",
+                "timestamp": str(i.event_at or ""),
+                "confidence": round(i.consolidation_strength, 3),
+                "metadata": {},
+            })
+        return {
+            "items": result_items,
+            "count": len(result_items),
+            "total": len(items),
+            "namespace": ns,
+        }
 
     @app.get("/v1/memory/item/{item_id}")
     async def get_item(
@@ -295,6 +566,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.delete("/v1/memory/forget")
     async def forget_memory(req: ForgetRequest, request: Request):
         """Delete a memory by ID (RTBF)."""
+        _resolve_namespace(req, request)
         deleted = await memory_service.delete(req.item_id, req.namespace)
         if not deleted:
             raise HTTPException(status_code=404, detail="Item not found")
@@ -304,6 +576,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.delete("/v1/memories/forget")
     async def forget_memory_alias(req: ForgetRequest, request: Request):
         """Product alias: DELETE /memories/forget."""
+        _resolve_namespace(req, request)
         deleted = await memory_service.delete(req.item_id, req.namespace)
         if not deleted:
             raise HTTPException(status_code=404, detail="Item not found")
@@ -517,8 +790,35 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.get("/v1/auth/me")
     async def get_current_user(request: Request):
-        """Get current authenticated user from JWT cookie."""
+        """Get current authenticated user from JWT cookie OR API key."""
         user_id = getattr(request.state, "user_id", None)
+
+        # If API key auth (no user_id but has namespace), resolve user from integration
+        if not user_id:
+            ns = getattr(request.state, "namespace", None)
+            api_key = getattr(request.state, "api_key", None)
+            if ns and api_key:
+                try:
+                    # Resolve: namespace → integration → owner_email → user
+                    integrations = await _integration_store.list_integrations(ns)
+                    for intg in integrations:
+                        owner_email = intg.get("owner_email")
+                        if owner_email:
+                            user = await user_service.store.get_by_email(owner_email)
+                            if user:
+                                return {
+                                    "id": str(user.get("id", "")),
+                                    "email": user.get("email", ""),
+                                    "name": user.get("name", ""),
+                                    "tier": user.get("tier", "free"),
+                                    "is_admin": user.get("is_admin", False),
+                                    "namespace": ns,
+                                    "auth_method": "api_key",
+                                }
+                            break
+                except Exception:
+                    pass
+
         if not user_id:
             raise HTTPException(status_code=401, detail="Not authenticated")
         try:

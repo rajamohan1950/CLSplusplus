@@ -52,9 +52,9 @@ VALID_EVENTS = frozenset({
 class IntegrationService:
     """Orchestrates integration management operations."""
 
-    def __init__(self, settings: Optional[Settings] = None):
+    def __init__(self, settings: Optional[Settings] = None, store: Optional[IntegrationStore] = None):
         self.settings = settings or Settings()
-        self.store = IntegrationStore(self.settings)
+        self.store = store or IntegrationStore(self.settings)
 
     async def register(self, req: IntegrationCreate) -> tuple[IntegrationResponse, ApiKeyResponse]:
         """Register a new integration. Returns (integration, first_api_key)."""

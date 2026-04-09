@@ -242,27 +242,39 @@
 
   // ── Main fetch hook ──────────────────────────────────────────────────────
   window.fetch = function (...args) {
+    const rawUrl = typeof args[0] === 'string' ? args[0] : (args[0] instanceof Request ? args[0].url : '');
+
+    // Log ALL POST requests to find the real API endpoint
+    if (args[1] && args[1].method === 'POST' || (args[0] instanceof Request && args[0].method === 'POST')) {
+      console.log('[CLS++ INTERCEPT] POST detected:', rawUrl.slice(0, 120), 'site=' + site, 'isTarget=' + _isTargetUrl(args[0]));
+    }
+
     // Fast path: if URL doesn't match our targets, pass through immediately
-    // This avoids async wrapping for ads, analytics, images, etc.
     if (!_isTargetUrl(args[0])) {
       return _origFetch.apply(this, args);
     }
 
+    console.log('[CLS++ INTERCEPT] TARGET URL matched:', rawUrl.slice(0, 120));
+
     // Slow path: only for LLM API calls — async intercept
     return (async () => {
       const { url: urlStr, method, body } = await normalizeFetchArgs(args);
+      console.log('[CLS++ INTERCEPT] Normalized:', method, urlStr.slice(0, 120), 'bodyLen=' + (body ? body.length : 0));
 
       if (method === 'POST' && body) {
         try {
           // ChatGPT (+ local E2E uses same payload shape)
           if ((site === 'chatgpt' || site === 'e2e') && isChatGPTConversation(urlStr)) {
             const ex = extractChatGPTQuery(body);
+            console.log('[CLS++ INTERCEPT] ChatGPT extract:', ex ? 'query="' + ex.query.slice(0, 60) + '"' : 'FAILED to extract');
             if (ex) {
+              console.log('[CLS++ INTERCEPT] Requesting context for:', ex.query.slice(0, 60));
               const ctx = await getContext(ex.query);
+              console.log('[CLS++ INTERCEPT] Context received:', ctx ? ctx.length + ' chars' : 'EMPTY');
               if (ctx) {
                 ex.parts[0] = ctx + '\n\n' + ex.query;
                 args = rebuildFetchArgs(args, JSON.stringify(ex.parsed));
-                console.log('[CLS++] context injected into ChatGPT');
+                console.log('[CLS++] CONTEXT INJECTED into ChatGPT! (' + ctx.length + ' chars)');
                 window.dispatchEvent(new CustomEvent('__clspp_telemetry', { detail: { event: 'context_injected', site: 'chatgpt' } }));
               }
             }
@@ -271,12 +283,14 @@
           // Claude (+ local E2E)
           if ((site === 'claude' || site === 'e2e') && isClaudeConversation(urlStr)) {
             const ex = extractClaudeQuery(body);
+            console.log('[CLS++ INTERCEPT] Claude extract:', ex ? 'query="' + ex.query.slice(0, 60) + '" field=' + ex.field : 'FAILED to extract');
             if (ex) {
               const ctx = await getContext(ex.query);
+              console.log('[CLS++ INTERCEPT] Context received:', ctx ? ctx.length + ' chars' : 'EMPTY');
               if (ctx) {
                 const newBody = injectClaudeContext(ex, ctx);
                 args = rebuildFetchArgs(args, newBody);
-                console.log('[CLS++] context injected into Claude (' + ex.field + ')');
+                console.log('[CLS++] CONTEXT INJECTED into Claude! (' + ctx.length + ' chars)');
                 window.dispatchEvent(new CustomEvent('__clspp_telemetry', { detail: { event: 'context_injected', site: 'claude' } }));
               }
             }
@@ -285,18 +299,19 @@
           // Gemini
           if (site === 'gemini' && isGeminiConversation(urlStr)) {
             const ex = extractGeminiQuery(body);
+            console.log('[CLS++ INTERCEPT] Gemini extract:', ex ? 'query="' + ex.query.slice(0, 60) + '"' : 'FAILED');
             if (ex) {
               const ctx = await getContext(ex.query);
               if (ctx) {
                 const newBody = ex.body.replace(ex.query, ctx + '\n\n' + ex.query);
                 args = rebuildFetchArgs(args, newBody);
-                console.log('[CLS++] context injected into Gemini');
+                console.log('[CLS++] CONTEXT INJECTED into Gemini!');
                 window.dispatchEvent(new CustomEvent('__clspp_telemetry', { detail: { event: 'context_injected', site: 'gemini' } }));
               }
             }
           }
         } catch (e) {
-          console.log('[CLS++] intercept error:', e);
+          console.error('[CLS++ INTERCEPT] ERROR:', e);
         }
       }
 

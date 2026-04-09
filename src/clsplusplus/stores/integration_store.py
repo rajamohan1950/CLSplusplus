@@ -93,6 +93,32 @@ class IntegrationStore:
         await conn.execute(ddl)
 
     # =========================================================================
+    # API Key → Namespace Resolution
+    # =========================================================================
+
+    async def resolve_namespace_from_key(self, raw_key: str) -> Optional[str]:
+        """Resolve an API key to its integration's namespace.
+
+        Looks up the key hash in api_credentials, joins to integrations,
+        and returns the namespace. Returns None if key is invalid, expired,
+        revoked, or the integration is deleted.
+        """
+        key_hash = _sha256_hex(raw_key)
+        pool = await self.get_pool()
+        row = await pool.fetchrow(
+            """SELECT i.namespace
+               FROM integrations i
+               JOIN api_credentials ac ON i.id = ac.integration_id
+               WHERE ac.key_hash = $1
+                 AND ac.status IN ('active', 'rotated')
+                 AND i.status != 'deleted'
+                 AND (ac.expires_at IS NULL OR ac.expires_at > now())
+                 AND (ac.status = 'active' OR ac.grace_until > now())""",
+            key_hash,
+        )
+        return row["namespace"] if row else None
+
+    # =========================================================================
     # Integrations CRUD
     # =========================================================================
 

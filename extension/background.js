@@ -3,9 +3,13 @@
 
 // Use local server when CLS_LOCAL is set in storage, otherwise cloud
 let API = 'https://clsplusplus.onrender.com';
-chrome.storage.local.get('cls_local', (r) => {
-  if (r.cls_local) API = 'http://localhost:8080';
-});
+try {
+  chrome.storage.local.get(['cls_local', 'cls_api_url'], (r) => {
+    if (!r) return;
+    if (r.cls_api_url) API = r.cls_api_url;
+    else if (r.cls_local) API = 'http://localhost:8181';
+  });
+} catch (e) { /* storage not ready yet */ }
 
 // ── User identity ──────────────────────────────────────────────────────────
 // If linked to account: use user-{id[:8]} namespace
@@ -71,15 +75,54 @@ async function searchMemories(query, limit = 5) {
   } catch (_) { return []; }
 }
 
-async function storeMessage(text, source, model) {
+// Session tracking for TRG — one session_id per browser tab per site
+const _tabSessions = {};
+function getSessionId(model, tabId) {
+  const key = `${model}-${tabId || 'default'}`;
+  if (!_tabSessions[key]) {
+    _tabSessions[key] = `ext-${model}-${Date.now().toString(36)}`;
+  }
+  return _tabSessions[key];
+}
+
+let _seqCounter = 0;
+
+async function storeMessage(text, source, model, tabId) {
   const uid = await getUID();
+  const headers = await getAuthHeaders();
+
+  // 1. Store via local API (existing extension path — backward compatible)
   try {
     await fetch(`${API}/api/store/${uid}`, {
       method: 'POST',
-      headers: await getAuthHeaders(),
+      headers,
       body: JSON.stringify({ text, source, model }),
     });
   } catch (_) {}
+
+  // 2. Also feed into TRG + PhaseMemoryEngine via authenticated path
+  //    This bridges ChatGPT/Gemini/Claude browser sessions into cross-LLM recall
+  if (_cachedApiKey) {
+    const sessionId = getSessionId(model, tabId);
+    _seqCounter++;
+    try {
+      await fetch(`${API}/v1/prompts/ingest`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          session_id: sessionId,
+          llm_provider: model || 'unknown',
+          llm_model: model || 'unknown',
+          client_type: 'extension',
+          entries: [{
+            role: source === 'user' ? 'user' : 'assistant',
+            content: text.slice(0, 2000),
+            sequence_num: _seqCounter,
+          }],
+        }),
+      });
+    } catch (_) {}
+  }
 }
 
 async function getMemoryCount() {
@@ -100,7 +143,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
   if (msg.type === 'STORE_MESSAGE') {
-    storeMessage(msg.text, msg.source, msg.model).then(() => sendResponse({ ok: true }));
+    const tabId = sender && sender.tab ? sender.tab.id : null;
+    storeMessage(msg.text, msg.source, msg.model, tabId).then(() => sendResponse({ ok: true }));
     return true;
   }
   if (msg.type === 'GET_COUNT') {
@@ -140,8 +184,8 @@ setInterval(updateBadge, 10000);
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
     logTelemetry('install');
-    fetch('http://localhost:8080/health').then(r => {
-      if (r.ok) chrome.tabs.create({ url: 'http://localhost:8080/ui/memory.html' });
+    fetch('http://localhost:8181/health').then(r => {
+      if (r.ok) chrome.tabs.create({ url: 'http://localhost:8181/memory.html' });
       else chrome.tabs.create({ url: 'https://clsplusplus.onrender.com/install.html' });
     }).catch(() => {
       chrome.tabs.create({ url: 'https://clsplusplus.onrender.com/install.html' });

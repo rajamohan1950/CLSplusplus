@@ -300,14 +300,16 @@ const CAT_META = {
 };
 
 const MODEL_META = {
-  'claude-haiku-4-5':{label:'Claude Haiku',color:'#cc785c'},
-  'claude':          {label:'Claude',      color:'#cc785c'},
-  'gpt-4o-mini':     {label:'GPT-4o mini', color:'#19c37d'},
-  'gpt-4o':          {label:'GPT-4o',      color:'#19c37d'},
-  'chatgpt':         {label:'ChatGPT',     color:'#19c37d'},
-  'openai':          {label:'OpenAI',      color:'#19c37d'},
-  'gemini':          {label:'Gemini',      color:'#4285f4'},
-  'copilot':         {label:'Copilot',     color:'#2564cf'},
+  'claude-code':     {label:'Claude Code',  color:'#e88c6a'},
+  'claude-code-hook':{label:'Claude Code',  color:'#e88c6a'},
+  'claude-haiku-4-5':{label:'Claude Haiku', color:'#cc785c'},
+  'claude':          {label:'Claude',       color:'#cc785c'},
+  'gpt-4o-mini':     {label:'GPT-4o mini',  color:'#19c37d'},
+  'gpt-4o':          {label:'GPT-4o',       color:'#19c37d'},
+  'chatgpt':         {label:'ChatGPT',      color:'#19c37d'},
+  'openai':          {label:'OpenAI',       color:'#19c37d'},
+  'gemini':          {label:'Gemini',       color:'#4285f4'},
+  'copilot':         {label:'Copilot',      color:'#2564cf'},
 };
 
 function modelMeta(m) {
@@ -323,28 +325,32 @@ async function loadMemories() {
     var user = (typeof CLSAuth !== 'undefined') ? await CLSAuth.getUser() : null;
     if (user) {
       var ns = 'user-' + user.id.slice(0, 8);
-      var authResp = await fetch(API + '/v1/memory/read', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      var authResp = await fetch(API + '/v1/memory/list?limit=200&namespace=' + encodeURIComponent(ns), {
         credentials: 'same-origin',
-        body: JSON.stringify({ query: '*', namespace: ns, limit: 100 }),
       });
       if (authResp.ok) {
         var authData = await authResp.json();
         var items = authData.items || [];
         // Convert to memory viewer format
         var converted = items.map(function(item) {
+          // Detect Claude Code hook source from text prefix or source field
+          var isCCHook = item.source === 'claude-code-hook'
+            || (item.text && (item.text.startsWith('[User prompt]') || item.text.startsWith('[Assistant]')));
+          var model = isCCHook ? 'claude-code' : (item.source || 'api');
+          var ts = item.timestamp || item.event_at || '';
+          // Use current time if no timestamp (prevents "Invalid Date")
+          if (!ts || ts === 'None' || ts === '') ts = new Date().toISOString();
           return {
             id: item.id,
             text: item.text,
             fact: item.text,
             category: (item.metadata && item.metadata.category) || classify_simple(item.text),
-            source_model: item.source || 'api',
-            source: item.source || 'user',
+            source_model: model,
+            source: isCCHook ? 'claude-code' : (item.source || 'user'),
             strength: item.confidence || 0.5,
             phase: (item.store_level === 'L0') ? 'gas' : (item.store_level === 'L2') ? 'solid' : (item.store_level === 'L3') ? 'glass' : 'liquid',
             layer: item.store_level || 'L1',
-            ts: item.timestamp || item.event_at || '',
+            ts: ts,
           };
         });
         // Merge with extension memories (if any)
@@ -514,40 +520,61 @@ document.getElementById('search').addEventListener('input', renderMemories);
 // ── Context log modal ──────────────────────────────────────
 async function loadContextLog() {
   try {
-    const r = await fetch(`${API}/api/context-log`);
-    const d = await r.json();
-    const log = d.log || [];
+    // Fetch from both extension local API and authenticated API (Claude Code hooks)
+    const [extResp, apiResp] = await Promise.allSettled([
+      fetch(`${API}/api/context-log`),
+      fetch(`${API}/v1/context-log`),
+    ]);
+
+    let log = [];
+    if (extResp.status === 'fulfilled' && extResp.value.ok) {
+      const d = await extResp.value.json();
+      (d.log || []).forEach(e => { e._src = 'extension'; log.push(e); });
+    }
+    if (apiResp.status === 'fulfilled' && apiResp.value.ok) {
+      const d = await apiResp.value.json();
+      (d.log || []).forEach(e => { e._src = 'api'; log.push(e); });
+    }
+
+    // Sort by timestamp descending
+    log.sort((a, b) => new Date(b.ts) - new Date(a.ts));
+
     const el = document.getElementById('ctx-log');
     if (!log.length) {
       el.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:20px;text-align:center">
-        No context bridges yet. Chat in another tab to see memory injection logs.</div>`;
+        No context bridges yet. Chat in Claude Code or another tab to see memory injection logs.</div>`;
       return;
     }
     el.innerHTML = '';
     log.forEach(entry => {
       const mm = modelMeta(entry.model);
       const ts = new Date(entry.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      const dt = new Date(entry.ts).toLocaleDateString([],{month:'short',day:'numeric'});
+      const srcBadge = entry._src === 'api'
+        ? '<span style="font-size:9px;background:rgba(232,140,106,.12);color:#e88c6a;padding:2px 6px;border-radius:8px;margin-left:4px">Claude Code</span>'
+        : '';
       const div = document.createElement('div');
       div.className = 'ctx-entry';
       div.innerHTML = `
         <div class="ctx-head">
           <div class="model-dot" style="background:${mm.color};width:8px;height:8px;border-radius:50%"></div>
           <span class="ctx-model" style="color:${mm.color}">${mm.label}</span>
+          ${srcBadge}
           <span style="font-size:10px;background:${mm.color}18;color:${mm.color};padding:2px 7px;
             border-radius:10px">${entry.count} memor${entry.count===1?'y':'ies'} injected</span>
-          <span class="ctx-ts">${ts}</span>
+          <span class="ctx-ts">${dt} ${ts}</span>
         </div>
-        <div class="ctx-query">You: "${esc(entry.query)}"</div>
+        <div class="ctx-query">Query: "${esc(entry.query)}"</div>
         <div class="ctx-mems">
           ${entry.memories_sent.length
             ? entry.memories_sent.map(m =>
-                `<div class="ctx-mem"><div class="ctx-dot"></div><span>${esc(m.slice(0,100))}</span></div>`
+                `<div class="ctx-mem"><div class="ctx-dot"></div><span>${esc(m.slice(0,150))}</span></div>`
               ).join('')
             : '<div class="ctx-empty">No memories for this request</div>'}
         </div>`;
       el.appendChild(div);
     });
-  } catch(e) {}
+  } catch(e) { console.error('Context log load error', e); }
 }
 
 document.getElementById('btn-ctx-log').addEventListener('click', async () => {

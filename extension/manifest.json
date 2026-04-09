@@ -79,6 +79,12 @@
       "js": ["content_marker.js"],
       "run_at": "document_start",
       "all_frames": false
+    },
+    {
+      "matches": ["http://localhost/*", "http://127.0.0.1/*"],
+      "js": ["content_common.js"],
+      "run_at": "document_idle",
+      "all_frames": false
     }
   ],
 
