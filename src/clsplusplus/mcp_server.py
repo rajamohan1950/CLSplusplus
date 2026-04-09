@@ -24,6 +24,7 @@ Usage in Claude Code:
     }
   }
 
+Generate your API key at: https://www.clsplusplus.com/profile.html#keys
 Usage in Cursor/Windsurf: same pattern, different config file location.
 """
 

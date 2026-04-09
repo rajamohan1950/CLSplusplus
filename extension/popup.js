@@ -29,7 +29,7 @@ function showToast(msg, type, duration) {
 resolveAPI((api) => {
   chrome.storage.local.get(['autoInject', 'cls_local', 'cls_api_key', 'cls_user'], (r) => {
     r = r || {};
-    document.getElementById('dashboard-link').href = `${api}/dashboard.html`;
+    document.getElementById('generate-key-link').href = `${api}/profile.html#keys`;
     document.getElementById('view-btn').href = `${api}/memory.html`;
     document.getElementById('toggle-local').checked = !!r.cls_local;
     document.getElementById('toggle-inject').checked = r.autoInject !== false;
