@@ -121,6 +121,145 @@ function setTextareaValue(el, text) {
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// INVISIBLE DOM PREPEND — Foolproof cross-LLM memory injection
+//
+// Pre-fetches memories every 30s into a cache. When user presses Enter
+// or clicks Send, synchronously prepends cached context into the input
+// field BEFORE the page reads it. Works on ChatGPT, Claude, Gemini.
+//
+// Uses capture phase (fires BEFORE page handlers) — no fetch hooks needed.
+// ══════════════════════════════════════════════════════════════════════════
+
+let _cachedContext = '';
+let _lastCacheTime = 0;
+const CACHE_INTERVAL = 30000; // 30 seconds
+const CONTEXT_PREFIX = '[MEMORY — VERIFIED USER FACTS]\nAnswer using these confirmed facts about this user:\n';
+const CONTEXT_SUFFIX = '\n[END MEMORY]\n\n';
+
+// Periodic cache refresh — memories always ready when user presses Enter
+async function refreshMemoryCache() {
+  try {
+    const { autoInject } = await chrome.storage.local.get('autoInject');
+    if (autoInject === false) { _cachedContext = ''; return; }
+
+    const resp = await new Promise((resolve) => {
+      chrome.runtime.sendMessage(
+        { type: 'FETCH_MEMORIES', query: 'user personal identity preferences facts relationships', limit: 8 },
+        (r) => resolve(r || { items: [] })
+      );
+    });
+    const items = (resp.items || []).filter(i => {
+      const t = i.text || '';
+      return t.length > 3 && !t.startsWith('[Schema:');
+    });
+    if (items.length > 0) {
+      _cachedContext = CONTEXT_PREFIX + items.map(i => '- ' + (i.text || '').slice(0, 200)).join('\n') + CONTEXT_SUFFIX;
+    } else {
+      _cachedContext = '';
+    }
+    _lastCacheTime = Date.now();
+    console.log('[CLS++] Memory cache refreshed:', items.length, 'facts');
+  } catch (e) {
+    // Background not available
+  }
+}
+
+// Refresh immediately, then every 30s
+refreshMemoryCache();
+setInterval(refreshMemoryCache, CACHE_INTERVAL);
+
+// ── Find the active input field on any LLM site ──────────────────────────
+function findActiveInput() {
+  // ChatGPT
+  const chatgpt = document.querySelector('#prompt-textarea, div[contenteditable="true"][id="prompt-textarea"]');
+  if (chatgpt) return chatgpt;
+
+  // Claude.ai
+  const claude = document.querySelector(
+    'div[contenteditable="true"].ProseMirror, ' +
+    'div[contenteditable="true"][data-placeholder], ' +
+    'div[contenteditable="true"][role="textbox"]'
+  );
+  if (claude) return claude;
+
+  // Gemini
+  const gemini = document.querySelector(
+    'div[contenteditable="true"][aria-label], ' +
+    'rich-textarea div[contenteditable="true"]'
+  );
+  if (gemini) return gemini;
+
+  // Generic fallback
+  return document.querySelector(
+    'textarea[placeholder], div[contenteditable="true"]'
+  );
+}
+
+// ── Prepend context into input field (works with contenteditable + textarea) ──
+function prependToInput(input) {
+  if (!_cachedContext) return false;
+  if (!input) return false;
+
+  const currentText = input.innerText || input.value || '';
+  if (currentText.length < 3) return false;
+  if (currentText.includes('[MEMORY')) return false; // Already injected
+
+  const newText = _cachedContext + currentText;
+
+  if (input.contentEditable === 'true') {
+    // contenteditable (ChatGPT, Claude, Gemini)
+    input.focus();
+    document.execCommand('selectAll', false, null);
+    document.execCommand('insertText', false, newText);
+  } else if (input.tagName === 'TEXTAREA') {
+    // textarea fallback
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    if (setter) {
+      setter.call(input, newText);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+
+  console.log('[CLS++] Memory prepended to input (' + _cachedContext.length + ' chars)');
+  return true;
+}
+
+// ── Capture-phase listeners — fire BEFORE page handlers ──────────────────
+// When user presses Enter or clicks Send, prepend cached context SYNCHRONOUSLY
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && _cachedContext) {
+    const input = findActiveInput();
+    if (input) prependToInput(input);
+  }
+}, { capture: true }); // capture: true = fires BEFORE page's event handlers
+
+// Also watch for Send button clicks
+function hookSendButton() {
+  const btns = document.querySelectorAll(
+    'button[data-testid="send-button"], ' +
+    'button[aria-label="Send prompt"], ' +
+    'button[aria-label="Send Message"], ' +
+    'button[aria-label="Send message"], ' +
+    'form button[type="submit"]'
+  );
+  btns.forEach(btn => {
+    if (btn._clsppHooked) return;
+    btn._clsppHooked = true;
+    btn.addEventListener('click', () => {
+      if (_cachedContext) {
+        const input = findActiveInput();
+        if (input) prependToInput(input);
+      }
+    }, { capture: true });
+  });
+}
+
+// Re-check for Send buttons (SPA navigation creates new DOM)
+setInterval(hookSendButton, 3000);
+hookSendButton();
+
 // ── Watch DOM for new messages ─────────────────────────────────────────────
 function watchMessages(getMessages, siteName) {
   let seen = new Set();
