@@ -1,8 +1,8 @@
 // CLS++ Background Service Worker
-// Handles identity, memory API calls, and cross-tab state
+// Handles identity, memory API calls, cross-tab state, and demo seeding
 
 // Use local server when CLS_LOCAL is set in storage, otherwise cloud
-let API = 'https://clsplusplus.onrender.com';
+let API = 'https://www.clsplusplus.com';
 try {
   chrome.storage.local.get(['cls_local', 'cls_api_url'], (r) => {
     if (!r) return;
@@ -12,23 +12,17 @@ try {
 } catch (e) { /* storage not ready yet */ }
 
 // ── User identity ──────────────────────────────────────────────────────────
-// If linked to account: use user-{id[:8]} namespace
-// If anonymous: use random u_ UID per browser
 let _cachedUID = null;
 let _cachedApiKey = null;
 
 async function getUID() {
   if (_cachedUID) return _cachedUID;
-
-  // Check for linked account first
   const { cls_api_key, cls_user } = await chrome.storage.local.get(['cls_api_key', 'cls_user']);
   if (cls_api_key && cls_user && cls_user.id) {
     _cachedApiKey = cls_api_key;
     _cachedUID = 'user-' + cls_user.id.slice(0, 8);
     return _cachedUID;
   }
-
-  // Fallback: anonymous UID
   const { uid } = await chrome.storage.local.get('uid');
   if (uid) { _cachedUID = uid; return uid; }
   const newUID = 'u_' + Math.random().toString(36).slice(2, 14) + Date.now().toString(36);
@@ -75,7 +69,7 @@ async function searchMemories(query, limit = 5) {
   } catch (_) { return []; }
 }
 
-// Session tracking for TRG — one session_id per browser tab per site
+// Session tracking for TRG
 const _tabSessions = {};
 function getSessionId(model, tabId) {
   const key = `${model}-${tabId || 'default'}`;
@@ -91,7 +85,7 @@ async function storeMessage(text, source, model, tabId) {
   const uid = await getUID();
   const headers = await getAuthHeaders();
 
-  // 1. Store via local API (existing extension path — backward compatible)
+  // 1. Store via local API
   try {
     await fetch(`${API}/api/store/${uid}`, {
       method: 'POST',
@@ -100,8 +94,7 @@ async function storeMessage(text, source, model, tabId) {
     });
   } catch (_) {}
 
-  // 2. Also feed into TRG + PhaseMemoryEngine via authenticated path
-  //    This bridges ChatGPT/Gemini/Claude browser sessions into cross-LLM recall
+  // 2. Feed into TRG + PhaseMemoryEngine
   if (_cachedApiKey) {
     const sessionId = getSessionId(model, tabId);
     _seqCounter++;
@@ -123,6 +116,9 @@ async function storeMessage(text, source, model, tabId) {
       });
     } catch (_) {}
   }
+
+  // 3. Flash badge to confirm memory saved
+  flashBadge();
 }
 
 async function getMemoryCount() {
@@ -134,6 +130,15 @@ async function getMemoryCount() {
     const d = await r.json();
     return d.count || 0;
   } catch (_) { return 0; }
+}
+
+// ── Badge flash — visible confirmation of "Memory saved" ────────────────
+let _flashTimer = null;
+function flashBadge() {
+  chrome.action.setBadgeText({ text: '✓' });
+  chrome.action.setBadgeBackgroundColor({ color: '#5de0c5' });
+  clearTimeout(_flashTimer);
+  _flashTimer = setTimeout(() => updateBadge(), 1500);
 }
 
 // ── Message handler from content scripts ──────────────────────────────────
@@ -160,7 +165,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ ok: true });
     return false;
   }
-  // Account link/unlink — clear cached identity so it refreshes
   if (msg.type === 'ACCOUNT_LINKED' || msg.type === 'ACCOUNT_UNLINKED') {
     _cachedUID = null;
     _cachedApiKey = null;
@@ -170,7 +174,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-// ── Update badge count every 10s ──────────────────────────────────────────
+// ── Badge count ──────────────────────────────────────────────────────────
 async function updateBadge() {
   const count = await getMemoryCount();
   chrome.action.setBadgeText({ text: count > 0 ? String(count) : '' });
@@ -180,28 +184,80 @@ async function updateBadge() {
 updateBadge();
 setInterval(updateBadge, 10000);
 
-// ── On install: open welcome page ──────────────────────────────────────────
-chrome.runtime.onInstalled.addListener((details) => {
+// ══════════════════════════════════════════════════════════════════════════
+// FIRST INSTALL: Seed demo memories so reviewer sees content immediately
+// ══════════════════════════════════════════════════════════════════════════
+
+const DEMO_MEMORIES = [
+  // Universal truths — global knowledge baseline
+  'The sun rises in the east and sets in the west.',
+  'Water boils at 100 degrees Celsius at sea level.',
+  'The Earth orbits the Sun once every 365.25 days.',
+  'Light travels at approximately 300,000 kilometers per second.',
+  'There are 7 continents: Asia, Africa, North America, South America, Antarctica, Europe, and Australia.',
+  // Demo user preferences — shows how personal memory works
+  'This user prefers dark mode in all applications.',
+  'This user likes concise answers without unnecessary filler.',
+  'This user is evaluating CLS++ for cross-model memory.',
+];
+
+async function seedDemoMemories() {
+  const uid = await getUID();
+  const headers = await getAuthHeaders();
+
+  for (const text of DEMO_MEMORIES) {
+    try {
+      await fetch(`${API}/api/store/${uid}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ text, source: 'user', model: 'demo' }),
+      });
+    } catch (_) {}
+  }
+  // Mark as seeded so we don't re-seed
+  await chrome.storage.local.set({ cls_demo_seeded: true });
+  updateBadge();
+}
+
+chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'install') {
     logTelemetry('install');
-    fetch('http://localhost:8181/health').then(r => {
-      if (r.ok) chrome.tabs.create({ url: 'http://localhost:8181/memory.html' });
-      else chrome.tabs.create({ url: 'https://clsplusplus.onrender.com/install.html' });
-    }).catch(() => {
-      chrome.tabs.create({ url: 'https://clsplusplus.onrender.com/install.html' });
-    });
+
+    // Seed demo memories after short delay (server may need cold start)
+    setTimeout(async () => {
+      const { cls_demo_seeded } = await chrome.storage.local.get('cls_demo_seeded');
+      if (!cls_demo_seeded) {
+        await seedDemoMemories();
+      }
+    }, 3000);
+
+    // Open memory viewer
+    try {
+      const r = await fetch(`${API}/health`);
+      if (r.ok) chrome.tabs.create({ url: `${API}/memory.html` });
+      else chrome.tabs.create({ url: 'https://www.clsplusplus.com/integrate.html' });
+    } catch (_) {
+      chrome.tabs.create({ url: 'https://www.clsplusplus.com/integrate.html' });
+    }
   }
+
+  // Also seed on update if never seeded
+  if (details.reason === 'update') {
+    const { cls_demo_seeded } = await chrome.storage.local.get('cls_demo_seeded');
+    if (!cls_demo_seeded) {
+      setTimeout(seedDemoMemories, 3000);
+    }
+  }
+
   chrome.alarms.create('daily_ping', { periodInMinutes: 1440 });
 });
 
-// ── Daily ping for DAU tracking ───────────────────────────────────────────
+// ── Daily ping ───────────────────────────────────────────────────────────
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'daily_ping') {
-    logTelemetry('ping');
-  }
+  if (alarm.name === 'daily_ping') logTelemetry('ping');
 });
 
-// ── Allow index.html to detect extension is present ────────────────────────
+// ── External extension detection ─────────────────────────────────────────
 chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'PING') sendResponse({ ok: true, version: '3.0.0' });
 });

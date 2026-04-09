@@ -8,17 +8,23 @@
       font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif;
       -webkit-font-smoothing:antialiased;padding:16px}
 
-    /* ── Top bar: server + user ── */
+    /* ── Top bar ── */
     .top-bar{display:flex;align-items:center;gap:8px;margin-bottom:14px;
-      padding:10px 12px;background:rgba(93,224,197,.06);border:1px solid rgba(93,224,197,.15);
-      border-radius:10px}
-    .top-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;
-      background:#f05d9a;box-shadow:0 0 6px #f05d9a;transition:all .3s}
-    .top-dot.online{background:#5de0c5;box-shadow:0 0 8px #5de0c5}
+      padding:10px 12px;border-radius:10px;transition:all .3s}
+    .top-bar.online{background:rgba(93,224,197,.06);border:1px solid rgba(93,224,197,.15)}
+    .top-bar.offline{background:rgba(240,93,154,.06);border:1px solid rgba(240,93,154,.15)}
+    .top-bar.connecting{background:rgba(124,110,240,.06);border:1px solid rgba(124,110,240,.15)}
+    .top-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;transition:all .3s}
+    .top-bar.online .top-dot{background:#5de0c5;box-shadow:0 0 8px #5de0c5}
+    .top-bar.offline .top-dot{background:#f05d9a;box-shadow:0 0 6px #f05d9a}
+    .top-bar.connecting .top-dot{background:#7c6ef0;box-shadow:0 0 6px #7c6ef0;animation:pulse 1.5s ease-in-out infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
     .top-info{flex:1;min-width:0}
     .top-server{font-size:10px;color:rgba(240,240,248,.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .top-user{font-size:12px;font-weight:700;color:#5de0c5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .top-user.offline{color:#f05d9a}
+    .top-user{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .top-bar.online .top-user{color:#5de0c5}
+    .top-bar.offline .top-user{color:#f05d9a}
+    .top-bar.connecting .top-user{color:#a89cf7}
     .top-tier{font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
       background:rgba(124,110,240,.15);color:#a89cf7;padding:2px 6px;border-radius:6px;flex-shrink:0}
 
@@ -27,7 +33,7 @@
     .count{font-size:36px;font-weight:800;letter-spacing:-.04em;color:#7c6ef0;margin-bottom:2px}
     .count-label{font-size:11px;color:rgba(240,240,248,.45);margin-bottom:16px}
 
-    /* ── Account section ── */
+    /* ── Account ── */
     .account-box{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);
       border-radius:10px;padding:12px;margin-bottom:14px}
     .account-box.linked{background:rgba(93,224,197,.06);border-color:rgba(93,224,197,.15)}
@@ -46,6 +52,15 @@
     .linked-badge{display:flex;align-items:center;gap:6px;margin-bottom:8px}
     .linked-check{width:16px;height:16px;background:#5de0c5;border-radius:50%;
       display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0}
+
+    /* ── Toast ── */
+    .toast{position:fixed;top:8px;left:8px;right:8px;padding:8px 12px;border-radius:8px;
+      font-size:11px;font-weight:600;text-align:center;transform:translateY(-50px);
+      opacity:0;transition:all .3s ease;z-index:100;pointer-events:none}
+    .toast.show{transform:translateY(0);opacity:1}
+    .toast.success{background:#1a3a2a;border:1px solid rgba(93,224,197,.3);color:#5de0c5}
+    .toast.error{background:#3a1a1a;border:1px solid rgba(240,93,154,.3);color:#f05d9a}
+    .toast.info{background:#1a1a3a;border:1px solid rgba(124,110,240,.3);color:#a89cf7}
 
     /* ── Toggles ── */
     .toggle{display:flex;align-items:center;justify-content:space-between;
@@ -74,12 +89,15 @@
 </head>
 <body>
 
-  <!-- ── Top Bar: Connection Status + User ── -->
-  <div class="top-bar">
+  <!-- ── Toast notification ── -->
+  <div class="toast" id="toast"></div>
+
+  <!-- ── Top Bar ── -->
+  <div class="top-bar connecting" id="top-bar">
     <div class="top-dot" id="top-dot"></div>
     <div class="top-info">
-      <div class="top-server" id="top-server">Connecting...</div>
-      <div class="top-user offline" id="top-user">Not linked</div>
+      <div class="top-server" id="top-server">Connecting to memory server...</div>
+      <div class="top-user" id="top-user">First load may take 1-2 minutes</div>
     </div>
     <div class="top-tier" id="top-tier" style="display:none">FREE</div>
   </div>
@@ -112,7 +130,7 @@
     </div>
   </div>
 
-  <div class="count" id="count">0</div>
+  <div class="count" id="count">—</div>
   <div class="count-label">memories stored</div>
 
   <div class="toggle">

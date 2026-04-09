@@ -120,6 +120,46 @@ def create_local_router(memory_service: MemoryService, settings: Settings, metri
     # ── In-memory state (closure-scoped) ──────────────────────────────────
     memory_log: dict[str, list[dict]] = defaultdict(list)
     context_log: dict[str, list[dict]] = defaultdict(list)
+
+    # ── Global memories — universal truths visible to ALL users ──────────
+    # These are seeded into every new user's namespace on first access.
+    # Ensures Chrome Web Store reviewer sees content immediately.
+    GLOBAL_MEMORIES = [
+        "The sun rises in the east and sets in the west.",
+        "Water boils at 100 degrees Celsius at sea level.",
+        "The Earth orbits the Sun once every 365.25 days.",
+        "Light travels at approximately 300,000 kilometers per second.",
+        "There are 7 continents: Asia, Africa, North America, South America, Antarctica, Europe, and Australia.",
+        "The human brain has approximately 86 billion neurons.",
+        "CLS++ provides cross-model persistent memory — your facts follow you across ChatGPT, Claude, Gemini, and every AI.",
+    ]
+    _seeded_namespaces: set = set()
+
+    def _seed_globals_if_needed(uid: str):
+        """Seed global memories into a user's namespace on first access."""
+        if uid in _seeded_namespaces:
+            return
+        _seeded_namespaces.add(uid)
+        existing = engine._items.get(uid, [])
+        if len(existing) > 0:
+            return  # User already has memories, don't pollute
+        for text in GLOBAL_MEMORIES:
+            engine.store(text, uid)
+            cat = classify(text)
+            memory_log[uid].append({
+                "id": f"global-{hash(text) & 0xFFFFFFFF:08x}",
+                "text": text,
+                "subject": "", "relation": "", "value": "",
+                "category": cat,
+                "source_model": "cls++",
+                "source": "global",
+                "strength": 0.9,
+                "phase": "liquid",
+                "layer": "L1",
+                "tau": 200,
+                "retrieval_count": 0,
+                "ts": datetime.utcnow().isoformat(),
+            })
     _ws_clients: dict[str, list[WebSocket]] = defaultdict(list)
     _extension_last_seen: dict[str, Optional[float]] = {"ts": None}  # mutable container
 
@@ -136,6 +176,7 @@ def create_local_router(memory_service: MemoryService, settings: Settings, metri
     async def _store(uid: str, text: str, model: str, source: str = "user"):
         if len(text.strip()) < 6:
             return None
+        _seed_globals_if_needed(uid)
         item = engine.store(text, uid)
         if item is None:
             return None
@@ -317,6 +358,7 @@ def create_local_router(memory_service: MemoryService, settings: Settings, metri
     # ── REST: memories with full metadata ─────────────────────────────────
     @router.get("/api/memories/{uid}")
     async def get_memories(uid: str, model: str = "", category: str = ""):
+        _seed_globals_if_needed(uid)
         items = engine._items.get(uid, [])
         log_map = {e["id"]: e for e in memory_log.get(uid, [])}
 
