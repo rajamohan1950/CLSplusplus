@@ -483,6 +483,7 @@ def create_local_router(memory_service: MemoryService, settings: Settings, metri
                 "layer": _phase_layer(phase),
                 "tau": round(getattr(item, 'tau', 0), 2),
                 "retrieval_count": getattr(item, 'retrieval_count', 0),
+                "labels": getattr(item, '_labels', []) or log_entry.get("labels", []),
                 "ts": log_entry.get("ts", ""),
             }
             entries.append(entry)
@@ -629,6 +630,89 @@ def create_local_router(memory_service: MemoryService, settings: Settings, metri
     @router.get("/api/uid")
     async def get_uid():
         return {"uid": _local_uid()}
+
+    # ── Label CRUD ────────────────────────────────────────────────────────
+
+    @router.get("/api/labels/{uid}")
+    async def get_labels(uid: str):
+        """List all unique labels for a user with counts."""
+        labels = {}
+        for item in engine._items.get(uid, []):
+            for l in getattr(item, '_labels', []):
+                labels[l] = labels.get(l, 0) + 1
+        # Also check memory_log for labels
+        for entry in memory_log.get(uid, []):
+            for l in entry.get("labels", []):
+                labels[l] = labels.get(l, 0) + 1
+        return {"labels": labels}
+
+    @router.post("/api/memories/{memory_id}/labels")
+    async def add_label_to_memory(memory_id: str, request: Request):
+        """Add a label to a memory."""
+        body = await request.json()
+        label = body.get("label", "").strip()
+        if not label:
+            return JSONResponse({"error": "label required"}, 400)
+        # Update in engine
+        for uid, items in engine._items.items():
+            for item in items:
+                if item.id == memory_id:
+                    if not hasattr(item, '_labels'):
+                        item._labels = []
+                    if label not in item._labels:
+                        item._labels.append(label)
+                    # Also update memory_log
+                    for entry in memory_log.get(uid, []):
+                        if entry.get("id") == memory_id:
+                            if "labels" not in entry:
+                                entry["labels"] = []
+                            if label not in entry["labels"]:
+                                entry["labels"].append(label)
+                    return {"ok": True, "labels": item._labels}
+        return JSONResponse({"error": "memory not found"}, 404)
+
+    @router.delete("/api/memories/{memory_id}/labels/{label}")
+    async def remove_label_from_memory(memory_id: str, label: str):
+        """Remove a label from a memory."""
+        for uid, items in engine._items.items():
+            for item in items:
+                if item.id == memory_id:
+                    if hasattr(item, '_labels'):
+                        item._labels = [l for l in item._labels if l != label]
+                    for entry in memory_log.get(uid, []):
+                        if entry.get("id") == memory_id:
+                            entry["labels"] = [l for l in entry.get("labels", []) if l != label]
+                    return {"ok": True}
+        return JSONResponse({"error": "memory not found"}, 404)
+
+    @router.put("/api/labels/{uid}/{old_label}")
+    async def rename_label(uid: str, old_label: str, request: Request):
+        """Rename a label across all memories for a user."""
+        body = await request.json()
+        new_label = body.get("new_label", "").strip()
+        if not new_label:
+            return JSONResponse({"error": "new_label required"}, 400)
+        count = 0
+        for item in engine._items.get(uid, []):
+            if hasattr(item, '_labels') and old_label in item._labels:
+                item._labels = [new_label if l == old_label else l for l in item._labels]
+                count += 1
+        for entry in memory_log.get(uid, []):
+            if old_label in entry.get("labels", []):
+                entry["labels"] = [new_label if l == old_label else l for l in entry["labels"]]
+        return {"ok": True, "renamed": count}
+
+    @router.delete("/api/labels/{uid}/{label}")
+    async def delete_label(uid: str, label: str):
+        """Delete a label from all memories for a user."""
+        count = 0
+        for item in engine._items.get(uid, []):
+            if hasattr(item, '_labels') and label in item._labels:
+                item._labels = [l for l in item._labels if l != label]
+                count += 1
+        for entry in memory_log.get(uid, []):
+            entry["labels"] = [l for l in entry.get("labels", []) if l != label]
+        return {"ok": True, "deleted": count}
 
     # ── Phase stats ────────────────────────────────────────────────────────
     @router.get("/api/phase-stats/{uid}")

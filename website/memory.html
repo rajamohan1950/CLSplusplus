@@ -4,6 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>CLS++ · Memory Viewer</title>
+  <link rel="stylesheet" href="styles.css"/>
   <script src="auth.js"></script>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -19,7 +20,7 @@
       font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;
       -webkit-font-smoothing:antialiased}
 
-    .layout{display:grid;grid-template-columns:260px 1fr;height:100vh;overflow:hidden}
+    .layout{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 56px);margin-top:56px;overflow:hidden}
 
     /* ── LEFT SIDEBAR ─────────────────────────────────── */
     .sidebar{background:var(--surface);border-right:1px solid var(--border);
@@ -70,12 +71,63 @@
     .phase-solid{background:rgba(124,110,240,.15);color:#a89cf7}
     .phase-glass{background:rgba(200,200,255,.12);color:#c8c8ff}
 
-    .sidebar-footer{margin-top:auto;padding:16px;border-top:1px solid var(--border)}
-    .btn-back{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);
-      text-decoration:none;padding:8px 12px;border-radius:8px;
-      border:1px solid var(--border);background:var(--surface2);transition:all .18s;
-      justify-content:center}
-    .btn-back:hover{color:var(--text);border-color:var(--border2)}
+    /* ── Labels ── */
+    .btn-manage-labels{width:100%;padding:6px;background:transparent;border:1px solid var(--border);
+      border-radius:8px;color:var(--muted);font-size:10px;cursor:pointer;margin-top:8px;transition:all .18s}
+    .btn-manage-labels:hover{color:var(--text);border-color:var(--border2)}
+    .label-pill{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:600;
+      padding:2px 7px;border-radius:12px;background:rgba(124,110,240,.12);color:#a89cf7;
+      border:1px solid rgba(124,110,240,.2);cursor:default;margin-right:3px;margin-bottom:3px}
+    .label-pill .lp-x{cursor:pointer;opacity:.5;font-size:10px;margin-left:2px}
+    .label-pill .lp-x:hover{opacity:1;color:#f05d9a}
+    .label-add{display:inline-flex;align-items:center;font-size:10px;color:var(--muted);
+      cursor:pointer;padding:2px 6px;border-radius:12px;border:1px dashed var(--border);
+      transition:all .15s}
+    .label-add:hover{color:var(--accent);border-color:var(--accent)}
+    .label-row{display:flex;flex-wrap:wrap;align-items:center;gap:2px;margin-bottom:6px}
+    .label-picker{position:absolute;top:100%;left:0;z-index:50;background:var(--surface2);
+      border:1px solid var(--border2);border-radius:10px;padding:8px;min-width:180px;
+      box-shadow:0 8px 24px rgba(0,0,0,.5)}
+    .label-picker input{width:100%;padding:5px 8px;background:rgba(0,0,0,.3);border:1px solid var(--border);
+      border-radius:6px;color:var(--text);font-size:11px;outline:none;margin-bottom:6px}
+    .label-picker-item{padding:4px 8px;font-size:11px;border-radius:6px;cursor:pointer;
+      color:var(--muted);transition:background .1s}
+    .label-picker-item:hover{background:rgba(124,110,240,.1);color:var(--text)}
+    .label-picker-create{padding:4px 8px;font-size:11px;color:var(--accent);cursor:pointer;
+      border-top:1px solid var(--border);margin-top:4px;padding-top:6px}
+    .label-picker-create:hover{color:var(--accent2)}
+
+    /* ── Manage Labels Modal ── */
+    .labels-modal{position:fixed;inset:0;background:rgba(6,6,12,.85);backdrop-filter:blur(4px);
+      z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px}
+    .labels-modal.hidden{display:none}
+    .labels-modal-box{background:var(--surface);border:1px solid var(--border2);border-radius:16px;
+      width:100%;max-width:400px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.5)}
+    .labels-modal-head{padding:16px 20px;border-bottom:1px solid var(--border);
+      display:flex;align-items:center;justify-content:space-between}
+    .labels-modal-head h3{font-size:14px;font-weight:700}
+    .labels-modal-body{padding:12px 20px;max-height:300px;overflow-y:auto}
+    .label-manage-row{display:flex;align-items:center;gap:8px;padding:8px 0;
+      border-bottom:1px solid var(--border)}
+    .label-manage-row:last-child{border-bottom:none}
+    .label-manage-name{flex:1;font-size:12px;color:var(--text)}
+    .label-manage-cnt{font-size:10px;color:var(--muted);background:rgba(255,255,255,.06);
+      padding:1px 6px;border-radius:8px}
+    .label-manage-btn{background:none;border:none;font-size:10px;cursor:pointer;padding:3px 6px;
+      border-radius:4px;transition:all .15s}
+    .label-manage-rename{color:var(--accent)}
+    .label-manage-rename:hover{background:rgba(124,110,240,.1)}
+    .label-manage-delete{color:#f05d9a}
+    .label-manage-delete:hover{background:rgba(240,93,154,.1)}
+
+    /* ── Sort dropdown ── */
+    .sort-select{background:var(--surface2);border:1px solid var(--border);border-radius:9px;
+      padding:7px 10px;font-size:12px;color:var(--text);outline:none;cursor:pointer}
+    .sort-select:focus{border-color:rgba(124,110,240,.5)}
+
+    /* ── Group header ── */
+    .group-header{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+      color:var(--accent);padding:12px 0 6px;border-bottom:1px solid var(--border);margin-bottom:8px}
 
     /* ── MAIN CONTENT ─────────────────────────────────── */
     .main{display:flex;flex-direction:column;overflow:hidden}
@@ -166,6 +218,23 @@
   </style>
 </head>
 <body>
+
+<!-- ── NAVBAR (consistent with all other pages) ──────────── -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+    <div class="nav-links">
+      <a href="/">Home</a>
+      <a href="/docs.html">API</a>
+      <a href="/integrate.html">Integrate</a>
+      <a href="/#pricing">Pricing</a>
+      <a href="/getting-started.html">Get Started</a>
+      <div id="nav-auth" class="nav-auth"></div>
+    </div>
+    <button class="nav-toggle" aria-label="Menu">☰</button>
+  </div>
+</nav>
+
 <div class="layout">
 
   <!-- ── LEFT SIDEBAR ──────────────────────────────────── -->
@@ -232,8 +301,17 @@
       </div>
     </div>
 
-    <div class="sidebar-footer">
-      <a href="index.html" class="btn-back">← Back to launcher</a>
+    <!-- Labels section -->
+    <div class="sidebar-section">
+      <div class="sec-label">By Label</div>
+      <div class="label-list" id="label-list">
+        <div class="cat-item active" data-label="">
+          <span class="cat-icon">🏷️</span>
+          <span class="cat-name">All Labels</span>
+          <span class="cat-cnt" id="cnt-label-all">0</span>
+        </div>
+      </div>
+      <button class="btn-manage-labels" id="btn-manage-labels">Manage Labels</button>
     </div>
   </aside>
 
@@ -246,6 +324,11 @@
       </div>
       <div class="search-row">
         <input id="search" type="text" placeholder="Search memories…" autocomplete="off"/>
+        <select class="sort-select" id="sort-select">
+          <option value="recent">Sort: Recent</option>
+          <option value="strength">Sort: Strength</option>
+          <option value="label">Sort: Label</option>
+        </select>
         <button class="btn-ctx-log" id="btn-ctx-log">
           <span style="width:6px;height:6px;border-radius:50%;background:#5de0c5;box-shadow:0 0 6px #5de0c5;display:inline-block;animation:blink 1.8s ease-in-out infinite"></span>
           Context Log
@@ -280,12 +363,28 @@
   </div>
 </div>
 
+<!-- ── MANAGE LABELS MODAL ────────────────────────────────── -->
+<div class="labels-modal hidden" id="labels-modal">
+  <div class="labels-modal-box">
+    <div class="labels-modal-head">
+      <h3>Manage Labels</h3>
+      <button class="modal-close" id="labels-modal-close">✕</button>
+    </div>
+    <div class="labels-modal-body" id="labels-modal-body">
+      <div style="font-size:12px;color:var(--muted);padding:12px;text-align:center">No labels yet</div>
+    </div>
+  </div>
+</div>
+
 <script>
 const API = window.location.origin;
 
 let allMemories = [];
 let activeModel = '';
 let activeCat   = '';
+let activeLabel = '';
+let activeSort  = 'recent';
+let allLabels   = {}; // label → count
 
 const CAT_META = {
   'Identity':     {icon:'👤',color:'#a89cf7'},
@@ -347,6 +446,7 @@ async function loadMemories() {
             category: (item.metadata && item.metadata.category) || classify_simple(item.text),
             source_model: model,
             source: isCCHook ? 'claude-code' : (item.source || 'user'),
+            labels: (item.metadata && item.metadata.labels) || [],
             strength: item.confidence || 0.5,
             phase: (item.store_level === 'L0') ? 'gas' : (item.store_level === 'L2') ? 'solid' : (item.store_level === 'L3') ? 'glass' : 'liquid',
             layer: item.store_level || 'L1',
@@ -406,54 +506,362 @@ function classify_simple(text) {
 
 function renderMemories() {
   const q = document.getElementById('search').value.toLowerCase();
-  const mems = q ? allMemories.filter(m => (m.fact||m.text).toLowerCase().includes(q)) : allMemories;
+  let mems = q ? allMemories.filter(m => (m.fact||m.text).toLowerCase().includes(q)) : [...allMemories];
+
+  // Label filter
+  if (activeLabel) {
+    mems = mems.filter(m => (m.labels || []).includes(activeLabel));
+  }
+
   const grid = document.getElementById('mem-grid');
 
   if (!mems.length) {
     grid.innerHTML = `<div class="empty">
       <div class="empty-icon">🧠</div>
-      <div style="font-size:15px;font-weight:600">Waiting for conversations…</div>
-      <div class="empty-hint">Open ChatGPT, Claude, or Gemini in another tab and start chatting.
-        Memories will appear here automatically.</div>
+      <div style="font-size:15px;font-weight:600">${activeLabel ? 'No memories with label "'+esc(activeLabel)+'"' : 'Waiting for conversations…'}</div>
+      <div class="empty-hint">${activeLabel ? 'Assign this label to memories to see them here.' : 'Open ChatGPT, Claude, or Gemini in another tab and start chatting. Memories will appear here automatically.'}</div>
     </div>`;
-    document.getElementById('main-sub').textContent = 'Listening for conversations…';
+    document.getElementById('main-sub').textContent = activeLabel ? 'Label: '+activeLabel : 'Listening for conversations…';
     return;
   }
 
+  // Sort
+  if (activeSort === 'strength') {
+    mems.sort((a, b) => b.strength - a.strength);
+  } else if (activeSort === 'label') {
+    mems.sort((a, b) => {
+      const aL = (a.labels || []).join(',') || 'zzz';
+      const bL = (b.labels || []).join(',') || 'zzz';
+      return aL.localeCompare(bL);
+    });
+  }
+  // 'recent' is default sort from server
+
+  const filterDesc = [
+    activeModel ? modelMeta(activeModel).label : '',
+    activeCat || '',
+    activeLabel ? '🏷️ ' + activeLabel : '',
+  ].filter(Boolean).join(' · ');
   document.getElementById('main-sub').textContent =
-    `${mems.length} memor${mems.length===1?'y':'ies'}${activeModel?' · '+modelMeta(activeModel).label:''}${activeCat?' · '+activeCat:''}`;
+    `${mems.length} memor${mems.length===1?'y':'ies'}${filterDesc ? ' · '+filterDesc : ''}`;
 
   grid.innerHTML = '';
-  mems.forEach((m, i) => {
-    const mm  = modelMeta(m.source_model);
-    const cm  = CAT_META[m.category] || CAT_META['General'];
-    const pct = Math.round(m.strength * 100);
-    const ts  = new Date(m.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-    const dt  = new Date(m.ts).toLocaleDateString([],{month:'short',day:'numeric'});
-    const card = document.createElement('div');
-    card.className = 'mem-card';
-    card.style.animationDelay = (i * 0.04) + 's';
-    const phase = m.phase || 'liquid';
-    const phaseLabels = {gas:'L0 Gas',liquid:'L1 Liquid',solid:'L2 Solid',glass:'L3 Glass'};
-    card.innerHTML = `
-      <div class="mem-card-head">
-        <span class="cat-badge cat-${m.category}">${cm.icon} ${m.category}</span>
-        <span class="phase-badge phase-${phase}">${phaseLabels[phase]||phase}</span>
-        <span style="font-size:10px;color:var(--muted)">${m.source==='user'?'you said':'AI said'}</span>
-        <span class="model-badge" style="background:${mm.color}18;border:1px solid ${mm.color}33;color:${mm.color}">
-          <span class="mbdot" style="background:${mm.color}"></span>${mm.label}
-        </span>
-      </div>
-      <div class="mem-text">${esc(m.fact || m.text)}</div>
-      <div class="mem-footer">
-        <span class="mem-ts">${dt} ${ts}</span>
-        <div class="strength-bar" title="${pct}%">
-          <div class="strength-fill" style="width:${pct}%;background:${mm.color}"></div>
-        </div>
-        <span class="strength-label">${pct}%</span>
-      </div>`;
-    grid.appendChild(card);
+
+  // Group by label if sort=label
+  if (activeSort === 'label') {
+    const groups = {};
+    const ungrouped = [];
+    mems.forEach(m => {
+      if (m.labels && m.labels.length) {
+        m.labels.forEach(l => {
+          if (!groups[l]) groups[l] = [];
+          groups[l].push(m);
+        });
+      } else {
+        ungrouped.push(m);
+      }
+    });
+    Object.keys(groups).sort().forEach(label => {
+      const h = document.createElement('div');
+      h.className = 'group-header';
+      h.textContent = '🏷️ ' + label + ' (' + groups[label].length + ')';
+      grid.appendChild(h);
+      groups[label].forEach((m, i) => grid.appendChild(createMemCard(m, i)));
+    });
+    if (ungrouped.length) {
+      const h = document.createElement('div');
+      h.className = 'group-header';
+      h.textContent = 'Unlabeled (' + ungrouped.length + ')';
+      grid.appendChild(h);
+      ungrouped.forEach((m, i) => grid.appendChild(createMemCard(m, i)));
+    }
+  } else {
+    mems.forEach((m, i) => grid.appendChild(createMemCard(m, i)));
+  }
+
+  // Rebuild label counts
+  buildLabelSidebar();
+}
+
+function createMemCard(m, i) {
+  const mm  = modelMeta(m.source_model);
+  const cm  = CAT_META[m.category] || CAT_META['General'];
+  const pct = Math.round(m.strength * 100);
+  const ts  = new Date(m.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const dt  = new Date(m.ts).toLocaleDateString([],{year:'numeric',month:'short',day:'numeric'});
+  const card = document.createElement('div');
+  card.className = 'mem-card';
+  card.style.animationDelay = (i * 0.04) + 's';
+  card.style.position = 'relative';
+  const phase = m.phase || 'liquid';
+  const phaseLabels = {gas:'L0 Gas',liquid:'L1 Liquid',solid:'L2 Solid',glass:'L3 Glass'};
+
+  // Label pills HTML
+  const labels = m.labels || [];
+  let labelHtml = '<div class="label-row">';
+  labels.forEach(l => {
+    labelHtml += `<span class="label-pill">${esc(l)}<span class="lp-x" data-id="${m.id}" data-label="${esc(l)}">×</span></span>`;
   });
+  labelHtml += `<span class="label-add" data-id="${m.id}">+ label</span></div>`;
+
+  card.innerHTML = `
+    <div class="mem-card-head">
+      <span class="cat-badge cat-${m.category}">${cm.icon} ${m.category}</span>
+      <span class="phase-badge phase-${phase}">${phaseLabels[phase]||phase}</span>
+      <span style="font-size:10px;color:var(--muted)">${m.source==='user'?'you said':'AI said'}</span>
+      <span class="model-badge" style="background:${mm.color}18;border:1px solid ${mm.color}33;color:${mm.color}">
+        <span class="mbdot" style="background:${mm.color}"></span>${mm.label}
+      </span>
+    </div>
+    ${labelHtml}
+    <div class="mem-text">${esc(m.fact || m.text)}</div>
+    <div class="mem-footer">
+      <span class="mem-ts">${dt} ${ts}</span>
+      <div class="strength-bar" title="${pct}%">
+        <div class="strength-fill" style="width:${pct}%;background:${mm.color}"></div>
+      </div>
+      <span class="strength-label">${pct}%</span>
+    </div>`;
+
+  // Label pill remove handler
+  card.querySelectorAll('.lp-x').forEach(x => {
+    x.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = x.dataset.id;
+      const label = x.dataset.label;
+      await removeLabel(id, label);
+    });
+  });
+
+  // Label add handler
+  card.querySelector('.label-add').addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    showLabelPicker(e.target, m.id);
+  });
+
+  return card;
+}
+
+// ── Label picker ────────────────────────────────────────────────────────
+let _activePicker = null;
+
+function showLabelPicker(anchor, memId) {
+  closeLabelPicker();
+  const picker = document.createElement('div');
+  picker.className = 'label-picker';
+  picker.style.position = 'absolute';
+
+  const existingLabels = Object.keys(allLabels).sort();
+  const mem = allMemories.find(m => m.id === memId);
+  const memLabels = new Set(mem ? (mem.labels || []) : []);
+
+  let html = '<input type="text" placeholder="Search or create label..." id="lp-search"/>';
+  existingLabels.forEach(l => {
+    if (!memLabels.has(l)) {
+      html += `<div class="label-picker-item" data-label="${esc(l)}">${esc(l)}</div>`;
+    }
+  });
+  html += '<div class="label-picker-create" id="lp-create" style="display:none">+ Create "<span id="lp-new-name"></span>"</div>';
+  picker.innerHTML = html;
+
+  // Position near anchor
+  const card = anchor.closest('.mem-card');
+  card.style.position = 'relative';
+  card.appendChild(picker);
+  _activePicker = picker;
+
+  const searchInput = picker.querySelector('#lp-search');
+  searchInput.focus();
+
+  // Click existing label
+  picker.querySelectorAll('.label-picker-item').forEach(item => {
+    item.addEventListener('click', async () => {
+      await addLabel(memId, item.dataset.label);
+      closeLabelPicker();
+    });
+  });
+
+  // Search/create
+  searchInput.addEventListener('input', () => {
+    const val = searchInput.value.trim().toLowerCase();
+    picker.querySelectorAll('.label-picker-item').forEach(item => {
+      item.style.display = item.dataset.label.toLowerCase().includes(val) ? '' : 'none';
+    });
+    const createEl = picker.querySelector('#lp-create');
+    if (val && !existingLabels.some(l => l.toLowerCase() === val) && !memLabels.has(val)) {
+      createEl.style.display = '';
+      picker.querySelector('#lp-new-name').textContent = searchInput.value.trim();
+    } else {
+      createEl.style.display = 'none';
+    }
+  });
+
+  // Create new label
+  picker.querySelector('#lp-create').addEventListener('click', async () => {
+    const name = searchInput.value.trim();
+    if (name) {
+      await addLabel(memId, name);
+      closeLabelPicker();
+    }
+  });
+
+  // Enter key to create
+  searchInput.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter') {
+      const name = searchInput.value.trim();
+      if (name) {
+        await addLabel(memId, name);
+        closeLabelPicker();
+      }
+    }
+    if (e.key === 'Escape') closeLabelPicker();
+  });
+
+  // Close on outside click — delay 300ms so the opening click doesn't immediately close it
+  setTimeout(() => {
+    document.addEventListener('click', _outsidePickerClick);
+  }, 300);
+}
+
+function _outsidePickerClick(e) {
+  if (_activePicker && !_activePicker.contains(e.target) && !e.target.classList.contains('label-add')) {
+    closeLabelPicker();
+  }
+}
+
+function closeLabelPicker() {
+  if (_activePicker) {
+    _activePicker.remove();
+    _activePicker = null;
+  }
+  document.removeEventListener('click', _outsidePickerClick);
+}
+
+// ── Label CRUD (client-side for now, persists via metadata) ─────────────
+async function addLabel(memId, label) {
+  const mem = allMemories.find(m => m.id === memId);
+  if (!mem) return;
+  if (!mem.labels) mem.labels = [];
+  if (mem.labels.includes(label)) return;
+  mem.labels.push(label);
+  // Persist to server
+  try {
+    await fetch(`${API}/api/memories/${memId}/labels`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label }),
+    });
+  } catch (e) {}
+  renderMemories();
+}
+
+async function removeLabel(memId, label) {
+  const mem = allMemories.find(m => m.id === memId);
+  if (!mem || !mem.labels) return;
+  mem.labels = mem.labels.filter(l => l !== label);
+  try {
+    await fetch(`${API}/api/memories/${memId}/labels/${encodeURIComponent(label)}`, { method: 'DELETE' });
+  } catch (e) {}
+  renderMemories();
+}
+
+function buildLabelSidebar() {
+  allLabels = {};
+  allMemories.forEach(m => {
+    (m.labels || []).forEach(l => { allLabels[l] = (allLabels[l] || 0) + 1; });
+  });
+  const list = document.getElementById('label-list');
+  const allItem = list.querySelector('[data-label=""]');
+  list.innerHTML = '';
+  list.appendChild(allItem);
+  document.getElementById('cnt-label-all').textContent = allMemories.length;
+
+  Object.keys(allLabels).sort().forEach(label => {
+    const el = document.createElement('div');
+    el.className = 'cat-item' + (activeLabel === label ? ' active' : '');
+    el.dataset.label = label;
+    el.innerHTML = `<span class="cat-icon">🏷️</span>
+      <span class="cat-name">${esc(label)}</span>
+      <span class="cat-cnt">${allLabels[label]}</span>`;
+    el.addEventListener('click', () => { activeLabel = label; refreshFilters(); });
+    list.appendChild(el);
+  });
+}
+
+// ── Manage Labels modal ─────────────────────────────────────────────────
+function openManageLabels() {
+  const body = document.getElementById('labels-modal-body');
+  const labels = Object.keys(allLabels).sort();
+  if (!labels.length) {
+    body.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:12px;text-align:center">No labels yet. Click "+ label" on any memory to create one.</div>';
+  } else {
+    body.innerHTML = '';
+    labels.forEach(label => {
+      const row = document.createElement('div');
+      row.className = 'label-manage-row';
+      row.innerHTML = `
+        <span class="label-manage-name">🏷️ ${esc(label)}</span>
+        <span class="label-manage-cnt">${allLabels[label]}</span>
+        <button class="label-manage-btn label-manage-rename" data-label="${esc(label)}">Rename</button>
+        <button class="label-manage-btn label-manage-delete" data-label="${esc(label)}">Delete</button>`;
+
+      row.querySelector('.label-manage-rename').addEventListener('click', () => {
+        const newName = prompt('Rename label "' + label + '" to:', label);
+        if (newName && newName.trim() && newName.trim() !== label) {
+          renameLabel(label, newName.trim());
+        }
+      });
+
+      row.querySelector('.label-manage-delete').addEventListener('click', () => {
+        if (confirm('Delete label "' + label + '" from all memories?')) {
+          deleteLabel(label);
+        }
+      });
+
+      body.appendChild(row);
+    });
+  }
+  document.getElementById('labels-modal').classList.remove('hidden');
+}
+
+async function renameLabel(oldName, newName) {
+  allMemories.forEach(m => {
+    if (m.labels && m.labels.includes(oldName)) {
+      m.labels = m.labels.map(l => l === oldName ? newName : l);
+    }
+  });
+  try {
+    const uid = await getViewerUID();
+    await fetch(`${API}/api/labels/${uid}/${encodeURIComponent(oldName)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ new_label: newName }),
+    });
+  } catch (e) {}
+  renderMemories();
+  openManageLabels(); // refresh modal
+}
+
+async function deleteLabel(label) {
+  allMemories.forEach(m => {
+    if (m.labels) m.labels = m.labels.filter(l => l !== label);
+  });
+  try {
+    const uid = await getViewerUID();
+    await fetch(`${API}/api/labels/${uid}/${encodeURIComponent(label)}`, { method: 'DELETE' });
+  } catch (e) {}
+  if (activeLabel === label) activeLabel = '';
+  renderMemories();
+  openManageLabels();
+}
+
+async function getViewerUID() {
+  try {
+    const r = await fetch(`${API}/api/uid`);
+    const d = await r.json();
+    return d.uid || 'anonymous';
+  } catch (e) { return 'anonymous'; }
 }
 
 function buildSidebar(d) {
@@ -502,10 +910,15 @@ function buildSidebar(d) {
 function refreshFilters() {
   document.querySelectorAll('.model-item').forEach(el =>
     el.classList.toggle('active', el.dataset.model === activeModel));
-  document.querySelectorAll('.cat-item').forEach(el =>
+  document.querySelectorAll('[data-cat]').forEach(el =>
     el.classList.toggle('active', el.dataset.cat === activeCat));
-  document.getElementById('main-title').textContent =
-    (activeModel ? modelMeta(activeModel).label : 'All') + ' · ' + (activeCat || 'All Categories');
+  document.querySelectorAll('[data-label]').forEach(el =>
+    el.classList.toggle('active', el.dataset.label === activeLabel));
+  const parts = [];
+  if (activeModel) parts.push(modelMeta(activeModel).label);
+  parts.push(activeCat || 'All Categories');
+  if (activeLabel) parts.push('🏷️ ' + activeLabel);
+  document.getElementById('main-title').textContent = parts.join(' · ');
   loadMemories();
 }
 
@@ -515,7 +928,21 @@ document.querySelector('.model-item[data-model=""]').addEventListener('click', (
 document.querySelector('.cat-item[data-cat=""]').addEventListener('click', () => {
   activeCat=''; refreshFilters();
 });
+document.querySelector('[data-label=""]').addEventListener('click', () => {
+  activeLabel=''; refreshFilters();
+});
 document.getElementById('search').addEventListener('input', renderMemories);
+document.getElementById('sort-select').addEventListener('change', (e) => {
+  activeSort = e.target.value; renderMemories();
+});
+document.getElementById('btn-manage-labels').addEventListener('click', openManageLabels);
+document.getElementById('labels-modal-close').addEventListener('click', () => {
+  document.getElementById('labels-modal').classList.add('hidden');
+});
+document.getElementById('labels-modal').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('labels-modal'))
+    document.getElementById('labels-modal').classList.add('hidden');
+});
 
 // ── Context log modal ──────────────────────────────────────
 async function loadContextLog() {
@@ -548,8 +975,8 @@ async function loadContextLog() {
     el.innerHTML = '';
     log.forEach(entry => {
       const mm = modelMeta(entry.model);
-      const ts = new Date(entry.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-      const dt = new Date(entry.ts).toLocaleDateString([],{month:'short',day:'numeric'});
+      const ts = new Date(entry.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      const dt = new Date(entry.ts).toLocaleDateString([],{year:'numeric',month:'short',day:'numeric'});
       const srcBadge = entry._src === 'api'
         ? '<span style="font-size:9px;background:rgba(232,140,106,.12);color:#e88c6a;padding:2px 6px;border-radius:8px;margin-left:4px">Claude Code</span>'
         : '';
