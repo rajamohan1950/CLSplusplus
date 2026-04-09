@@ -151,7 +151,11 @@ async function refreshMemoryCache() {
     });
     const items = (resp.items || []).filter(i => {
       const t = i.text || '';
-      return t.length > 3 && !t.startsWith('[Schema:');
+      const hasSignal = /\b(name|is|are|was|has|likes?|loves?|prefers?|works?|lives?|born|sister|brother|mother|father|wife|husband|friend|favou?rite|colou?r|planning|trip|installed|diesel|perfume|mango)\b/i.test(t);
+      const isJunk = t.length < 12 || t.length > 300 || t.startsWith('[') || t.endsWith('?') ||
+        /\b(merge|branch|commit|deploy|push|extension|localhost|hardcode|chrome|hook|server|render|docker|test|fix|error|debug)\b/i.test(t) ||
+        /^(fu|bs|ok|yes|no|s|k|ya|nothing|prepare|why|how|what)\b/i.test(t);
+      return hasSignal && !isJunk;
     });
     if (items.length > 0) {
       _cachedContext = CONTEXT_PREFIX + items.map(i => '- ' + (i.text || '').slice(0, 200)).join('\n') + CONTEXT_SUFFIX;

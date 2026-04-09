@@ -256,7 +256,18 @@ async function syncChatGPTCustomInstructions() {
         const d = await r.json();
         for (const item of (d.items || [])) {
           const t = item.text || '';
-          if (t.length > 3 && !t.startsWith('[Schema:') && !seen.has(t)) {
+          // Filter: only statements that look like personal facts
+          // Must contain a name, relationship, preference, or identity signal
+          const tl = t.toLowerCase();
+          const hasPersonalSignal = (
+            /\b(name|is|are|was|has|likes?|loves?|prefers?|works?|lives?|born|sister|brother|mother|father|wife|husband|friend|favou?rite|colou?r|planning|trip|installed|diesel|perfume|mango)\b/i.test(t) ||
+            /\b(raj|veena|rupa|ruchi|suchi|dingu|muthaiah|jmuthaiah)\b/i.test(t)
+          );
+          const isJunk = t.length < 12 || t.length > 300 ||
+            t.startsWith('[') || t.endsWith('?') ||
+            /\b(merge|branch|commit|deploy|push|extension|localhost|hardcode|chrome|hook|server|render|docker|test|fix|error|debug)\b/i.test(t) ||
+            /^(fu|bs|ok|yes|no|s|k|ya|nothing|prepare|why|how|what)\b/i.test(t);
+          if (hasPersonalSignal && !isJunk && !seen.has(t)) {
             seen.add(t);
             facts.push(t);
           }
