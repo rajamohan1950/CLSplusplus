@@ -231,9 +231,10 @@ const CI_MARKER_END = '[/CLS++]';
 const CI_SYNC_INTERVAL = 60000; // 60 seconds
 
 async function syncChatGPTCustomInstructions() {
+  console.log('[CLS++] CI sync starting...');
   // Only sync if user has linked API key
   const apiKey = _cachedApiKey || (await chrome.storage.local.get('cls_api_key')).cls_api_key;
-  if (!apiKey) return;
+  if (!apiKey) { console.log('[CLS++] CI sync: no API key'); return; }
 
   // 1. Fetch CLS++ memories
   let facts = [];
@@ -249,8 +250,9 @@ async function syncChatGPTCustomInstructions() {
         .map(i => i.text || '')
         .filter(t => t.length > 3 && !t.startsWith('[Schema:'));
     }
-  } catch (e) { return; }
+  } catch (e) { console.log('[CLS++] CI sync: memory fetch failed', e); return; }
 
+  console.log('[CLS++] CI sync: got', facts.length, 'memories');
   if (!facts.length) return;
 
   // 2. Build memory block
@@ -273,6 +275,7 @@ async function syncChatGPTCustomInstructions() {
     }
   } catch (e) {}
 
+  console.log('[CLS++] CI sync: session token', accessToken ? 'OK (' + accessToken.slice(0,10) + '...)' : 'FAILED');
   if (!accessToken) return;
 
   // 4. Read current Custom Instructions
@@ -315,10 +318,13 @@ async function syncChatGPTCustomInstructions() {
   } catch (e) {}
 }
 
-// Sync every 60 seconds
-setInterval(syncChatGPTCustomInstructions, CI_SYNC_INTERVAL);
-// Also sync on startup after 10 seconds
-setTimeout(syncChatGPTCustomInstructions, 10000);
+// Use chrome.alarms for reliable MV3 wake-up (setInterval dies when SW sleeps)
+chrome.alarms.create('cls_ci_sync', { delayInMinutes: 0.15, periodInMinutes: 1 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'cls_ci_sync') {
+    syncChatGPTCustomInstructions();
+  }
+});
 
 // ══════════════════════════════════════════════════════════════════════════
 // FIRST INSTALL: Seed demo memories so reviewer sees content immediately
