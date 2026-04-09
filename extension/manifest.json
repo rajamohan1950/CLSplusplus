@@ -4,7 +4,7 @@
   "version": "3.0.0",
   "description": "Every AI remembers you. Silent cross-model memory for ChatGPT, Claude, Gemini and more.",
 
-  "permissions": ["storage", "alarms"],
+  "permissions": ["storage", "alarms", "cookies"],
   "host_permissions": [
     "https://www.clsplusplus.com/*",
     "https://clsplusplus.com/*",

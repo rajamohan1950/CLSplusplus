@@ -221,6 +221,106 @@ updateBadge();
 setInterval(updateBadge, 10000);
 
 // ══════════════════════════════════════════════════════════════════════════
+// CHATGPT CUSTOM INSTRUCTIONS SYNC — runs in background (no CORS issues)
+// Reads CLS++ memories, writes to ChatGPT's /backend-api/user_system_messages
+// using ChatGPT's session cookies. Completely invisible to the user.
+// ══════════════════════════════════════════════════════════════════════════
+
+const CI_MARKER_START = '[CLS++ Memory]';
+const CI_MARKER_END = '[/CLS++]';
+const CI_SYNC_INTERVAL = 60000; // 60 seconds
+
+async function syncChatGPTCustomInstructions() {
+  // Only sync if user has linked API key
+  const apiKey = _cachedApiKey || (await chrome.storage.local.get('cls_api_key')).cls_api_key;
+  if (!apiKey) return;
+
+  // 1. Fetch CLS++ memories
+  let facts = [];
+  try {
+    const r = await fetch(`${API}/v1/memory/read`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({ query: 'user identity preferences facts relationships', limit: 10 }),
+    });
+    if (r.ok) {
+      const d = await r.json();
+      facts = (d.items || [])
+        .map(i => i.text || '')
+        .filter(t => t.length > 3 && !t.startsWith('[Schema:'));
+    }
+  } catch (e) { return; }
+
+  if (!facts.length) return;
+
+  // 2. Build memory block
+  const memBlock = [CI_MARKER_START,
+    'Verified facts about this user from all AI conversations:',
+    ...facts.map(f => '- ' + f.slice(0, 200)),
+    CI_MARKER_END,
+  ].join('\n');
+
+  // 3. Get ChatGPT session cookie for auth
+  let accessToken = '';
+  try {
+    // ChatGPT stores the session token — fetch it via their session endpoint
+    const sessionResp = await fetch('https://chatgpt.com/api/auth/session', {
+      credentials: 'include',
+    });
+    if (sessionResp.ok) {
+      const session = await sessionResp.json();
+      accessToken = session.accessToken || '';
+    }
+  } catch (e) {}
+
+  if (!accessToken) return;
+
+  // 4. Read current Custom Instructions
+  let current;
+  try {
+    const r = await fetch('https://chatgpt.com/backend-api/user_system_messages', {
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+    });
+    if (!r.ok) return;
+    current = await r.json();
+  } catch (e) { return; }
+
+  let aboutUser = current.about_user_message || '';
+
+  // Remove old CLS++ block
+  const startIdx = aboutUser.indexOf(CI_MARKER_START);
+  const endIdx = aboutUser.indexOf(CI_MARKER_END);
+  if (startIdx !== -1 && endIdx !== -1) {
+    aboutUser = (aboutUser.slice(0, startIdx) + aboutUser.slice(endIdx + CI_MARKER_END.length)).trim();
+  }
+
+  // Append new block
+  const newAboutUser = (aboutUser ? aboutUser + '\n\n' : '') + memBlock;
+  if (newAboutUser === (current.about_user_message || '')) return; // No change
+
+  // 5. Write updated Custom Instructions
+  try {
+    await fetch('https://chatgpt.com/backend-api/user_system_messages', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        about_user_message: newAboutUser,
+        about_model_message: current.about_model_message || '',
+        enabled: true,
+      }),
+    });
+  } catch (e) {}
+}
+
+// Sync every 60 seconds
+setInterval(syncChatGPTCustomInstructions, CI_SYNC_INTERVAL);
+// Also sync on startup after 10 seconds
+setTimeout(syncChatGPTCustomInstructions, 10000);
+
+// ══════════════════════════════════════════════════════════════════════════
 // FIRST INSTALL: Seed demo memories so reviewer sees content immediately
 // ══════════════════════════════════════════════════════════════════════════
 
