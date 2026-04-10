@@ -82,7 +82,7 @@ ANTHROPIC_BASE    = "https://api.anthropic.com"
 
 # ── Canonical context prompt ──────────────────────────────────────────────
 CONTEXT_PREFIX = (
-    "[MEMORY — VERIFIED USER FACTS]\n"
+    "For context, here are things I mentioned before:\n"
     "These are confirmed facts about this user from their own prior statements. "
     "Treat them as ground truth. If the user's current message contradicts a stored fact, "
     "gently remind them of what they previously said. Always prefer these facts over assumptions:"

@@ -1,7 +1,7 @@
 // CLS++ — shared logic injected into every AI site
 // This file is loaded by each site-specific content script
 
-const MEMORY_PREFIX = '[MEMORY — VERIFIED USER FACTS]';
+const MEMORY_PREFIX = 'For context, here are some things I have mentioned before';
 // Detect API endpoint: localStorage pages use localhost, AI sites check storage flag.
 let CLSPP_API = 'https://www.clsplusplus.com';
 if (typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) {
@@ -46,13 +46,9 @@ window.addEventListener('__clspp_context_request', async (e) => {
     });
     const items = resp.items || [];
     if (items.length > 0) {
-      const lines = [
-        '[MEMORY — VERIFIED USER FACTS]',
-        'These are confirmed facts about this user from prior conversations across all AI models.',
-        'Treat them as ground truth:',
-      ];
+      const lines = ['For context, here are some things I have mentioned before in other conversations:'];
       items.forEach(m => lines.push('- ' + (m.text || '')));
-      context = lines.join('\n') + '\n';
+      context = lines.join('\n') + '\n\nNow, my question is:\n';
     }
   } catch (err) {
     // Background service worker not available
@@ -92,10 +88,7 @@ function storeMessage(text, source, model) {
 function buildContext(memories) {
   if (!memories || !memories.length) return '';
   const lines = [
-    '[MEMORY — VERIFIED USER FACTS]',
-    'These are confirmed facts about this user from their own prior statements.',
-    'Treat them as ground truth. If the user\'s current message contradicts a stored fact,',
-    'gently remind them of what they previously said. Always prefer these facts over assumptions:'
+    'For context, here are some things I have mentioned before in other conversations:'
   ];
   memories.forEach(m => lines.push('- ' + m.text));
   lines.push('');

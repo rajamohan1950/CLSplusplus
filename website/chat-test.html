@@ -96,7 +96,7 @@ async function sendMessage() {
     log('Memory read: ' + items.length + ' items found', items.length > 0 ? 'ok' : 'err');
 
     if (items.length > 0) {
-      context = '[MEMORY — VERIFIED USER FACTS]\n' +
+      context = 'For context, here are things I mentioned before:\n' +
         'These are confirmed facts about this user from prior conversations across all AI models.\n' +
         'Treat them as ground truth. Answer based on these facts:\n';
       items.forEach(i => {
