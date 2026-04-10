@@ -23,9 +23,11 @@ function captureNewMessages() {
     const key = role + ':' + text.slice(0, 120);
     if (_seen.has(key)) return;
     _seen.add(key);
-    const source = role === 'user' ? 'user' : 'assistant';
-    storeMessage(text, source, SITE);
-    console.log('[CLS++] captured', source, text.slice(0, 60));
+    // Only store USER messages — never store LLM responses as facts
+    if (role === 'user') {
+      storeMessage(text, 'user', SITE);
+      console.log('[CLS++] captured user:', text.slice(0, 60));
+    }
   });
 }
 

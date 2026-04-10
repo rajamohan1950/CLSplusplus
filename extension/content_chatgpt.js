@@ -23,7 +23,8 @@ function captureNewMessages() {
     const key = role + ':' + text.slice(0, 120);
     if (_seen.has(key)) return;
     _seen.add(key);
-    storeMessage(text, role === 'user' ? 'user' : 'assistant', SITE);
+    // Only store USER messages — never store LLM responses as facts
+    if (role === 'user') storeMessage(text, 'user', SITE);
   });
 }
 
