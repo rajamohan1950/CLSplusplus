@@ -789,6 +789,35 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         await _record_usage("delete", request)
         return {"deleted": True, "item_id": item_id}
 
+    @app.delete("/v1/memory/wipe")
+    async def wipe_all_memories(request: Request):
+        """Nuclear option: delete ALL memories for the authenticated namespace.
+        Clears engine, L1, L2, L3."""
+        ns = getattr(request.state, "namespace", None) or "default"
+        # Clear engine
+        memory_service.engine._items.pop(ns, None)
+        memory_service.engine._token_index.pop(ns, None)
+        # Clear L1
+        try:
+            pool = await memory_service.l1.get_pool()
+            await pool.execute("DELETE FROM l1_memories WHERE namespace = $1", ns)
+        except Exception:
+            pass
+        # Clear L2
+        try:
+            pool = await memory_service.l2.get_pool()
+            await pool.execute("DELETE FROM l2_nodes WHERE namespace = $1", ns)
+        except Exception:
+            pass
+        # Clear L3
+        try:
+            pool = await memory_service.l3.get_pool()
+            await pool.execute("DELETE FROM l3_engrams WHERE namespace = $1", ns)
+        except Exception:
+            pass
+        await _record_usage("wipe", request)
+        return {"wiped": True, "namespace": ns}
+
     @app.get("/v1/usage")
     async def usage_endpoint(request: Request):
         """Usage metrics for current period with tier info. Requires API key when auth enabled."""
