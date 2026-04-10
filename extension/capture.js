@@ -51,7 +51,12 @@ window.addEventListener('__cls_req', async (e) => {
     const resp = await new Promise(resolve => {
       chrome.runtime.sendMessage({ type: 'FETCH', limit: 10 }, r => resolve(r || { facts: [] }));
     });
-    const facts = resp.facts || [];
+    const facts = (resp.facts || []).filter(f =>
+      f.length > 8 && f.length < 250 &&
+      !f.startsWith('[Schema:') && !f.startsWith('[MEMORY') &&
+      !f.includes('VERIFIED USER') && !f.includes('END MEMORY') &&
+      !f.endsWith('?')
+    );
     if (facts.length > 0) {
       ctx = 'For context, here are some things I have mentioned before in other conversations:\n'
         + facts.map(f => '- ' + f.slice(0, 200)).join('\n')

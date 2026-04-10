@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CLS++ Memory",
-  "version": "5.0.0",
+  "version": "5.0.1",
   "description": "Every AI remembers you. Cross-model memory for ChatGPT, Claude, Gemini.",
   "permissions": ["storage"],
   "host_permissions": [
