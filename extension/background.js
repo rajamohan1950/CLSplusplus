@@ -161,15 +161,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
   if (msg.type === 'FETCH_MEMORIES') {
-    // Route /v1/memory/read through background to avoid CORS
+    // Route through background to avoid CORS — use /v1/memory/list for ALL memories
     (async () => {
       const apiKey = _cachedApiKey || (await chrome.storage.local.get('cls_api_key')).cls_api_key;
       if (!apiKey) { sendResponse({ items: [] }); return; }
       try {
-        const r = await fetch(`${API}/v1/memory/read`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-          body: JSON.stringify({ query: msg.query || '*', limit: msg.limit || 10 }),
+        const r = await fetch(`${API}/v1/memory/list?limit=${msg.limit || 20}`, {
+          headers: { 'Authorization': `Bearer ${apiKey}` },
         });
         if (r.ok) {
           const d = await r.json();
@@ -236,13 +234,11 @@ async function syncChatGPTCustomInstructions() {
   const apiKey = _cachedApiKey || (await chrome.storage.local.get('cls_api_key')).cls_api_key;
   if (!apiKey) { console.log('[CLS++] CI sync: no API key'); return; }
 
-  // 1. Fetch memories from CLS++ — trust whatever it returns, no filtering
+  // 1. Fetch ALL memories from CLS++ — no search, just list everything
   let facts = [];
   try {
-    const r = await fetch(`${API}/v1/memory/read`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ query: 'everything about this user', limit: 15 }),
+    const r = await fetch(`${API}/v1/memory/list?limit=30`, {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
     });
     if (r.ok) {
       const d = await r.json();
