@@ -395,6 +395,52 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "log": list(reversed(_api_context_log.get(ns, []))),
         }
 
+    @app.get("/v1/memory/personal")
+    async def get_personal_facts(request: Request, limit: int = Query(20, ge=1, le=100)):
+        """Return personal facts only — pre-filtered for Custom Instructions sync.
+        Excludes questions, dev commands, short messages, schema tokens."""
+        ns = getattr(request.state, "namespace", None) or "default"
+        await memory_service.ensure_loaded(ns)
+        engine = memory_service.engine
+        items = engine._items.get(ns, [])
+
+        # Get alive items sorted by birth_order (recent first)
+        alive = [i for i in items if i.consolidation_strength >= engine.STRENGTH_FLOOR]
+        alive.sort(key=lambda i: i.birth_order, reverse=True)
+
+        facts = []
+        for i in alive:
+            t = i.fact.raw_text
+            if len(t) < 8 or len(t) > 300:
+                continue
+            if t.startswith('[') or t.endswith('?'):
+                continue
+            if t.startswith('Stop hook') or t.startswith('You said'):
+                continue
+            facts.append({"text": t, "id": i.id})
+            if len(facts) >= limit:
+                break
+
+        # Also supplement from L1 PostgreSQL
+        try:
+            pool = await memory_service.l1.get_pool()
+            rows = await pool.fetch("""
+                SELECT id, text FROM l1_memories
+                WHERE namespace = $1
+                  AND length(text) > 8 AND length(text) < 300
+                  AND text NOT LIKE '[%' AND text NOT LIKE '%?'
+                  AND text NOT LIKE 'Stop hook%' AND text NOT LIKE 'You said%'
+                ORDER BY created_at DESC LIMIT $2
+            """, ns, limit)
+            existing = {f["id"] for f in facts}
+            for r in rows:
+                if str(r["id"]) not in existing and len(facts) < limit:
+                    facts.append({"text": r["text"], "id": str(r["id"])})
+        except Exception:
+            pass
+
+        return {"facts": facts, "count": len(facts), "namespace": ns}
+
     # ── Prompt Ingestion — Cross-LLM Context Pipeline ─────────────────
 
     @app.post("/v1/prompts/ingest")
