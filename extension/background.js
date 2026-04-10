@@ -236,45 +236,19 @@ async function syncChatGPTCustomInstructions() {
   const apiKey = _cachedApiKey || (await chrome.storage.local.get('cls_api_key')).cls_api_key;
   if (!apiKey) { console.log('[CLS++] CI sync: no API key'); return; }
 
-  // 1. Fetch CLS++ memories — multiple queries for diverse coverage
+  // 1. Fetch memories from CLS++ — trust whatever it returns, no filtering
   let facts = [];
-  const seen = new Set();
-  const queries = [
-    'personal name identity who am I',
-    'preferences likes dislikes favorites movies music perfume',
-    'family mother father relationships friends people',
-    'recent work project decisions current status',
-  ];
-  for (const q of queries) {
-    try {
-      const r = await fetch(`${API}/v1/memory/read`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ query: q, limit: 5 }),
-      });
-      if (r.ok) {
-        const d = await r.json();
-        for (const item of (d.items || [])) {
-          const t = item.text || '';
-          // Filter: only statements that look like personal facts
-          // Must contain a name, relationship, preference, or identity signal
-          const tl = t.toLowerCase();
-          const hasPersonalSignal = (
-            /\b(name|is|are|was|has|likes?|loves?|prefers?|works?|lives?|born|sister|brother|mother|father|wife|husband|friend|favou?rite|colou?r|planning|trip|installed|diesel|perfume|mango)\b/i.test(t) ||
-            /\b(raj|veena|rupa|ruchi|suchi|dingu|muthaiah|jmuthaiah)\b/i.test(t)
-          );
-          const isJunk = t.length < 12 || t.length > 300 ||
-            t.startsWith('[') || t.endsWith('?') ||
-            /\b(merge|branch|commit|deploy|push|extension|localhost|hardcode|chrome|hook|server|render|docker|test|fix|error|debug)\b/i.test(t) ||
-            /^(fu|bs|ok|yes|no|s|k|ya|nothing|prepare|why|how|what)\b/i.test(t);
-          if (hasPersonalSignal && !isJunk && !seen.has(t)) {
-            seen.add(t);
-            facts.push(t);
-          }
-        }
-      }
-    } catch (e) {}
-  }
+  try {
+    const r = await fetch(`${API}/v1/memory/read`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({ query: 'everything about this user', limit: 15 }),
+    });
+    if (r.ok) {
+      const d = await r.json();
+      facts = (d.items || []).map(i => (i.text || '').slice(0, 200)).filter(t => t.length > 3);
+    }
+  } catch (e) { console.log('[CLS++] CI sync: memory fetch failed', e); return; }
 
   console.log('[CLS++] CI sync: got', facts.length, 'memories');
   if (!facts.length) return;

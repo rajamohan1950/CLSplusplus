@@ -145,18 +145,11 @@ async function refreshMemoryCache() {
 
     const resp = await new Promise((resolve) => {
       chrome.runtime.sendMessage(
-        { type: 'FETCH_MEMORIES', query: 'user personal identity preferences facts relationships', limit: 8 },
+        { type: 'FETCH_MEMORIES', query: 'everything about this user', limit: 10 },
         (r) => resolve(r || { items: [] })
       );
     });
-    const items = (resp.items || []).filter(i => {
-      const t = i.text || '';
-      const hasSignal = /\b(name|is|are|was|has|likes?|loves?|prefers?|works?|lives?|born|sister|brother|mother|father|wife|husband|friend|favou?rite|colou?r|planning|trip|installed|diesel|perfume|mango)\b/i.test(t);
-      const isJunk = t.length < 12 || t.length > 300 || t.startsWith('[') || t.endsWith('?') ||
-        /\b(merge|branch|commit|deploy|push|extension|localhost|hardcode|chrome|hook|server|render|docker|test|fix|error|debug)\b/i.test(t) ||
-        /^(fu|bs|ok|yes|no|s|k|ya|nothing|prepare|why|how|what)\b/i.test(t);
-      return hasSignal && !isJunk;
-    });
+    const items = (resp.items || []).filter(i => (i.text || '').length > 3);
     if (items.length > 0) {
       _cachedContext = CONTEXT_PREFIX + items.map(i => '- ' + (i.text || '').slice(0, 200)).join('\n') + CONTEXT_SUFFIX;
     } else {
