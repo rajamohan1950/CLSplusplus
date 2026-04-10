@@ -134,8 +134,8 @@ function setTextareaValue(el, text) {
 let _cachedContext = '';
 let _lastCacheTime = 0;
 const CACHE_INTERVAL = 30000; // 30 seconds
-const CONTEXT_PREFIX = '[MEMORY — VERIFIED USER FACTS]\nAnswer using these confirmed facts about this user:\n';
-const CONTEXT_SUFFIX = '\n[END MEMORY]\n\n';
+const CONTEXT_PREFIX = 'For context, here are some things I have mentioned before in other conversations:\n';
+const CONTEXT_SUFFIX = '\n\nNow, my question is:\n';
 
 // Periodic cache refresh — memories always ready when user presses Enter
 async function refreshMemoryCache() {
