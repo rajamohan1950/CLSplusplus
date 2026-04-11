@@ -233,7 +233,8 @@ class UserService:
 
         old_tier = user["tier"]
         if old_tier == new_tier:
-            raise ValueError("Already on this tier")
+            # Idempotent — already upgraded (e.g., webhook beat the verify call)
+            return _strip_password(user)
 
         await self.store.update_tier(user_id, new_tier)
 

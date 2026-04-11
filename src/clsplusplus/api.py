@@ -1154,7 +1154,19 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             )
             return {"status": "ok", "tier": req.tier}
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            # If signature is invalid, reject. But if already upgraded, that's OK.
+            detail = str(e)
+            if "invalid signature" in detail.lower():
+                raise HTTPException(status_code=400, detail=detail)
+            # Any other ValueError (e.g., user not found) — still return success
+            # if user is already on the requested tier
+            try:
+                current = await user_service.get_user(user_id)
+                if current and current.get("tier") == req.tier:
+                    return {"status": "ok", "tier": req.tier}
+            except Exception:
+                pass
+            raise HTTPException(status_code=400, detail=detail)
         except Exception as e:
             logger.error("Razorpay verify error: %s", e)
             raise HTTPException(status_code=500, detail="Payment verification failed")

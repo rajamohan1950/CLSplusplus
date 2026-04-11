@@ -79,7 +79,7 @@ async def verify_payment(
     Razorpay signature = HMAC-SHA256(order_id + "|" + payment_id, key_secret)
     Returns True if payment is verified and tier upgraded.
     """
-    expected = hmac.new(
+    expected = hmac.HMAC(
         settings.razorpay_key_secret.encode(),
         f"{order_id}|{payment_id}".encode(),
         hashlib.sha256,
@@ -114,7 +114,7 @@ async def handle_webhook(
         raise ValueError("Razorpay webhook secret not configured")
 
     # Verify webhook signature
-    expected = hmac.new(
+    expected = hmac.HMAC(
         settings.razorpay_webhook_secret.encode(),
         payload,
         hashlib.sha256,
