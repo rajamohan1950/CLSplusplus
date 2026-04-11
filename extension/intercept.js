@@ -34,8 +34,51 @@
     } catch (_) {}
   }
 
-  // Extract user message from JSON body
+  // Extract user message from Gemini's URL-encoded batchexecute body
+  function extractGemini(body) {
+    try {
+      const params = new URLSearchParams(body);
+      const fReq = params.get('f.req');
+      if (!fReq) { console.log('[CLS++] Gemini: no f.req param'); return null; }
+      const outer = JSON.parse(fReq);
+      // Format: [[["rpcId", "<inner_json>", null, "seq"]]] or [null, "<inner_json>"]
+      let innerStr = null;
+      if (Array.isArray(outer) && outer[1] && typeof outer[1] === 'string') {
+        innerStr = outer[1];
+      } else if (Array.isArray(outer) && Array.isArray(outer[0]) && Array.isArray(outer[0][0])) {
+        // Batch format: [[["rpcId", "<inner_json>", ...]]]
+        const rpc = outer[0][0];
+        if (rpc[1] && typeof rpc[1] === 'string') innerStr = rpc[1];
+      }
+      if (!innerStr) { console.log('[CLS++] Gemini: could not find inner JSON'); return null; }
+      const inner = JSON.parse(innerStr);
+      // User message at inner[0][0]
+      if (Array.isArray(inner) && Array.isArray(inner[0]) && typeof inner[0][0] === 'string' && inner[0][0].length > 0) {
+        const msg = inner[0][0];
+        console.log('[CLS++] Gemini extract:', msg.slice(0, 80));
+        return {
+          q: msg,
+          set: ctx => {
+            inner[0][0] = ctx + inner[0][0];
+            if (Array.isArray(outer) && typeof outer[1] === 'string') {
+              outer[1] = JSON.stringify(inner);
+            } else {
+              outer[0][0][1] = JSON.stringify(inner);
+            }
+            params.set('f.req', JSON.stringify(outer));
+            return params.toString();
+          }
+        };
+      }
+      console.log('[CLS++] Gemini: inner[0][0] not a string');
+    } catch (e) { console.log('[CLS++] Gemini extract error:', e.message); }
+    return null;
+  }
+
+  // Extract user message from JSON body (ChatGPT, Claude)
   function extract(body) {
+    // Gemini sends URL-encoded form data, not JSON
+    if (host.includes('gemini')) return extractGemini(body);
     try {
       const b = JSON.parse(body);
       // ChatGPT
@@ -155,5 +198,34 @@
     console.log('[CLS++] Fetch locked on', host);
   } catch (_) {
     window.fetch = clsFetch;
+  }
+
+  // Gemini may use XMLHttpRequest instead of fetch for batchexecute
+  if (host.includes('gemini')) {
+    const _xhrOpen = XMLHttpRequest.prototype.open;
+    const _xhrSend = XMLHttpRequest.prototype.send;
+
+    XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+      this.__clsMethod = method;
+      this.__clsUrl = String(url || '');
+      return _xhrOpen.call(this, method, url, ...rest);
+    };
+
+    XMLHttpRequest.prototype.send = function (body) {
+      if (this.__clsMethod === 'POST' && this.__clsUrl.includes('batchexecute') && typeof body === 'string') {
+        console.log('[CLS++] Gemini XHR detected:', this.__clsUrl.slice(0, 120));
+        const ex = extract(body);
+        if (ex) {
+          writeOutbox(ex.q);
+          const ctx = getCtx();
+          if (ctx) {
+            body = ex.set(ctx);
+            console.log('[CLS++] Memory injected (XHR)');
+          }
+        }
+      }
+      return _xhrSend.call(this, body);
+    };
+    console.log('[CLS++] XHR interceptor installed for Gemini');
   }
 })();
