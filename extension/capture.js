@@ -1,12 +1,39 @@
 // CLS++ Capture — ISOLATED world
-// 1. Captures user messages from DOM → stores via background.js
-// 2. Prefetches memories into a hidden DOM element for intercept.js to read
+// Core store/prefetch path restored from v5.1.0 (proven working).
+// Added: toggle sync for side panel settings.
 
 console.log('[CLS++] capture.js loading on', location.hostname);
 const seen = new Set();
 const host = location.hostname;
 
+// ── Detect which site we're on ──
+function getSiteKey() {
+  if (host.includes('chatgpt') || host.includes('openai')) return 'chatgpt';
+  if (host.includes('claude')) return 'claude';
+  if (host.includes('gemini')) return 'gemini';
+  return 'unknown';
+}
+const siteKey = getSiteKey();
+
+// ── Write toggle states to DOM for intercept.js (MAIN world) ──
+function syncToggles() {
+  chrome.storage.local.get(['cls_injection_paused', 'cls_site_' + siteKey], function (r) {
+    var paused = !!r.cls_injection_paused;
+    var siteDisabled = r['cls_site_' + siteKey] === false;
+    var shouldPause = paused || siteDisabled;
+    document.body.setAttribute('data-cls-paused', shouldPause ? 'true' : 'false');
+  });
+}
+
+syncToggles();
+chrome.storage.onChanged.addListener(function (changes) {
+  if (changes.cls_injection_paused || changes['cls_site_' + siteKey]) {
+    syncToggles();
+  }
+});
+
 // ── Watch outbox on document.body — intercept.js (MAIN) writes user messages here ──
+// PROVEN PATH from v5.1.0 — do not add async calls or refreshMemories here
 let lastOutboxTs = 0;
 function checkOutbox() {
   try {
@@ -29,7 +56,20 @@ function checkOutbox() {
 // Poll outbox every 500ms (lightweight — just reads one body attribute)
 setInterval(checkOutbox, 500);
 
+// ── Watch for injection events from intercept.js ──
+function checkInjected() {
+  try {
+    var val = document.body.getAttribute('data-cls-injected');
+    if (val) {
+      document.body.removeAttribute('data-cls-injected');
+      chrome.runtime.sendMessage({ type: 'INCREMENT_INJECTED' });
+    }
+  } catch (_) {}
+}
+setInterval(checkInjected, 500);
+
 // ── DOM Mailbox: prefetch memories and write to hidden element ──
+// PROVEN PATH from v5.1.0 — simple /v1/memory/list, always works
 async function refreshMemories() {
   try {
     const resp = await new Promise(resolve => {
@@ -62,4 +102,4 @@ async function refreshMemories() {
 refreshMemories();
 setInterval(refreshMemories, 30000);
 
-console.log('[CLS++] Capture ready on', host);
+console.log('[CLS++] Capture ready on', host, '(site:', siteKey + ')');

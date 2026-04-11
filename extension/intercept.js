@@ -1,6 +1,8 @@
 // CLS++ Fetch Interceptor — MAIN world, document_start
 // Locks window.fetch so no page code can replace it.
 // On LLM API POST: reads prefetched memories from DOM, injects into body.
+// Core injection path restored from v5.1.0 (proven working).
+// Added: Gemini batchexecute support, pause toggle, injection signal.
 
 (function () {
   'use strict';
@@ -11,7 +13,18 @@
   const _fetch = window.fetch.bind(window);
   const host = location.hostname;
 
+  // Check if injection is paused (set by capture.js via DOM attribute)
+  function isPaused() {
+    return document.body && document.body.getAttribute('data-cls-paused') === 'true';
+  }
+
+  // Signal that injection happened (capture.js picks this up and increments counter)
+  function signalInjection() {
+    try { document.body.setAttribute('data-cls-injected', '1'); } catch (_) {}
+  }
+
   // Read memories from DOM mailbox (written by capture.js in ISOLATED world)
+  // PROVEN PATH from v5.1.0 — synchronous DOM read, always works
   function getCtx() {
     const el = document.getElementById('__cls_mem');
     if (!el) { console.log('[CLS++] No memory element found'); return ''; }
@@ -41,18 +54,15 @@
       const fReq = params.get('f.req');
       if (!fReq) { console.log('[CLS++] Gemini: no f.req param'); return null; }
       const outer = JSON.parse(fReq);
-      // Format: [[["rpcId", "<inner_json>", null, "seq"]]] or [null, "<inner_json>"]
       let innerStr = null;
       if (Array.isArray(outer) && outer[1] && typeof outer[1] === 'string') {
         innerStr = outer[1];
       } else if (Array.isArray(outer) && Array.isArray(outer[0]) && Array.isArray(outer[0][0])) {
-        // Batch format: [[["rpcId", "<inner_json>", ...]]]
         const rpc = outer[0][0];
         if (rpc[1] && typeof rpc[1] === 'string') innerStr = rpc[1];
       }
       if (!innerStr) { console.log('[CLS++] Gemini: could not find inner JSON'); return null; }
       const inner = JSON.parse(innerStr);
-      // User message at inner[0][0]
       if (Array.isArray(inner) && Array.isArray(inner[0]) && typeof inner[0][0] === 'string' && inner[0][0].length > 0) {
         const msg = inner[0][0];
         console.log('[CLS++] Gemini extract:', msg.slice(0, 80));
@@ -119,7 +129,6 @@
     const u = url.toLowerCase();
     if (host.includes('chatgpt') || host.includes('openai')) {
       if (!u.includes('/backend-api/') || !u.includes('conversation')) return false;
-      // Skip setup/validation endpoints — only inject into actual message sends
       if (u.includes('/init') || u.includes('/prepare')) return false;
       return true;
     }
@@ -128,6 +137,8 @@
     return false;
   }
 
+  // PROVEN injection path from v5.1.0 — sync first, async fallback
+  // ALL fetch calls pass through here — log everything for debugging
   function clsFetch(...args) {
     let url = '', method = 'GET';
     if (args[0] instanceof Request) { url = args[0].url; method = args[0].method; }
@@ -135,27 +146,42 @@
 
     if (method !== 'POST' || !isLLM(url)) return _fetch(...args);
     console.log('[CLS++] LLM API detected:', url.slice(0, 120));
+    console.log('[CLS++] arg[0] type:', args[0] instanceof Request ? 'Request' : typeof args[0],
+                '| body type:', args[1] && args[1].body ? typeof args[1].body : (args[0] instanceof Request ? 'in-Request' : 'none'));
+
+    if (isPaused()) {
+      console.log('[CLS++] Injection paused by user');
+      return _fetch(...args);
+    }
 
     try {
       let body = null;
       if (args[0] instanceof Request) {
+        console.log('[CLS++] Request object — going async path');
         // Request body — need async, fall through to async path
       } else {
         const raw = args[1] && args[1].body;
-        if (typeof raw === 'string') body = raw;
+        if (typeof raw === 'string') {
+          body = raw;
+          console.log('[CLS++] Got string body, length:', body.length);
+        } else if (raw) {
+          console.log('[CLS++] Non-string body type:', Object.prototype.toString.call(raw));
+        }
       }
 
       if (body) {
         const ex = extract(body);
         if (ex) {
+          console.log('[CLS++] Extracted message:', ex.q.slice(0, 80));
           writeOutbox(ex.q);
           const ctx = getCtx();
           if (ctx) {
             const nb = ex.set(ctx);
             args = [args[0], { ...(args[1] || {}), body: nb }];
             console.log('[CLS++] Memory injected');
+            signalInjection();
           } else {
-            console.log('[CLS++] No memories available');
+            console.log('[CLS++] No memories available (DOM empty or missing)');
           }
         } else {
           console.log('[CLS++] Could not extract user message from body');
@@ -169,23 +195,44 @@
       try {
         let body = null;
         if (args[0] instanceof Request) {
-          try { body = await args[0].clone().text(); } catch (e) { console.log('[CLS++] Request.text() failed:', e.message); }
+          try {
+            body = await args[0].clone().text();
+            console.log('[CLS++] Async: read Request body, length:', body ? body.length : 0);
+          } catch (e) { console.log('[CLS++] Request.text() failed:', e.message); }
         } else {
           const raw = args[1] && args[1].body;
-          if (raw instanceof Blob) body = await raw.text();
-          else if (raw instanceof ArrayBuffer || ArrayBuffer.isView(raw)) body = new TextDecoder().decode(raw);
+          if (raw instanceof Blob) { body = await raw.text(); console.log('[CLS++] Async: read Blob body'); }
+          else if (raw instanceof ArrayBuffer || ArrayBuffer.isView(raw)) { body = new TextDecoder().decode(raw); console.log('[CLS++] Async: read ArrayBuffer body'); }
+          else if (raw && typeof raw.getReader === 'function') {
+            // ReadableStream — read it
+            try {
+              const reader = raw.getReader();
+              const chunks = [];
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+              }
+              body = new TextDecoder().decode(new Uint8Array(chunks.reduce((a, c) => [...a, ...c], [])));
+              console.log('[CLS++] Async: read ReadableStream body, length:', body.length);
+            } catch (e) { console.log('[CLS++] ReadableStream read failed:', e.message); }
+          }
         }
         if (body) {
           const ex = extract(body);
           if (ex) {
+            console.log('[CLS++] Async extracted:', ex.q.slice(0, 80));
             writeOutbox(ex.q);
             const ctx = getCtx();
             if (ctx) {
               const nb = ex.set(ctx);
               args = args[0] instanceof Request ? [new Request(args[0], { body: nb })] : [args[0], { ...(args[1] || {}), body: nb }];
               console.log('[CLS++] Memory injected (async)');
+              signalInjection();
             }
           }
+        } else {
+          console.log('[CLS++] Async: no body could be read');
         }
       } catch (e) { console.log('[CLS++] Async injection error:', e.message); }
       return _fetch(...args);
@@ -212,7 +259,7 @@
     };
 
     XMLHttpRequest.prototype.send = function (body) {
-      if (this.__clsMethod === 'POST' && this.__clsUrl.includes('batchexecute') && typeof body === 'string') {
+      if (this.__clsMethod === 'POST' && this.__clsUrl.includes('batchexecute') && typeof body === 'string' && !isPaused()) {
         console.log('[CLS++] Gemini XHR detected:', this.__clsUrl.slice(0, 120));
         const ex = extract(body);
         if (ex) {
@@ -221,6 +268,7 @@
           if (ctx) {
             body = ex.set(ctx);
             console.log('[CLS++] Memory injected (XHR)');
+            signalInjection();
           }
         }
       }

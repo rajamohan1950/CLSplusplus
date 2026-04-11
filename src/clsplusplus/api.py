@@ -56,6 +56,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     _integration_store = IntegrationStore(settings)
     integration_service = IntegrationService(settings, store=_integration_store)
     user_service = UserService(settings)
+    logger = logging.getLogger(__name__)
 
     # Context log for authenticated API reads (Claude Code hooks, etc.)
     from collections import defaultdict

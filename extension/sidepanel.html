@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<link rel="stylesheet" href="shared.css"/>
+<style>
+  html, body { width: 100%; height: 100%; }
+  body { display: flex; flex-direction: column; }
+  .panel-body { flex: 1; overflow-y: auto; }
+</style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="cls-header">
+    <span class="cls-header-icon">🧠</span>
+    <span class="cls-header-title">CLS++ Memory</span>
+    <div class="cls-header-user">
+      <span class="cls-dot off" id="dot"></span>
+      <span id="user-name" class="name"></span>
+      <span id="user-tier"></span>
+    </div>
+  </div>
+
+  <!-- Unlinked State -->
+  <div id="sec-unlinked" style="display:none; padding: var(--cls-lg); position: relative; z-index: 1;">
+    <div class="cls-card" style="text-align:center; padding: var(--cls-xl);">
+      <div style="font-size:32px; margin-bottom: var(--cls-sm);">🧠</div>
+      <div style="font-size:14px; font-weight:600; margin-bottom: var(--cls-xs);">Connect Your Memory</div>
+      <div style="font-size:11px; color: var(--cls-text-muted); margin-bottom: var(--cls-lg);">
+        Paste your API key to sync memories across ChatGPT, Claude, and Gemini.
+      </div>
+      <input type="password" class="cls-input" id="key-input" placeholder="Paste API key" style="margin-bottom: var(--cls-sm);"/>
+      <button class="cls-btn cls-btn-primary" id="btn-link">Link Account</button>
+      <div style="margin-top: var(--cls-sm);">
+        <a href="https://www.clsplusplus.com/profile.html#keys" target="_blank" style="font-size:11px;">Generate API Key →</a>
+      </div>
+      <div class="cls-error" id="err"></div>
+    </div>
+  </div>
+
+  <!-- Linked State -->
+  <div id="sec-linked" style="display:none; flex:1; display:none; flex-direction:column;">
+
+    <!-- Tabs -->
+    <div class="cls-tabs">
+      <button class="cls-tab active" data-tab="memories">🧠 Memories</button>
+      <button class="cls-tab" data-tab="activity">📊 Activity</button>
+      <button class="cls-tab" data-tab="settings">⚙️ Settings</button>
+    </div>
+
+    <!-- Tab: Memories -->
+    <div class="cls-tab-content active panel-body" data-panel="memories">
+      <div class="cls-search">
+        <span class="cls-search-icon">🔍</span>
+        <input type="text" id="search-input" placeholder="Search your memories..."/>
+      </div>
+
+      <div class="cls-chips" id="filter-chips">
+        <button class="cls-chip active" data-source="all">All</button>
+        <button class="cls-chip" data-source="chatgpt">ChatGPT</button>
+        <button class="cls-chip" data-source="claude">Claude</button>
+        <button class="cls-chip" data-source="gemini">Gemini</button>
+        <button class="cls-chip" data-source="cli">CLI</button>
+      </div>
+
+      <div class="cls-count" id="memory-count"></div>
+
+      <div class="cls-memory-list" id="memory-list"></div>
+
+      <div class="cls-load-more" id="load-more" style="display:none;">
+        <button id="btn-load-more">Load more</button>
+      </div>
+
+      <div class="cls-empty" id="memory-empty" style="display:none;">
+        <div class="cls-empty-icon">💭</div>
+        <div class="cls-empty-text">No memories yet. Start chatting with any AI and your memories will appear here.</div>
+      </div>
+    </div>
+
+    <!-- Tab: Activity -->
+    <div class="cls-tab-content panel-body" data-panel="activity">
+      <!-- Usage Ring -->
+      <div class="cls-ring-wrap">
+        <svg class="cls-ring" viewBox="0 0 40 40">
+          <circle class="cls-ring-bg" cx="20" cy="20" r="16"/>
+          <circle class="cls-ring-fill" id="usage-ring" cx="20" cy="20" r="16"
+            stroke-dasharray="100.53" stroke-dashoffset="100.53"/>
+        </svg>
+        <div class="cls-ring-text" id="usage-text">-</div>
+        <div class="cls-ring-label" id="usage-label">operations this month</div>
+      </div>
+
+      <!-- Daily Stats -->
+      <div class="cls-section">
+        <div class="cls-section-title">Today</div>
+        <div class="cls-daily-stats">
+          <div class="cls-daily-stat">
+            <div class="cls-daily-stat-value" id="daily-stored">0</div>
+            <div class="cls-daily-stat-label">captured</div>
+          </div>
+          <div class="cls-daily-stat">
+            <div class="cls-daily-stat-value" id="daily-injected">0</div>
+            <div class="cls-daily-stat-label">injected</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active Sites -->
+      <div class="cls-section">
+        <div class="cls-section-title">Active Sites</div>
+        <div class="cls-sites" id="active-sites">
+          <div class="cls-site-row"><span class="cls-site-icon">💬</span><span class="cls-site-name">ChatGPT</span><span class="cls-site-status" id="site-chatgpt">—</span></div>
+          <div class="cls-site-row"><span class="cls-site-icon">🟠</span><span class="cls-site-name">Claude</span><span class="cls-site-status" id="site-claude">—</span></div>
+          <div class="cls-site-row"><span class="cls-site-icon">✨</span><span class="cls-site-name">Gemini</span><span class="cls-site-status" id="site-gemini">—</span></div>
+        </div>
+      </div>
+
+      <!-- Upgrade Card -->
+      <div class="cls-upgrade" id="upgrade-card" style="display:none;">
+        <div class="cls-upgrade-text">Unlock 50× more with Pro — $9/month</div>
+        <a href="https://www.clsplusplus.com/profile.html#billing" target="_blank">
+          <button class="cls-btn cls-btn-primary" style="width:auto; padding: 8px 24px;">Upgrade</button>
+        </a>
+      </div>
+    </div>
+
+    <!-- Tab: Settings -->
+    <div class="cls-tab-content panel-body" data-panel="settings">
+
+      <!-- Controls -->
+      <div class="cls-section">
+        <div class="cls-section-title">Controls</div>
+        <div class="cls-toggle-row">
+          <div>
+            <div class="cls-toggle-label">Memory Injection</div>
+            <div class="cls-toggle-sub">Inject memories into AI conversations</div>
+          </div>
+          <label class="cls-toggle">
+            <input type="checkbox" id="toggle-injection" checked/>
+            <span class="cls-toggle-track"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Per-site Toggles -->
+      <div class="cls-section">
+        <div class="cls-section-title">Sites</div>
+        <div class="cls-toggle-row">
+          <div class="cls-toggle-label">💬 ChatGPT</div>
+          <label class="cls-toggle"><input type="checkbox" id="toggle-chatgpt" checked/><span class="cls-toggle-track"></span></label>
+        </div>
+        <div class="cls-toggle-row">
+          <div class="cls-toggle-label">🟠 Claude</div>
+          <label class="cls-toggle"><input type="checkbox" id="toggle-claude" checked/><span class="cls-toggle-track"></span></label>
+        </div>
+        <div class="cls-toggle-row">
+          <div class="cls-toggle-label">✨ Gemini</div>
+          <label class="cls-toggle"><input type="checkbox" id="toggle-gemini" checked/><span class="cls-toggle-track"></span></label>
+        </div>
+      </div>
+
+      <div class="cls-divider"></div>
+
+      <!-- Appearance -->
+      <div class="cls-section">
+        <div class="cls-section-title">Theme</div>
+        <div class="cls-theme-grid" id="theme-grid"></div>
+      </div>
+
+      <div class="cls-divider"></div>
+
+      <!-- Account -->
+      <div class="cls-section">
+        <div class="cls-section-title">Account</div>
+        <div class="cls-account-row">
+          <span class="cls-account-label">Name</span>
+          <span class="cls-account-value" id="account-name">—</span>
+        </div>
+        <div class="cls-account-row">
+          <span class="cls-account-label">Email</span>
+          <span class="cls-account-value" id="account-email">—</span>
+        </div>
+        <div class="cls-account-row">
+          <span class="cls-account-label">Plan</span>
+          <span class="cls-account-value" id="account-tier">—</span>
+        </div>
+        <div class="cls-link-row">
+          <a href="https://www.clsplusplus.com/profile.html" target="_blank">Manage Account →</a>
+        </div>
+        <div class="cls-link-row">
+          <a href="https://www.clsplusplus.com/memory.html" target="_blank">View All Memories →</a>
+        </div>
+      </div>
+
+      <div class="cls-divider"></div>
+
+      <!-- Danger Zone -->
+      <div class="cls-section">
+        <button class="cls-btn cls-btn-danger" id="btn-unlink">Unlink Account</button>
+      </div>
+    </div>
+
+  </div>
+
+<script src="themes.js"></script>
+<script src="sidepanel.js"></script>
+</body>
+</html>

@@ -2,47 +2,64 @@
 <html>
 <head>
 <meta charset="UTF-8"/>
+<link rel="stylesheet" href="shared.css"/>
 <style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{width:260px;background:#06060c;color:#f0f0f8;font-family:system-ui;padding:16px}
-  .hdr{display:flex;align-items:center;gap:8px;margin-bottom:16px}
-  .hdr span{font-size:13px;font-weight:700}
-  .dot{width:10px;height:10px;border-radius:50%;transition:.3s}
-  .dot.on{background:#5de0c5;box-shadow:0 0 8px #5de0c5}
-  .dot.off{background:#f05d9a;box-shadow:0 0 6px #f05d9a}
-  .status{font-size:11px;color:rgba(240,240,248,.5);margin-bottom:14px}
-  .field{width:100%;padding:8px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.12);
-    border-radius:8px;color:#f0f0f8;font-size:11px;font-family:monospace;margin-bottom:8px;outline:none}
-  .btn{width:100%;padding:8px;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer}
-  .btn-link{background:#7c6ef0;color:#fff}
-  .btn-link:disabled{background:rgba(255,255,255,.1);color:rgba(240,240,248,.3);cursor:not-allowed}
-  .btn-unlink{background:transparent;border:1px solid rgba(255,255,255,.12);color:rgba(240,240,248,.5);
-    font-size:10px;margin-top:6px}
-  .user{font-size:12px;font-weight:600;color:#5de0c5;margin-bottom:4px}
-  .tier{font-size:10px;color:rgba(240,240,248,.4)}
-  .linked{background:rgba(93,224,197,.06);border:1px solid rgba(93,224,197,.15);border-radius:10px;padding:12px;margin-bottom:14px}
-  .unlinked{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;margin-bottom:14px}
-  .err{font-size:10px;color:#f05d9a;margin-top:4px;display:none}
-  a{color:#a89cf7;font-size:10px}
+  body { width: 320px; padding: var(--cls-lg); }
 </style>
 </head>
 <body>
-  <div class="hdr">🧠 <span>CLS++ Memory</span></div>
-  <div class="status"><span class="dot off" id="dot"></span> <span id="srv">Checking...</span></div>
 
-  <div class="unlinked" id="sec-unlinked">
-    <input type="password" class="field" id="key-input" placeholder="Paste API key"/>
-    <button class="btn btn-link" id="btn-link">Link Account</button>
-    <div><a href="https://www.clsplusplus.com/profile.html#keys" target="_blank">Generate API Key →</a></div>
-    <div class="err" id="err"></div>
+  <!-- Header -->
+  <div class="cls-header" style="padding: 0 0 var(--cls-md) 0;">
+    <span class="cls-header-icon">🧠</span>
+    <span class="cls-header-title">CLS++ Memory</span>
+    <div class="cls-header-user">
+      <span class="cls-dot off" id="dot"></span>
+      <span id="user-name" class="name"></span>
+      <span id="user-tier"></span>
+    </div>
   </div>
 
-  <div class="linked" id="sec-linked" style="display:none">
-    <div class="user" id="user-name"></div>
-    <div class="tier" id="user-tier"></div>
-    <button class="btn btn-unlink" id="btn-unlink">Unlink</button>
+  <!-- Unlinked State -->
+  <div id="sec-unlinked">
+    <input type="password" class="cls-input" id="key-input" placeholder="Paste API key" style="margin-bottom: var(--cls-sm);"/>
+    <button class="cls-btn cls-btn-primary" id="btn-link">Link Account</button>
+    <div style="margin-top: var(--cls-sm); text-align: center;">
+      <a href="https://www.clsplusplus.com/profile.html#keys" target="_blank" style="font-size:11px;">Generate API Key →</a>
+    </div>
+    <div class="cls-error" id="err"></div>
   </div>
 
+  <!-- Linked State -->
+  <div id="sec-linked" style="display:none;">
+    <!-- Stat Pills -->
+    <div class="cls-pills" style="padding: 0; margin-bottom: var(--cls-md);">
+      <div class="cls-pill">
+        <div class="cls-pill-value" id="stat-memories">—</div>
+        <div class="cls-pill-label">memories</div>
+      </div>
+      <div class="cls-pill">
+        <div class="cls-pill-value" id="stat-ops">—</div>
+        <div class="cls-pill-label">operations</div>
+      </div>
+      <div class="cls-pill">
+        <div class="cls-pill-value" id="stat-sites">—</div>
+        <div class="cls-pill-label">sites active</div>
+      </div>
+    </div>
+
+    <!-- Last Memory -->
+    <div class="cls-last-memory" id="last-memory" style="margin: 0 0 var(--cls-md) 0; display:none;">
+      <div class="cls-last-memory-label">Last Memory</div>
+      <div class="cls-last-memory-text" id="last-memory-text"></div>
+      <div class="cls-last-memory-meta" id="last-memory-meta"></div>
+    </div>
+
+    <!-- Open Panel Button -->
+    <button class="cls-btn cls-btn-primary" id="btn-panel">Open Full Panel ▸</button>
+  </div>
+
+<script src="themes.js"></script>
 <script src="popup.js"></script>
 </body>
 </html>
