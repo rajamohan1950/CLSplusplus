@@ -79,7 +79,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app = FastAPI(
         title="CLS++ API",
         description="Brain-inspired, model-agnostic persistent memory for LLMs",
-        version="1.5.0",
+        version="7.0.0",
         docs_url=None,
         redoc_url=None,
     )
@@ -193,7 +193,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.get("/health")
     async def health_check():
         """Quick health check for Render/load balancers — must return 200 fast."""
-        return {"status": "ok", "version": "1.5.0"}
+        return {"status": "ok", "version": "7.0.0"}
 
     @app.get("/v1/health")
     async def v1_health():
