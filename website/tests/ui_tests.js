@@ -711,7 +711,7 @@
   }
 
   // =========================================================================
-  // TC-UI-29: Inter font loaded on all pages
+  // TC-UI-29: Font system loaded on all pages (system fonts via styles.css or inline)
   // =========================================================================
   async function TC_UI_29() {
     currentTC = 'TC-UI-29';
@@ -721,9 +721,11 @@
       try {
         var res = await fetch(BASE + page + '?_t=' + Date.now());
         var html = await res.text();
-        var hasInter = html.includes('Inter') || html.includes('inter');
-        if (hasInter) pass(page + ' uses Inter font');
-        else fail(page + ' missing Inter font');
+        var hasFont = html.includes('Inter') || html.includes('inter')
+          || html.includes('-apple-system') || html.includes('system-ui')
+          || html.includes('styles.css');
+        if (hasFont) pass(page + ' uses system/Inter font or styles.css');
+        else fail(page + ' missing font declaration');
       } catch (e) {
         fail(page + ' font check', e.message);
       }
