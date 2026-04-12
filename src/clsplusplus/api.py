@@ -1,6 +1,7 @@
 """CLS++ REST API - FastAPI application."""
 
 import asyncio
+import collections
 import logging
 import time as _time
 import uuid as _uuid_mod
@@ -61,7 +62,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     # Context log for authenticated API reads (Claude Code hooks, etc.)
     from collections import defaultdict
-    _api_context_log: dict[str, list[dict]] = defaultdict(list)
+    _api_context_log: dict[str, collections.deque] = defaultdict(lambda: collections.deque(maxlen=100))
 
     # ── Topical Resonance Graph — cross-LLM session coupling ──
     from clsplusplus.topical_resonance import TopicalResonanceGraph
@@ -372,8 +373,6 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 "count": len(items),
                 "ts": datetime.utcnow().isoformat(),
             })
-            if len(_api_context_log[req.namespace]) > 100:
-                _api_context_log[req.namespace] = _api_context_log[req.namespace][-100:]
 
             # Persistent context log (fire-and-forget)
             user_id = getattr(request.state, "user_id", None) or "anonymous"
@@ -2176,10 +2175,18 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             await integration_service.close()
         except Exception:
             pass
+        # Close the shared httpx client used by LLM proxy routes
+        try:
+            http_client = getattr(_local_router, "_http_client", None)
+            if http_client:
+                await http_client.aclose()
+        except Exception:
+            pass
 
     # Register local/daemon routes (memory viewer, LLM proxies, WebSocket, installer)
     from clsplusplus.local_routes import create_local_router
-    app.include_router(create_local_router(memory_service, settings, metrics_emitter=_metrics))
+    _local_router = create_local_router(memory_service, settings, metrics_emitter=_metrics)
+    app.include_router(_local_router)
 
     # Serve website static files if the directory exists
     if _website_dir and FilePath(_website_dir).is_dir():

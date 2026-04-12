@@ -117,6 +117,10 @@ def create_local_router(memory_service: MemoryService, settings: Settings, metri
     engine = memory_service.engine
     _ext_metrics = metrics_emitter
 
+    # ── Shared HTTP client — reused across all proxy requests ─────────────
+    _http_client = httpx.AsyncClient(timeout=90)
+    router._http_client = _http_client  # exposed for app shutdown cleanup
+
     # ── In-memory state (closure-scoped) ──────────────────────────────────
     memory_log: dict[str, list[dict]] = defaultdict(list)
     context_log: dict[str, list[dict]] = defaultdict(list)
@@ -327,20 +331,19 @@ def create_local_router(memory_service: MemoryService, settings: Settings, metri
             )
         is_stream = body.get("stream", False)
 
-        async with httpx.AsyncClient(timeout=90) as client:
-            if is_stream:
-                # Streaming: forward chunks as Server-Sent Events
-                async with client.stream("POST", f"{OPENAI_BASE}/v1/chat/completions",
-                    json=body, headers={"Authorization": auth, "Content-Type": "application/json"}) as upstream:
-                    async def generate():
-                        async for chunk in upstream.aiter_bytes():
-                            yield chunk
-                    return StreamingResponse(generate(),
-                        media_type="text/event-stream",
-                        status_code=upstream.status_code)
-            else:
-                resp = await client.post(f"{OPENAI_BASE}/v1/chat/completions",
-                    json=body, headers={"Authorization": auth, "Content-Type": "application/json"})
+        if is_stream:
+            # Streaming: forward chunks as Server-Sent Events
+            async with _http_client.stream("POST", f"{OPENAI_BASE}/v1/chat/completions",
+                json=body, headers={"Authorization": auth, "Content-Type": "application/json"}) as upstream:
+                async def generate():
+                    async for chunk in upstream.aiter_bytes():
+                        yield chunk
+                return StreamingResponse(generate(),
+                    media_type="text/event-stream",
+                    status_code=upstream.status_code)
+        else:
+            resp = await _http_client.post(f"{OPENAI_BASE}/v1/chat/completions",
+                json=body, headers={"Authorization": auth, "Content-Type": "application/json"})
 
         # Extract assistant facts for memory
         try:
@@ -388,22 +391,21 @@ def create_local_router(memory_service: MemoryService, settings: Settings, metri
             )
         is_stream = body.get("stream", False)
 
-        async with httpx.AsyncClient(timeout=90) as client:
-            if is_stream:
-                async with client.stream("POST", f"{ANTHROPIC_BASE}/v1/messages",
-                    json=body,
-                    headers={"x-api-key": auth_key, "anthropic-version": "2023-06-01",
-                             "Content-Type": "application/json"}) as upstream:
-                    async def generate():
-                        async for chunk in upstream.aiter_bytes():
-                            yield chunk
-                    return StreamingResponse(generate(),
-                        media_type="text/event-stream",
-                        status_code=upstream.status_code)
-            else:
-                resp = await client.post(f"{ANTHROPIC_BASE}/v1/messages", json=body,
-                    headers={"x-api-key": auth_key, "anthropic-version": "2023-06-01",
-                             "Content-Type": "application/json"})
+        if is_stream:
+            async with _http_client.stream("POST", f"{ANTHROPIC_BASE}/v1/messages",
+                json=body,
+                headers={"x-api-key": auth_key, "anthropic-version": "2023-06-01",
+                         "Content-Type": "application/json"}) as upstream:
+                async def generate():
+                    async for chunk in upstream.aiter_bytes():
+                        yield chunk
+                return StreamingResponse(generate(),
+                    media_type="text/event-stream",
+                    status_code=upstream.status_code)
+        else:
+            resp = await _http_client.post(f"{ANTHROPIC_BASE}/v1/messages", json=body,
+                headers={"x-api-key": auth_key, "anthropic-version": "2023-06-01",
+                         "Content-Type": "application/json"})
 
         # Extract assistant facts
         try:
@@ -435,23 +437,22 @@ def create_local_router(memory_service: MemoryService, settings: Settings, metri
 
         reply = "Error reaching AI."
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
-                if model.startswith("gpt") or model.startswith("o1") or model.startswith("o3"):
-                    resp = await client.post(f"{OPENAI_BASE}/v1/chat/completions",
-                        json={"model": model, "max_tokens": 512,
-                              "messages": [{"role": "system", "content": system},
-                                           {"role": "user", "content": message}]},
-                        headers={"Authorization": f"Bearer {OPENAI_API_KEY}",
-                                 "Content-Type": "application/json"})
-                    reply = resp.json()["choices"][0]["message"]["content"]
-                else:
-                    resp = await client.post(f"{ANTHROPIC_BASE}/v1/messages",
-                        json={"model": model, "max_tokens": 512, "system": system,
-                              "messages": [{"role": "user", "content": message}]},
-                        headers={"x-api-key": ANTHROPIC_API_KEY,
-                                 "anthropic-version": "2023-06-01",
-                                 "Content-Type": "application/json"})
-                    reply = resp.json()["content"][0]["text"]
+            if model.startswith("gpt") or model.startswith("o1") or model.startswith("o3"):
+                resp = await _http_client.post(f"{OPENAI_BASE}/v1/chat/completions",
+                    json={"model": model, "max_tokens": 512,
+                          "messages": [{"role": "system", "content": system},
+                                       {"role": "user", "content": message}]},
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}",
+                             "Content-Type": "application/json"})
+                reply = resp.json()["choices"][0]["message"]["content"]
+            else:
+                resp = await _http_client.post(f"{ANTHROPIC_BASE}/v1/messages",
+                    json={"model": model, "max_tokens": 512, "system": system,
+                          "messages": [{"role": "user", "content": message}]},
+                    headers={"x-api-key": ANTHROPIC_API_KEY,
+                             "anthropic-version": "2023-06-01",
+                             "Content-Type": "application/json"})
+                reply = resp.json()["content"][0]["text"]
         except Exception as e:
             reply = f"Error reaching AI: {e}"
 

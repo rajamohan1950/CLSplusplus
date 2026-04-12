@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -59,6 +60,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.settings = settings
         self.integration_store = integration_store
+        if settings.jwt_secret:
+            try:
+                from clsplusplus.rbac_service import RBACService
+                self._rbac = RBACService(settings)
+            except Exception:
+                self._rbac = None
+        else:
+            self._rbac = None
 
     async def dispatch(self, request: Request, call_next) -> Response:
         if _is_public(request.url.path, request.method):
@@ -106,9 +115,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     # Load RBAC scopes (cached in Redis)
                     if not payload.get("is_admin"):
                         try:
-                            from clsplusplus.rbac_service import RBACService
-                            rbac = RBACService(self.settings)
-                            request.state.scopes = await rbac.get_effective_scopes_cached(payload["sub"])
+                            request.state.scopes = await self._rbac.get_effective_scopes_cached(payload["sub"])
                         except Exception:
                             request.state.scopes = set()  # Fail-closed: no scopes on error
                     else:
@@ -133,6 +140,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, settings: Settings):
         super().__init__(app)
         self.settings = settings
+        try:
+            from clsplusplus.metrics import MetricsEmitter
+            self._metrics = MetricsEmitter(settings)
+        except Exception:
+            self._metrics = None
 
     async def dispatch(self, request: Request, call_next) -> Response:
         if _is_public(request.url.path, request.method):
@@ -147,10 +159,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if not allowed:
             # Emit rate limit hit metric
             try:
-                from clsplusplus.metrics import MetricsEmitter
-                m = MetricsEmitter(self.settings)
-                import asyncio
-                asyncio.ensure_future(m.emit("system", "rate_limit_429"))
+                if self._metrics:
+                    asyncio.create_task(self._metrics.emit("system", "rate_limit_429"))
             except Exception:
                 pass
             return JSONResponse(
@@ -168,10 +178,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Emit total API request counter
         try:
-            from clsplusplus.metrics import MetricsEmitter
-            m = MetricsEmitter(self.settings)
-            import asyncio
-            asyncio.ensure_future(m.emit("system", "total_api_requests"))
+            if self._metrics:
+                asyncio.create_task(self._metrics.emit("system", "total_api_requests"))
         except Exception:
             pass
 
