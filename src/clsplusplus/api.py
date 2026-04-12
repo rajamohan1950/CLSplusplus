@@ -109,11 +109,18 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             title=app.title + " — API Documentation",
         )
 
-    cors_origins = ["*"]  # Allow all origins — Chrome extensions, localhost, production
+    # Explicit allowed origins — configurable via CLS_CORS_ORIGINS env var (comma-separated).
+    # Chrome extension origins use the literal "chrome-extension://*" pattern which the
+    # CORSMiddleware regex_origins list handles; the explicit list covers the web properties.
+    _default_origins = "https://www.clsplusplus.com,https://clsplusplus.com"
+    _cors_env = os.environ.get("CLS_CORS_ORIGINS", _default_origins)
+    cors_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+    cors_regex = r"^chrome-extension://[a-z]{32}$"  # any Chrome extension
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
-        allow_credentials=False,  # Must be False when allow_origins=["*"]
+        allow_origin_regex=cors_regex,
+        allow_credentials=True,
         allow_methods=["GET", "POST", "DELETE", "OPTIONS", "HEAD"],
         allow_headers=["Content-Type", "Authorization", "X-Request-Id", "X-Trace-Id", "X-Session-Id"],
         expose_headers=["X-Request-Id", "X-RateLimit-Limit", "X-RateLimit-Remaining"],
@@ -875,9 +882,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return {"deleted": True, "item_id": item_id}
 
     @app.delete("/v1/memory/wipe")
-    async def wipe_all_memories(request: Request):
+    async def wipe_all_memories(request: Request, confirm: bool = Query(False)):
         """Nuclear option: delete ALL memories for the authenticated namespace.
-        Clears engine, L1, L2, L3."""
+        Clears engine, L1, L2, L3. Requires confirm=true query parameter."""
+        if not confirm:
+            raise HTTPException(
+                status_code=400,
+                detail="Destructive operation requires confirm=true query parameter. "
+                       "Example: DELETE /v1/memory/wipe?confirm=true",
+            )
         ns = getattr(request.state, "namespace", None) or "default"
         # Clear engine
         memory_service.engine._items.pop(ns, None)
@@ -943,7 +956,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Registration failed: {type(e).__name__}: {str(e)[:200]}")
+            logger.error("Registration error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="Registration service unavailable")
         response = JSONResponse(content=user)
         return _set_session_cookie(response, token)
 
@@ -1043,8 +1057,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception:
             raise HTTPException(status_code=500, detail="Google auth service unavailable")
+        # Validate state is a safe relative path — reject open-redirect attempts
+        _safe_redirect = "/dashboard.html"
+        if state and state.startswith("/") and "://" not in state and not state.startswith("//"):
+            _safe_redirect = state
         from starlette.responses import RedirectResponse
-        response = RedirectResponse(state or "/dashboard.html")
+        response = RedirectResponse(_safe_redirect)
         _set_session_cookie(response, token)
         return response
 
@@ -1310,7 +1328,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 "tier_counts": tier_counts,
             }
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Metrics unavailable: {str(e)[:200]}")
+            logger.error("Admin metrics error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="Metrics unavailable")
 
     @app.get("/admin/metrics/signups")
     async def admin_signups(request: Request):
@@ -1320,7 +1339,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             signups = await user_service.store.daily_signups(days=90)
             return {"signups": signups}
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Signup data unavailable: {str(e)[:200]}")
+            logger.error("Admin signups error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="Signup data unavailable")
 
     @app.get("/admin/metrics/revenue")
     async def admin_revenue(request: Request):
@@ -1349,7 +1369,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 "tier_counts": tier_counts,
             }
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Revenue data unavailable: {str(e)[:200]}")
+            logger.error("Admin revenue error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="Revenue data unavailable")
 
     @app.get("/admin/metrics/operations")
     async def admin_operations(request: Request):
@@ -1366,7 +1387,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 "total_cost": round(total_cost, 4),
             }
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Operations data unavailable: {str(e)[:200]}")
+            logger.error("Admin operations error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="Operations data unavailable")
 
     @app.get("/admin/metrics/users")
     async def admin_users(request: Request):
@@ -1396,7 +1418,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
             return {"users": result}
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"User data unavailable: {str(e)[:200]}")
+            logger.error("Admin user list error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="User data unavailable")
 
     def _require_admin(request: Request):
         """Helper to enforce admin access on endpoints."""
@@ -1425,7 +1448,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"User metrics unavailable: {str(e)[:200]}")
+            logger.error("Admin user detail error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="User metrics unavailable")
 
     @app.get("/admin/metrics/extension")
     async def admin_extension(request: Request):
@@ -1434,7 +1458,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         try:
             return await _metrics.get_extension_analytics()
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Extension analytics unavailable: {str(e)[:200]}")
+            logger.error("Admin extension analytics error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="Extension analytics unavailable")
 
     @app.get("/v1/stats/extension")
     async def public_extension_stats():
@@ -1473,7 +1498,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 "loaded_namespaces": loaded_namespaces,
             }
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Storage metrics unavailable: {str(e)[:200]}")
+            logger.error("Admin storage metrics error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="Storage metrics unavailable")
 
     # =========================================================================
     # RBAC Admin API — Roles, Groups, Users, Permissions

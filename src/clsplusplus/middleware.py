@@ -39,8 +39,7 @@ def _is_public(path: str, method: str) -> bool:
         return True
     normalized = path.rstrip("/") or "/"
     return (normalized in _PUBLIC_PATHS
-            or path.startswith("/docs") or path.startswith("/redoc")
-            or path.startswith("/api/") or path.startswith("/ws/"))
+            or path.startswith("/docs") or path.startswith("/redoc"))
 
 
 def _requires_admin(path: str) -> bool:

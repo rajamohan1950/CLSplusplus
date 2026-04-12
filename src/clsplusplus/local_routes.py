@@ -318,8 +318,13 @@ def create_local_router(memory_service: MemoryService, settings: Settings, metri
         if query:
             await _store(uid, query, model_name, "user")
 
-        # Proxy to OpenAI
-        auth = request.headers.get("Authorization") or f"Bearer {OPENAI_API_KEY}"
+        # Proxy to OpenAI — caller must supply their own key; never fall back to server key
+        auth = request.headers.get("Authorization")
+        if not auth:
+            return JSONResponse(
+                status_code=401,
+                content={"error": "unauthorized", "message": "Authorization header required for LLM proxy"},
+            )
         is_stream = body.get("stream", False)
 
         async with httpx.AsyncClient(timeout=90) as client:
@@ -373,10 +378,14 @@ def create_local_router(memory_service: MemoryService, settings: Settings, metri
         if query:
             await _store(uid, query, model_name, "user")
 
-        # Proxy to Anthropic
+        # Proxy to Anthropic — caller must supply their own key; never fall back to server key
         auth_key = (request.headers.get("x-api-key")
-                    or request.headers.get("Authorization", "").replace("Bearer ", "")
-                    or ANTHROPIC_API_KEY)
+                    or request.headers.get("Authorization", "").replace("Bearer ", "").strip())
+        if not auth_key:
+            return JSONResponse(
+                status_code=401,
+                content={"error": "unauthorized", "message": "x-api-key or Authorization header required for LLM proxy"},
+            )
         is_stream = body.get("stream", False)
 
         async with httpx.AsyncClient(timeout=90) as client:

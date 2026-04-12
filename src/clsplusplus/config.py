@@ -17,8 +17,8 @@ class Settings(BaseSettings):
     # SaaS: API key auth (comma-separated for multiple keys)
     api_keys: str = ""
 
-    # SaaS: Require auth for memory endpoints (false = open for local/demo)
-    require_api_key: bool = False
+    # SaaS: Require auth for memory endpoints (true = secure default; set CLS_REQUIRE_API_KEY=false for local/demo)
+    require_api_key: bool = True
 
     # SaaS: Rate limit - requests per window per key
     rate_limit_requests: int = 100
