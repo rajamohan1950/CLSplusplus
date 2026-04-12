@@ -100,7 +100,7 @@
   function renderSignupsChart(signups) {
     makeChart('chart-signups', 'bar', signups.map(function(s){return s.date;}), [{
       label: 'Signups', data: signups.map(function(s){return s.count;}),
-      backgroundColor: 'rgba(99,102,241,0.7)', borderRadius: 3,
+      backgroundColor: 'rgba(255,107,53,0.7)', borderRadius: 3,
     }]);
   }
 
@@ -114,7 +114,7 @@
     }
     makeChart('chart-forecast', 'line', fLabels, [{
       label: 'Projected MRR', data: fData,
-      borderColor: 'rgba(99,102,241,0.8)', backgroundColor: 'rgba(99,102,241,0.1)',
+      borderColor: 'rgba(255,107,53,0.8)', backgroundColor: 'rgba(255,107,53,0.1)',
       fill: true, tension: 0.3, pointRadius: 4,
     }], { plugins: { legend: { display: true, labels: { color: '#8b8b9a' } } } });
   }

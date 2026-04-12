@@ -15,7 +15,7 @@ Or as module-level functions:
 
 from __future__ import annotations
 
-__version__ = "1.5.0"
+__version__ = "7.0.0"
 
 __all__ = ["Brain", "learn", "ask", "context", "forget", "CLS", "CLSClient", "__version__"]
 

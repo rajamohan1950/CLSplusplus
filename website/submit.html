@@ -4,34 +4,34 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>CLS++ · Chrome Web Store Submission</title>
+  <link rel="stylesheet" href="styles.css?v=2"/>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{
-      --bg:#05050a;--accent:#7c6ef0;--accent2:#5de0c5;
-      --text:#f0f0f8;--muted:rgba(240,240,248,0.42);
-      --ok:#5de0c5;--err:#f06e9a;--warn:#f0c05d;
+      --accent:#ff6b35;--accent2:#ff8c5a;
+      --text:#f0f0f8;--muted:rgba(255,255,255,0.6);
+      --ok:#16a34a;--err:#ef4444;--warn:#f0c05d;
       --chrome:#4285F4;
     }
-    html,body{min-height:100%;background:var(--bg);color:var(--text);
-      font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;
+    html,body{min-height:100%;background:transparent;color:var(--text);
       -webkit-font-smoothing:antialiased}
-    #canvas{position:fixed;inset:0;pointer-events:none;z-index:0}
+    #canvas{position:fixed;inset:0;pointer-events:none;z-index:1}
 
     /* ── Layout ─────────────────────────────── */
     .page{position:relative;z-index:10;max-width:660px;margin:0 auto;
-      padding:48px 24px 80px}
+      margin-top:70px;padding:48px 24px 80px}
 
-    .nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:52px}
-    .logo{display:flex;align-items:center;gap:8px}
-    .logo-dot{width:8px;height:8px;border-radius:50%;background:var(--accent2);
-      box-shadow:0 0 8px var(--accent2);animation:blink 1.8s ease-in-out infinite}
+    .page-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:52px}
+    .page-nav .logo-inner{display:flex;align-items:center;gap:8px}
+    .logo-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);
+      box-shadow:0 0 8px var(--accent);animation:blink 1.8s ease-in-out infinite}
     @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
-    .logo-text{font-size:14px;font-weight:700}
+    .logo-text{font-size:14px;font-weight:600}
     .nav-back{font-size:12px;color:var(--muted);text-decoration:none;
       display:flex;align-items:center;gap:5px;transition:color .15s}
     .nav-back:hover{color:var(--text)}
 
-    .headline{font-size:clamp(24px,3.5vw,36px);font-weight:800;letter-spacing:-.04em;
+    .headline{font-size:clamp(24px,3.5vw,36px);font-weight:600;letter-spacing:-.04em;
       line-height:1.1;margin-bottom:8px;
       background:linear-gradient(140deg,#fff 20%,var(--chrome) 55%,var(--accent2) 90%);
       -webkit-background-clip:text;-webkit-text-fill-color:transparent}
@@ -51,14 +51,14 @@
     .phase-header{display:flex;align-items:center;gap:10px;margin-bottom:14px;
       padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.06)}
     .phase-num{width:24px;height:24px;border-radius:50%;
-      background:rgba(124,110,240,.15);border:1px solid var(--accent);
+      background:rgba(255,107,53,.15);border:1px solid var(--accent);
       display:flex;align-items:center;justify-content:center;
-      font-size:10px;font-weight:800;color:var(--accent);flex-shrink:0}
-    .phase-done .phase-num{background:rgba(93,224,197,.15);border-color:var(--ok);color:var(--ok)}
-    .phase-title{font-size:15px;font-weight:700}
+      font-size:10px;font-weight:600;color:var(--accent);flex-shrink:0}
+    .phase-done .phase-num{background:rgba(22,163,74,.15);border-color:var(--ok);color:var(--ok)}
+    .phase-title{font-size:15px;font-weight:600}
     .phase-badge{margin-left:auto;font-size:10px;padding:2px 8px;border-radius:10px;
       background:rgba(255,255,255,.06);color:var(--muted)}
-    .phase-done .phase-badge{background:rgba(93,224,197,.1);color:var(--ok)}
+    .phase-done .phase-badge{background:rgba(22,163,74,.1);color:var(--ok)}
 
     /* ── Checklist items ────────────────────── */
     .checklist{display:flex;flex-direction:column;gap:8px}
@@ -67,8 +67,8 @@
       background:rgba(255,255,255,.025);
       cursor:pointer;transition:all .2s;user-select:none}
     .item:hover{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.12)}
-    .item.checked{background:rgba(93,224,197,.05);border-color:rgba(93,224,197,.18)}
-    .item.required:not(.checked){border-color:rgba(124,110,240,.18)}
+    .item.checked{background:rgba(22,163,74,.05);border-color:rgba(22,163,74,.18)}
+    .item.required:not(.checked){border-color:rgba(255,107,53,.18)}
 
     .check-box{width:22px;height:22px;border-radius:6px;flex-shrink:0;
       border:2px solid rgba(255,255,255,.2);display:flex;align-items:center;
@@ -82,7 +82,7 @@
     .item-title{font-size:13px;font-weight:600;margin-bottom:3px;
       display:flex;align-items:center;gap:7px}
     .required-badge{font-size:9px;padding:1px 5px;border-radius:4px;
-      background:rgba(124,110,240,.15);color:var(--accent);font-weight:700}
+      background:rgba(255,107,53,.15);color:var(--accent);font-weight:600}
     .item-desc{font-size:11px;color:var(--muted);line-height:1.5}
     .item-action{margin-top:8px;display:none}
     .item.checked .item-action,.item.open .item-action{display:block}
@@ -90,7 +90,7 @@
       border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;
       text-decoration:none;transition:all .18s}
     .chip-primary{background:var(--accent);color:#fff}
-    .chip-primary:hover{background:#9085f5}
+    .chip-primary:hover{background:#ff8c5a}
     .chip-secondary{background:rgba(255,255,255,.08);color:var(--text);border:1px solid rgba(255,255,255,.12)}
     .chip-secondary:hover{background:rgba(255,255,255,.12)}
     .chip-chrome{background:var(--chrome);color:#fff}
@@ -98,23 +98,23 @@
 
     /* ── Download card ──────────────────────── */
     .download-card{display:flex;align-items:center;gap:14px;padding:16px;
-      border-radius:12px;background:rgba(124,110,240,.08);
-      border:1px solid rgba(124,110,240,.25);margin-top:10px}
+      border-radius:12px;background:rgba(255,107,53,.08);
+      border:1px solid rgba(255,107,53,.25);margin-top:10px}
     .dl-icon{font-size:28px;flex-shrink:0}
-    .dl-name{font-size:13px;font-weight:700;margin-bottom:3px}
+    .dl-name{font-size:13px;font-weight:600;margin-bottom:3px}
     .dl-meta{font-size:11px;color:var(--muted)}
     .dl-btn{margin-left:auto;padding:8px 16px;background:var(--accent);border:none;
-      border-radius:8px;color:#fff;font-size:12px;font-weight:700;
+      border-radius:8px;color:#fff;font-size:12px;font-weight:600;
       cursor:pointer;transition:all .18s;white-space:nowrap;text-decoration:none;
       display:inline-block}
-    .dl-btn:hover{background:#9085f5}
+    .dl-btn:hover{background:#ff8c5a}
 
     /* ── Summary card ───────────────────────── */
     .summary{margin-top:40px;padding:24px;border-radius:16px;
-      background:linear-gradient(135deg,rgba(124,110,240,.1),rgba(93,224,197,.06));
-      border:1px solid rgba(124,110,240,.25);display:none}
+      background:linear-gradient(135deg,rgba(255,107,53,.1),rgba(22,163,74,.06));
+      border:1px solid rgba(255,107,53,.25);display:none}
     .summary.show{display:block}
-    .summary-title{font-size:18px;font-weight:800;margin-bottom:6px;color:var(--ok)}
+    .summary-title{font-size:18px;font-weight:600;margin-bottom:6px;color:var(--ok)}
     .summary-sub{font-size:13px;color:var(--muted);margin-bottom:20px}
     .summary-actions{display:flex;flex-wrap:wrap;gap:10px}
 
@@ -128,23 +128,26 @@
       background:rgba(255,255,255,.1);border-radius:4px;color:var(--accent2)}
 
     /* Spin */
-    .spin{width:14px;height:14px;border:2px solid rgba(93,224,197,.3);
+    .spin{width:14px;height:14px;border:2px solid rgba(22,163,74,.3);
       border-top-color:var(--accent2);border-radius:50%;
       animation:spin .7s linear infinite;display:inline-block;vertical-align:middle}
     @keyframes spin{to{transform:rotate(360deg)}}
   </style>
 </head>
 <body>
+<div class="video-bg"><video autoplay muted loop playsinline poster="beach-bg.jpg"><source src="sunrise-ocean.mp4" type="video/mp4"></video></div>
+<div class="video-overlay"></div>
+<nav class="nav"><div class="nav-inner"><a href="/" class="logo">CLS<span class="logo-plus">++</span></a><div class="nav-links"><a href="/">Home</a><a href="/docs.html">API</a><a href="/integrate.html">Integrate</a><a href="/#pricing">Pricing</a><div id="nav-auth" class="nav-auth"></div><a href="/getting-started.html" class="nav-cta">Get Started</a></div></div></nav>
 <canvas id="canvas" aria-hidden="true"></canvas>
 <div class="page">
 
-  <nav class="nav">
-    <div class="logo">
+  <div class="page-nav">
+    <div class="logo-inner">
       <div class="logo-dot"></div>
       <span class="logo-text">CLS++ Memory</span>
     </div>
     <a class="nav-back" href="index.html">← Back to launcher</a>
-  </nav>
+  </div>
 
   <h1 class="headline">Chrome Web Store Submission</h1>
   <p class="sub-head">
@@ -497,7 +500,7 @@ const pts=Array.from({length:50},()=>({
   cx.clearRect(0,0,W,H);
   pts.forEach(p=>{
     cx.beginPath();cx.arc(p.x,p.y,p.r,0,Math.PI*2);
-    cx.fillStyle=`rgba(66,133,244,${p.a})`;cx.fill();
+    cx.fillStyle=`rgba(255,107,53,${p.a})`;cx.fill();
     p.x+=p.vx;p.y+=p.vy;
     if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;
   });
@@ -597,5 +600,6 @@ async function checkZip() {
 render();
 checkZip();
 </script>
+<script src="footer.js?v=2"></script>
 </body>
 </html>

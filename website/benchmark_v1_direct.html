@@ -4,29 +4,37 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CLS++ | LoCoMo Benchmark Results</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=2">
   <script src="auth.js" defer></script>
   <style>
-    .bench-hero {
-      padding: 80px 20px 40px;
-      text-align: center;
-      background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0a0a0a 100%);
-    }
-    .bench-hero h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
-    .bench-hero .subtitle { color: #888; font-size: 1.1rem; max-width: 700px; margin: 0 auto; }
+    body { background: transparent; }
 
-    .bench-container { max-width: 1100px; margin: 0 auto; padding: 40px 20px; }
+    .bench-hero {
+      padding: 120px 20px 40px;
+      text-align: center;
+    }
+    .bench-hero h1 { font-size: 2.5rem; margin-bottom: 0.5rem; color: #fff; text-shadow: 0 2px 20px rgba(0,0,0,0.3); }
+    .bench-hero .subtitle { color: rgba(255,255,255,0.85); font-size: 1.1rem; max-width: 700px; margin: 0 auto; text-shadow: 0 1px 8px rgba(0,0,0,0.4); }
+
+    .bench-container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      background: #fff;
+      border-radius: 24px;
+      box-shadow: 0 4px 40px rgba(0,0,0,0.08);
+      position: relative;
+      z-index: 1;
+      margin-bottom: 24px;
+    }
 
     .bench-section { margin-bottom: 60px; }
     .bench-section h2 {
       font-size: 1.6rem;
       margin-bottom: 10px;
-      color: #e0e0e0;
+      color: #1d1d1f;
     }
-    .bench-section .desc { color: #888; margin-bottom: 20px; font-size: 0.95rem; }
+    .bench-section .desc { color: #86868b; margin-bottom: 20px; font-size: 0.95rem; }
 
     /* Results table */
     .bench-table {
@@ -38,24 +46,24 @@
     .bench-table th, .bench-table td {
       padding: 12px 16px;
       text-align: center;
-      border-bottom: 1px solid #222;
+      border-bottom: 1px solid rgba(0,0,0,0.08);
     }
     .bench-table th {
-      background: #111;
-      color: #888;
+      background: rgba(0,0,0,0.03);
+      color: #86868b;
       font-weight: 500;
       text-transform: uppercase;
       font-size: 0.75rem;
       letter-spacing: 0.5px;
     }
-    .bench-table td { color: #ccc; }
-    .bench-table td:first-child { text-align: left; font-weight: 600; color: #e0e0e0; }
-    .bench-table tr:hover { background: rgba(99, 102, 241, 0.05); }
+    .bench-table td { color: #1d1d1f; }
+    .bench-table td:first-child { text-align: left; font-weight: 600; color: #1d1d1f; }
+    .bench-table tr:hover { background: rgba(255,107,53,0.05); }
 
-    .score-high { color: #22c55e; font-weight: 700; }
-    .score-mid { color: #f59e0b; font-weight: 600; }
-    .score-low { color: #888; }
-    .score-perfect { color: #22c55e; font-weight: 700; background: rgba(34,197,94,0.1); border-radius: 4px; padding: 2px 8px; }
+    .score-high { color: #16a34a; font-weight: 700; }
+    .score-mid { color: #d97706; font-weight: 600; }
+    .score-low { color: #86868b; }
+    .score-perfect { color: #16a34a; font-weight: 700; background: rgba(22,163,74,0.1); border-radius: 4px; padding: 2px 8px; }
 
     .model-badge {
       display: inline-block;
@@ -64,10 +72,10 @@
       font-size: 0.75rem;
       font-weight: 600;
     }
-    .model-clspp { background: rgba(99,102,241,0.2); color: #818cf8; }
-    .model-gpt { background: rgba(16,185,129,0.2); color: #6ee7b7; }
-    .model-claude { background: rgba(249,115,22,0.2); color: #fdba74; }
-    .model-gemini { background: rgba(59,130,246,0.2); color: #93c5fd; }
+    .model-clspp { background: rgba(255,107,53,0.15); color: #ff6b35; }
+    .model-gpt { background: rgba(16,185,129,0.15); color: #059669; }
+    .model-claude { background: rgba(249,115,22,0.15); color: #c2410c; }
+    .model-gemini { background: rgba(59,130,246,0.15); color: #2563eb; }
 
     /* Stats grid */
     .stats-grid {
@@ -77,8 +85,8 @@
       margin-bottom: 30px;
     }
     .stat-card {
-      background: #111;
-      border: 1px solid #222;
+      background: rgba(255,255,255,0.7);
+      border: 1px solid rgba(0,0,0,0.08);
       border-radius: 8px;
       padding: 20px;
       text-align: center;
@@ -89,31 +97,31 @@
       font-family: 'JetBrains Mono', monospace;
     }
     .stat-card .stat-label {
-      color: #888;
+      color: #86868b;
       font-size: 0.8rem;
       margin-top: 4px;
     }
 
     .formula-box {
-      background: #0a0a0a;
+      background: #1d1d1f;
       border: 1px solid #333;
       border-radius: 8px;
       padding: 20px;
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.9rem;
-      color: #818cf8;
+      color: #ff6b35;
       text-align: center;
       margin: 20px 0;
     }
 
     .note-box {
-      background: rgba(99,102,241,0.05);
-      border-left: 3px solid #818cf8;
+      background: rgba(255,107,53,0.05);
+      border-left: 3px solid #ff6b35;
       padding: 16px 20px;
       border-radius: 0 8px 8px 0;
       margin: 20px 0;
       font-size: 0.9rem;
-      color: #aaa;
+      color: #86868b;
     }
 
     /* Category bars */
@@ -123,10 +131,11 @@
       justify-content: space-between;
       font-size: 0.85rem;
       margin-bottom: 4px;
+      color: #1d1d1f;
     }
     .cat-bar {
       height: 24px;
-      background: #1a1a1a;
+      background: rgba(0,0,0,0.06);
       border-radius: 4px;
       overflow: hidden;
     }
@@ -137,24 +146,25 @@
     }
     .cat-bar-fill.cat-5 { background: linear-gradient(90deg, #22c55e, #16a34a); }
     .cat-bar-fill.cat-3 { background: linear-gradient(90deg, #f59e0b, #d97706); }
-    .cat-bar-fill.cat-1 { background: linear-gradient(90deg, #6366f1, #4f46e5); }
+    .cat-bar-fill.cat-1 { background: linear-gradient(90deg, #ff6b35, #e85d26); }
     .cat-bar-fill.cat-4 { background: linear-gradient(90deg, #3b82f6, #2563eb); }
     .cat-bar-fill.cat-2 { background: linear-gradient(90deg, #8b5cf6, #7c3aed); }
   </style>
 </head>
 <body>
+  <div class="video-bg"><video autoplay muted loop playsinline poster="beach-bg.jpg"><source src="sunrise-ocean.mp4" type="video/mp4"></video></div>
+  <div class="video-overlay"></div>
+
   <nav class="nav">
     <div class="nav-inner">
       <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
       <div class="nav-links">
         <a href="/">Home</a>
         <a href="/docs.html">API</a>
-        <a href="/integrate.html">Integrate</a>
         <a href="/#pricing">Pricing</a>
-        <a href="/getting-started.html">Get Started</a>
         <div id="nav-auth" class="nav-auth"></div>
+        <a href="/getting-started.html" class="nav-cta">Get Started</a>
       </div>
-      <button class="nav-toggle" aria-label="Menu">☰</button>
     </div>
   </nav>
 
@@ -176,27 +186,27 @@
       <h2>Benchmark Overview</h2>
       <div class="stats-grid">
         <div class="stat-card">
-          <div class="stat-value" style="color: #818cf8;">0.253</div>
+          <div class="stat-value" style="color: #ff6b35;">0.253</div>
           <div class="stat-label">Overall F1 Accuracy</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value" style="color: #22c55e;">99.6%</div>
+          <div class="stat-value" style="color: #16a34a;">99.6%</div>
           <div class="stat-label">Adversarial Detection (Cat 5)</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value" style="color: #f59e0b;">1,986</div>
+          <div class="stat-value" style="color: #d97706;">1,986</div>
           <div class="stat-label">QA Pairs Evaluated</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value" style="color: #3b82f6;">272</div>
+          <div class="stat-value" style="color: #2563eb;">272</div>
           <div class="stat-label">Sessions (30+ per conv)</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value" style="color: #e0e0e0;">5,882</div>
+          <div class="stat-value" style="color: #1d1d1f;">5,882</div>
           <div class="stat-label">Dialog Turns Processed</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value" style="color: #22c55e;">100%</div>
+          <div class="stat-value" style="color: #16a34a;">100%</div>
           <div class="stat-label">Condensation Rate</div>
         </div>
       </div>
@@ -283,7 +293,7 @@
             <td class="score-mid">0.350</td>
             <td class="score-low">0.165</td>
           </tr>
-          <tr style="background: rgba(99,102,241,0.08); border: 2px solid #818cf8; border-radius: 4px;">
+          <tr style="background: rgba(255,107,53,0.08); border: 2px solid #ff6b35; border-radius: 4px;">
             <td><span class="model-badge model-clspp">CLS++ Phase Memory</span></td>
             <td class="score-low">0.036</td>
             <td class="score-low">0.057</td>
@@ -344,7 +354,7 @@
       <h2>Methodology</h2>
       <p class="desc">How this benchmark was conducted.</p>
 
-      <div class="note-box" style="border-left-color: #888;">
+      <div class="note-box" style="border-left-color: #86868b;">
         <strong>Dataset:</strong> LoCoMo-10 (ACL 2024) &mdash; 10 multi-session conversations spanning 100+ days each.
         <br><br>
         <strong>Pipeline:</strong>
@@ -401,8 +411,6 @@
 
   </div>
 
-  <footer style="text-align: center; padding: 40px 20px; color: #555; font-size: 0.85rem; border-top: 1px solid #222;">
-    CLS++ &middot; AlphaForge AI Labs &middot; Memory is a Phase of Matter
-  </footer>
+  <script src="footer.js?v=2"></script>
 </body>
 </html>

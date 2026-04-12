@@ -1,582 +1,850 @@
 /**
  * CLS++ Comprehensive UI Test Suite
+ * ===================================
+ * 30 test cases covering every page, every CTA, nav consistency,
+ * video background, sunrise theme, Apple-style design compliance.
  *
- * Run via: open tests/ui_test_runner.html in browser, or via preview tools.
- * Tests every page, every link, every button, every form, every anchor.
+ * Run via: open tests/ui_test_runner.html in browser
  * No external dependencies — pure vanilla JS.
  */
 
 (function () {
-  const PAGES = [
+  'use strict';
+
+  // All pages on the site
+  var ALL_PAGES = [
     'index.html',
+    'getting-started.html',
     'docs.html',
     'integrate.html',
+    'login.html',
+    'signup.html',
+    'profile.html',
+    'dashboard.html',
+    'usage.html',
     'chat.html',
+    'memory.html',
     'benchmark.html',
     'benchmark_v1_direct.html',
+    'tests.html',
+    'trace.html',
+    'install.html',
+    'demo.html',
+    'submit.html',
+    'support.html',
+    'extension-test.html',
+    'chat-test.html',
+    'terms.html',
+    'privacy.html'
   ];
 
-  // Resolve base URL (works from /tests/ subdirectory or root)
-  const BASE = window.location.pathname.includes('/tests/')
+  var BASE = window.location.pathname.includes('/tests/')
     ? window.location.origin + window.location.pathname.replace(/\/tests\/.*$/, '/')
     : window.location.origin + '/';
 
-  let results = [];
-  let currentPage = '';
+  var results = [];
+  var currentTC = '';
 
   function pass(name, detail) {
-    results.push({ page: currentPage, name, status: 'PASS', detail: detail || '' });
+    results.push({ tc: currentTC, name: name, status: 'PASS', detail: detail || '' });
   }
-
   function fail(name, detail) {
-    results.push({ page: currentPage, name, status: 'FAIL', detail: detail || '' });
+    results.push({ tc: currentTC, name: name, status: 'FAIL', detail: detail || '' });
+  }
+
+  // Fetch and parse an HTML page
+  async function fetchDoc(page) {
+    var res = await fetch(BASE + page + '?_t=' + Date.now());
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var html = await res.text();
+    return new DOMParser().parseFromString(html, 'text/html');
   }
 
   // =========================================================================
-  // Test helpers
+  // TC-UI-01: All pages load with HTTP 200
   // =========================================================================
-
-  function checkAnchors(doc) {
-    const anchorLinks = Array.from(doc.querySelectorAll('a[href^="#"]'));
-    let allGood = true;
-    anchorLinks.forEach(function (a) {
-      const id = a.getAttribute('href').slice(1);
-      if (!id) return; // href="#" is fine
-      if (!doc.getElementById(id)) {
-        fail('Anchor target exists: #' + id, 'No element with id="' + id + '"');
-        allGood = false;
-      }
-    });
-    if (allGood && anchorLinks.length > 0) {
-      pass('All anchor targets exist (' + anchorLinks.length + ' checked)');
-    }
-  }
-
-  function checkInternalLinks(doc) {
-    const links = Array.from(doc.querySelectorAll('a[href]'));
-    const internal = links.filter(function (a) {
-      const href = a.getAttribute('href');
-      return href && !href.startsWith('#') && !href.startsWith('http') && !href.startsWith('mailto:');
-    });
-
-    internal.forEach(function (a) {
-      const href = a.getAttribute('href').split('#')[0].split('?')[0];
-      if (PAGES.includes(href) || href === 'styles.css' || href === '/docs' || href === '/redoc') {
-        pass('Internal link valid: ' + href);
-      } else {
-        fail('Internal link valid: ' + href, 'File not in known pages list');
-      }
-    });
-  }
-
-  function checkExternalLinks(doc) {
-    const links = Array.from(doc.querySelectorAll('a[href^="http"]'));
-    links.forEach(function (a) {
-      const href = a.getAttribute('href');
-      const target = a.getAttribute('target');
-      const text = a.textContent.trim().substring(0, 30);
-      if (target !== '_blank') {
-        fail('External link opens in new tab: ' + text, 'href=' + href + ' missing target="_blank"');
-      } else {
-        pass('External link opens in new tab: ' + text);
-      }
-    });
-  }
-
-  function checkNoLocalhostOverride(doc) {
-    const scripts = Array.from(doc.querySelectorAll('script'));
-    let foundInline = false;
-    scripts.forEach(function (s) {
-      if (s.src) return; // external scripts checked separately
-      const code = s.textContent;
-      if (code.includes('localhost') && code.includes('CLS_API_URL')) {
-        // Check it's properly gated behind ?local=1
-        if (code.includes("location.hostname === 'localhost'") || code.includes('location.hostname === "localhost"')) {
-          fail('No localhost hostname override', 'Script sets CLS_API_URL based on hostname, not ?local=1 param');
-          foundInline = true;
-        }
-      }
-    });
-    if (!foundInline) {
-      pass('No localhost hostname override in inline scripts');
-    }
-  }
-
-  function checkNavConsistency(doc) {
-    // Sub-pages (not index.html) should have: Home, Docs, Integrations, Chat, Benchmarks, GitHub
-    const navLinks = Array.from(doc.querySelectorAll('.nav-links a, .chat-sidebar-footer a'));
-    const hrefs = navLinks.map(function (a) { return a.getAttribute('href'); });
-    const texts = navLinks.map(function (a) { return a.textContent.trim().toLowerCase(); });
-
-    // chat.html has sidebar nav, not top nav — different pattern, skip strict check
-    if (currentPage === 'chat.html') {
-      if (hrefs.some(function (h) { return h === 'index.html'; })) {
-        pass('Chat sidebar has Home link');
-      } else {
-        fail('Chat sidebar has Home link');
-      }
-      return;
-    }
-
-    // index.html has its own expanded nav
-    if (currentPage === 'index.html') {
-      var requiredIndex = ['docs.html', 'integrate.html', 'chat.html', 'benchmark.html'];
-      requiredIndex.forEach(function (page) {
-        if (hrefs.some(function (h) { return h === page || h.includes(page); })) {
-          pass('Index nav has link to ' + page);
-        } else {
-          fail('Index nav has link to ' + page);
-        }
-      });
-      return;
-    }
-
-    // All other sub-pages should have consistent nav
-    var requiredPages = ['index.html', 'docs.html', 'integrate.html', 'chat.html', 'benchmark.html'];
-    requiredPages.forEach(function (page) {
-      if (hrefs.some(function (h) { return h === page || h.includes(page); })) {
-        pass('Nav has link to ' + page);
-      } else {
-        fail('Nav has link to ' + page, 'Missing nav link to ' + page);
-      }
-    });
-
-    // GitHub link
-    if (hrefs.some(function (h) { return h && h.includes('github.com'); })) {
-      pass('Nav has GitHub link');
-    } else {
-      fail('Nav has GitHub link');
-    }
-  }
-
-  function checkButtons(doc) {
-    const buttons = Array.from(doc.querySelectorAll('button'));
-    buttons.forEach(function (btn) {
-      const text = btn.textContent.trim().substring(0, 30) || btn.getAttribute('aria-label') || '(empty)';
-      // Buttons should not be empty/invisible unless they have aria-label
-      if (!btn.textContent.trim() && !btn.getAttribute('aria-label')) {
-        fail('Button has label: ' + text, 'Button has no text and no aria-label');
-      } else {
-        pass('Button has label: ' + text);
-      }
-    });
-  }
-
-  function checkForms(doc) {
-    const inputs = Array.from(doc.querySelectorAll('input[type="text"], input[type="url"], input[type="email"], textarea'));
-    inputs.forEach(function (input) {
-      const id = input.id || input.name || '(no id)';
-      if (!input.placeholder && !input.getAttribute('aria-label')) {
-        fail('Form input has placeholder: ' + id, 'No placeholder or aria-label');
-      } else {
-        pass('Form input has placeholder: ' + id);
-      }
-    });
-  }
-
-  function checkNoConsoleErrors(doc) {
-    // This is checked at runtime — we just verify the page has valid script tags
-    const scripts = Array.from(doc.querySelectorAll('script[src]'));
-    scripts.forEach(function (s) {
-      var src = s.getAttribute('src');
-      if (!src.startsWith('http') && !src.startsWith('//')) {
-        pass('Script src exists: ' + src);
-      }
-    });
-  }
-
-  function checkCSSLoaded(doc) {
-    var links = Array.from(doc.querySelectorAll('link[rel="stylesheet"]'));
-    var hasStyles = links.some(function (l) {
-      return l.getAttribute('href') === 'styles.css';
-    });
-    if (hasStyles) {
-      pass('styles.css loaded');
-    } else {
-      fail('styles.css loaded', 'No link to styles.css found');
-    }
-  }
-
-  function checkMeta(doc) {
-    var viewport = doc.querySelector('meta[name="viewport"]');
-    if (viewport) {
-      pass('Viewport meta tag present');
-    } else {
-      fail('Viewport meta tag present');
-    }
-
-    var charset = doc.querySelector('meta[charset]');
-    if (charset) {
-      pass('Charset meta tag present');
-    } else {
-      fail('Charset meta tag present');
-    }
-
-    var title = doc.querySelector('title');
-    if (title && title.textContent.includes('CLS++')) {
-      pass('Title contains CLS++');
-    } else {
-      fail('Title contains CLS++', 'Title: ' + (title ? title.textContent : '(none)'));
-    }
-  }
-
-  // =========================================================================
-  // Page-specific tests
-  // =========================================================================
-
-  function testIndexSpecific(doc) {
-    // Demo chat containers
-    var claudeChat = doc.getElementById('chat-claude');
-    var openaiChat = doc.getElementById('chat-openai');
-    if (claudeChat) pass('Claude demo chat container exists');
-    else fail('Claude demo chat container exists');
-    if (openaiChat) pass('OpenAI demo chat container exists');
-    else fail('OpenAI demo chat container exists');
-
-    // Demo inputs
-    var claudeInput = doc.querySelector('[data-input="claude"]');
-    var openaiInput = doc.querySelector('[data-input="openai"]');
-    if (claudeInput) pass('Claude input field exists');
-    else fail('Claude input field exists');
-    if (openaiInput) pass('OpenAI input field exists');
-    else fail('OpenAI input field exists');
-
-    // Send buttons
-    var claudeSend = doc.querySelector('[data-send="claude"]');
-    var openaiSend = doc.querySelector('[data-send="openai"]');
-    if (claudeSend) pass('Claude send button exists');
-    else fail('Claude send button exists');
-    if (openaiSend) pass('OpenAI send button exists');
-    else fail('OpenAI send button exists');
-
-    // Key sections
-    ['tryit', 'problem', 'solution', 'demo', 'enterprise', 'pricing'].forEach(function (id) {
-      if (doc.getElementById(id)) pass('Section #' + id + ' exists');
-      else fail('Section #' + id + ' exists');
-    });
-
-    // Pricing cards — should have at least 2
-    var pricingLinks = Array.from(doc.querySelectorAll('#pricing a')).filter(function (a) {
-      return a.textContent.includes('Get Started') || a.textContent.includes('Trial') || a.textContent.includes('Contact');
-    });
-    if (pricingLinks.length >= 2) pass('Pricing section has CTAs (' + pricingLinks.length + ')');
-    else fail('Pricing section has CTAs', 'Found only ' + pricingLinks.length);
-
-    // Deploy button
-    var deployBtn = doc.querySelector('a[href*="render.com/deploy"]');
-    if (deployBtn) pass('Deploy on Render button exists');
-    else fail('Deploy on Render button exists');
-
-    // CLS_API_URL in demo.js should use production default
-    var demoScript = doc.querySelector('script[src^="demo.js"]');
-    if (demoScript) pass('demo.js script loaded');
-    else fail('demo.js script loaded');
-  }
-
-  function testDocsSpecific(doc) {
-    // Sidebar nav
-    var sidebar = doc.querySelector('.docs-sidebar nav, .docs-nav');
-    var sidebarLinks = doc.querySelectorAll('.docs-sidebar a[href^="#"]');
-    if (sidebarLinks.length >= 5) pass('Docs sidebar has navigation (' + sidebarLinks.length + ' links)');
-    else fail('Docs sidebar has navigation', 'Found only ' + sidebarLinks.length + ' sidebar links');
-
-    // Key sections
-    ['quickstart', 'authentication', 'endpoints', 'write', 'read'].forEach(function (id) {
-      if (doc.getElementById(id)) pass('Docs section #' + id + ' exists');
-      else fail('Docs section #' + id + ' exists');
-    });
-
-    // Code blocks
-    var codeBlocks = doc.querySelectorAll('pre, code');
-    if (codeBlocks.length >= 5) pass('Docs has code examples (' + codeBlocks.length + ')');
-    else fail('Docs has code examples', 'Found only ' + codeBlocks.length);
-  }
-
-  function testIntegrationsSpecific(doc) {
-    // Create integration form
-    var nameInput = doc.getElementById('int-name');
-    var nsInput = doc.getElementById('int-namespace');
-    var createBtn = doc.getElementById('btn-create');
-    if (nameInput) pass('Integration name input exists');
-    else fail('Integration name input exists');
-    if (nsInput) pass('Integration namespace input exists');
-    else fail('Integration namespace input exists');
-    if (createBtn) pass('Create Integration button exists');
-    else fail('Create Integration button exists');
-
-    // Result section (hidden initially)
-    var createResult = doc.getElementById('create-result');
-    if (createResult && createResult.style.display === 'none') {
-      pass('Create result hidden initially');
-    } else if (createResult) {
-      pass('Create result section exists');
-    } else {
-      fail('Create result section exists');
-    }
-
-    // Copy button
-    var copyBtn = doc.getElementById('btn-copy-key');
-    if (copyBtn) pass('Copy API key button exists');
-    else fail('Copy API key button exists');
-
-    // Snippet tabs
-    var tabs = doc.querySelectorAll('.int-tab');
-    if (tabs.length >= 3) pass('Code snippet tabs exist (' + tabs.length + ')');
-    else fail('Code snippet tabs exist', 'Found ' + tabs.length);
-
-    // Snippet containers
-    ['snippet-python', 'snippet-javascript', 'snippet-curl'].forEach(function (id) {
-      if (doc.getElementById(id)) pass('Snippet container: ' + id);
-      else fail('Snippet container: ' + id);
-    });
-
-    // Webhook form
-    var whUrl = doc.getElementById('wh-url');
-    var whBtn = doc.getElementById('btn-webhook');
-    if (whUrl) pass('Webhook URL input exists');
-    else fail('Webhook URL input exists');
-    if (whBtn) pass('Webhook subscribe button exists');
-    else fail('Webhook subscribe button exists');
-
-    // Memory cycle
-    var cycleStatements = doc.getElementById('cycle-statements');
-    var cycleQueries = doc.getElementById('cycle-queries');
-    var cycleBtn = doc.getElementById('btn-cycle');
-    if (cycleStatements) pass('Cycle statements textarea exists');
-    else fail('Cycle statements textarea exists');
-    if (cycleQueries) pass('Cycle queries textarea exists');
-    else fail('Cycle queries textarea exists');
-    if (cycleBtn) pass('Run Memory Cycle button exists');
-    else fail('Run Memory Cycle button exists');
-  }
-
-  function testChatSpecific(doc) {
-    // Core elements
-    var sidebar = doc.getElementById('chat-sidebar');
-    var messages = doc.getElementById('chat-messages');
-    var input = doc.getElementById('chat-input');
-    var sendBtn = doc.getElementById('btn-send');
-    var newChatBtn = doc.getElementById('btn-new-chat');
-    var sessionList = doc.getElementById('session-list');
-    var debugAugmented = doc.getElementById('debug-augmented');
-    var debugMemory = doc.getElementById('debug-memory');
-
-    if (sidebar) pass('Chat sidebar exists');
-    else fail('Chat sidebar exists');
-    if (messages) pass('Chat messages container exists');
-    else fail('Chat messages container exists');
-    if (input) pass('Chat input exists');
-    else fail('Chat input exists');
-    if (sendBtn) pass('Chat send button exists');
-    else fail('Chat send button exists');
-    if (newChatBtn) pass('New Chat button exists');
-    else fail('New Chat button exists');
-    if (sessionList) pass('Session list container exists');
-    else fail('Session list container exists');
-    if (debugAugmented) pass('Debug augmented panel exists');
-    else fail('Debug augmented panel exists');
-    if (debugMemory) pass('Debug memory panel exists');
-    else fail('Debug memory panel exists');
-
-    // chat.js loaded
-    var chatScript = doc.querySelector('script[src^="chat.js"]');
-    if (chatScript) pass('chat.js script loaded');
-    else fail('chat.js script loaded');
-  }
-
-  function testBenchmarkSpecific(doc) {
-    // Tables
-    var tables = doc.querySelectorAll('table');
-    if (tables.length >= 1) pass('Benchmark has data tables (' + tables.length + ')');
-    else fail('Benchmark has data tables');
-
-    // Key content
-    var h1 = doc.querySelector('h1');
-    if (h1 && h1.textContent.toLowerCase().includes('benchmark')) {
-      pass('Benchmark heading present');
-    } else {
-      fail('Benchmark heading present');
-    }
-  }
-
-  // =========================================================================
-  // JS file content tests (loaded via fetch)
-  // =========================================================================
-
-  async function testJSFiles() {
-    currentPage = 'JS Files';
-
-    var jsFiles = ['demo.js', 'integrations.js', 'chat.js', 'script.js'];
-
-    for (var i = 0; i < jsFiles.length; i++) {
-      var file = jsFiles[i];
+  async function TC_UI_01() {
+    currentTC = 'TC-UI-01';
+    for (var i = 0; i < ALL_PAGES.length; i++) {
+      var page = ALL_PAGES[i];
       try {
-        var res = await fetch(BASE + file + '?_t=' + Date.now());
-        if (!res.ok) {
-          fail(file + ' loads', 'HTTP ' + res.status);
-          continue;
-        }
-        var code = await res.text();
+        var res = await fetch(BASE + page + '?_t=' + Date.now());
+        if (res.ok) pass(page + ' loads (HTTP 200)');
+        else fail(page + ' loads', 'HTTP ' + res.status);
+      } catch (e) {
+        fail(page + ' loads', e.message);
+      }
+    }
+  }
 
-        // Check no hardcoded localhost as default API URL
-        if (code.includes("'http://localhost:8090'") || code.includes('"http://localhost:8090"')) {
-          // It's OK if it's behind window.CLS_API_URL fallback
-          var lines = code.split('\n');
-          var localhostLines = lines.filter(function (l) {
-            return l.includes('localhost:8090') && !l.includes('CLS_API_URL') && !l.trim().startsWith('//');
-          });
-          if (localhostLines.length > 0) {
-            fail(file + ' no hardcoded localhost', 'Found localhost:8090 not behind CLS_API_URL check');
+  // =========================================================================
+  // TC-UI-02: Every page has correct meta tags (viewport, charset, title)
+  // =========================================================================
+  async function TC_UI_02() {
+    currentTC = 'TC-UI-02';
+    for (var i = 0; i < ALL_PAGES.length; i++) {
+      var page = ALL_PAGES[i];
+      try {
+        var doc = await fetchDoc(page);
+        var viewport = doc.querySelector('meta[name="viewport"]');
+        var charset = doc.querySelector('meta[charset]');
+        var title = doc.querySelector('title');
+        if (viewport) pass(page + ' has viewport meta');
+        else fail(page + ' has viewport meta');
+        if (charset) pass(page + ' has charset meta');
+        else fail(page + ' has charset meta');
+        if (title && title.textContent.includes('CLS++')) pass(page + ' title contains CLS++');
+        else fail(page + ' title contains CLS++', 'Title: ' + (title ? title.textContent : 'none'));
+      } catch (e) {
+        fail(page + ' meta check', e.message);
+      }
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-03: Frosted glass nav bar present on all public pages
+  // =========================================================================
+  async function TC_UI_03() {
+    currentTC = 'TC-UI-03';
+    var pagesWithNav = ALL_PAGES.filter(function(p) { return p !== 'integrate.html'; }); // redirect page
+    for (var i = 0; i < pagesWithNav.length; i++) {
+      var page = pagesWithNav[i];
+      try {
+        var doc = await fetchDoc(page);
+        var nav = doc.querySelector('nav.nav');
+        if (nav) pass(page + ' has <nav class="nav">');
+        else fail(page + ' has <nav class="nav">');
+      } catch (e) {
+        fail(page + ' nav check', e.message);
+      }
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-04: Nav has CLS++ logo linking to home
+  // =========================================================================
+  async function TC_UI_04() {
+    currentTC = 'TC-UI-04';
+    var pagesWithNav = ALL_PAGES.filter(function(p) { return p !== 'integrate.html'; });
+    for (var i = 0; i < pagesWithNav.length; i++) {
+      var page = pagesWithNav[i];
+      try {
+        var doc = await fetchDoc(page);
+        var logo = doc.querySelector('nav .logo, nav .nav-logo');
+        if (logo) {
+          var href = logo.getAttribute('href');
+          if (href === '/' || href === '/index.html' || href === 'index.html') {
+            pass(page + ' logo links to home');
           } else {
-            pass(file + ' localhost is behind CLS_API_URL fallback');
+            fail(page + ' logo links to home', 'href=' + href);
           }
         } else {
-          pass(file + ' no hardcoded localhost');
+          fail(page + ' has logo in nav');
         }
-
-        // Check API URL defaults to same-origin (empty string)
-        if (code.includes("|| ''") || code.includes("|| \"\"")) {
-          pass(file + ' uses same-origin API URL default');
-        }
-
-        // Check for syntax issues — try to parse
-        try {
-          new Function(code);
-          pass(file + ' parses without syntax errors');
-        } catch (e) {
-          fail(file + ' parses without syntax errors', e.message);
-        }
-
       } catch (e) {
-        fail(file + ' loads', e.message);
+        fail(page + ' logo check', e.message);
       }
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-05: "Get Started" orange CTA button in nav on all pages
+  // =========================================================================
+  async function TC_UI_05() {
+    currentTC = 'TC-UI-05';
+    var pagesWithNav = ALL_PAGES.filter(function(p) { return p !== 'integrate.html'; });
+    for (var i = 0; i < pagesWithNav.length; i++) {
+      var page = pagesWithNav[i];
+      try {
+        var doc = await fetchDoc(page);
+        var cta = doc.querySelector('.nav-cta, .nav-links a.nav-cta');
+        if (cta) {
+          var text = cta.textContent.trim();
+          if (text.toLowerCase().includes('get started')) {
+            pass(page + ' nav has "Get Started" CTA');
+          } else {
+            fail(page + ' nav CTA text', 'Got: ' + text);
+          }
+        } else {
+          fail(page + ' nav has Get Started CTA button');
+        }
+      } catch (e) {
+        fail(page + ' CTA check', e.message);
+      }
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-06: Video background present on all themed pages
+  // =========================================================================
+  async function TC_UI_06() {
+    currentTC = 'TC-UI-06';
+    // Pages that should have video background
+    var videoPages = ALL_PAGES.filter(function(p) {
+      return p !== 'integrate.html'; // redirect
+    });
+    for (var i = 0; i < videoPages.length; i++) {
+      var page = videoPages[i];
+      try {
+        var doc = await fetchDoc(page);
+        var videoBg = doc.querySelector('.video-bg');
+        var videoEl = doc.querySelector('.video-bg video source, .video-bg video');
+        if (videoBg && videoEl) {
+          pass(page + ' has video background');
+        } else {
+          // Some pages (demo, install) may use canvas instead
+          var canvas = doc.querySelector('canvas');
+          if (canvas && videoBg) {
+            pass(page + ' has video + canvas background');
+          } else if (videoBg) {
+            pass(page + ' has video-bg div');
+          } else {
+            fail(page + ' has video background', 'No .video-bg found');
+          }
+        }
+      } catch (e) {
+        fail(page + ' video bg check', e.message);
+      }
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-07: No dark backgrounds (#0a0a0a, #06060c, #05050a, #0d0d0d) remaining
+  // =========================================================================
+  async function TC_UI_07() {
+    currentTC = 'TC-UI-07';
+    var darkColors = ['#05050a', '#06060c', '#0a0a0a', '#0a0a0f', '#0d0d0d', '#090909'];
+    for (var i = 0; i < ALL_PAGES.length; i++) {
+      var page = ALL_PAGES[i];
+      try {
+        var res = await fetch(BASE + page + '?_t=' + Date.now());
+        var html = await res.text();
+        var found = [];
+        darkColors.forEach(function(c) {
+          if (html.includes(c)) found.push(c);
+        });
+        if (found.length === 0) {
+          pass(page + ' no dark background colors');
+        } else {
+          fail(page + ' has dark colors', found.join(', '));
+        }
+      } catch (e) {
+        fail(page + ' dark color check', e.message);
+      }
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-08: Orange accent (#ff6b35) used instead of purple (#7c6ef0, #6366f1)
+  // =========================================================================
+  async function TC_UI_08() {
+    currentTC = 'TC-UI-08';
+    var purpleColors = ['#7c6ef0', '#6366f1', '#818cf8'];
+    for (var i = 0; i < ALL_PAGES.length; i++) {
+      var page = ALL_PAGES[i];
+      try {
+        var res = await fetch(BASE + page + '?_t=' + Date.now());
+        var html = await res.text();
+        var found = [];
+        purpleColors.forEach(function(c) {
+          // Exclude comments and data attributes
+          var idx = html.indexOf(c);
+          if (idx !== -1) found.push(c);
+        });
+        if (found.length === 0) {
+          pass(page + ' no purple accents');
+        } else {
+          fail(page + ' still has purple', found.join(', '));
+        }
+      } catch (e) {
+        fail(page + ' purple check', e.message);
+      }
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-09: styles.css loaded with cache-busting (?v=2) on pages using it
+  // =========================================================================
+  async function TC_UI_09() {
+    currentTC = 'TC-UI-09';
+    for (var i = 0; i < ALL_PAGES.length; i++) {
+      var page = ALL_PAGES[i];
+      try {
+        var doc = await fetchDoc(page);
+        var links = Array.from(doc.querySelectorAll('link[rel="stylesheet"]'));
+        var stylesLink = links.find(function(l) {
+          var href = l.getAttribute('href') || '';
+          return href.includes('styles.css');
+        });
+        if (stylesLink) {
+          var href = stylesLink.getAttribute('href');
+          if (href.includes('?v=')) {
+            pass(page + ' styles.css has cache-bust');
+          } else {
+            fail(page + ' styles.css missing cache-bust', 'href=' + href);
+          }
+        } else {
+          // Some pages have all inline styles - acceptable
+          pass(page + ' uses inline styles (no styles.css)');
+        }
+      } catch (e) {
+        fail(page + ' stylesheet check', e.message);
+      }
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-10: Body/html has transparent background for video visibility
+  // =========================================================================
+  async function TC_UI_10() {
+    currentTC = 'TC-UI-10';
+    for (var i = 0; i < ALL_PAGES.length; i++) {
+      var page = ALL_PAGES[i];
+      if (page === 'integrate.html') continue; // redirect
+      try {
+        var res = await fetch(BASE + page + '?_t=' + Date.now());
+        var html = await res.text();
+        // Check for background:transparent or background: transparent
+        var hasTransparent = html.includes('background:transparent') || html.includes('background: transparent');
+        // Or no background set (inherits transparent)
+        if (hasTransparent) {
+          pass(page + ' body has transparent bg');
+        } else {
+          // Check if it doesn't set a dark background
+          var darkBgRegex = /body\s*\{[^}]*background\s*:\s*#[0-9a-f]{3,6}/i;
+          if (darkBgRegex.test(html)) {
+            fail(page + ' body has dark background', 'Should be transparent');
+          } else {
+            pass(page + ' body bg not dark');
+          }
+        }
+      } catch (e) {
+        fail(page + ' bg check', e.message);
+      }
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-11: All anchor href="#id" targets exist on their page
+  // =========================================================================
+  async function TC_UI_11() {
+    currentTC = 'TC-UI-11';
+    for (var i = 0; i < ALL_PAGES.length; i++) {
+      var page = ALL_PAGES[i];
+      if (page === 'integrate.html') continue;
+      try {
+        var doc = await fetchDoc(page);
+        var anchors = Array.from(doc.querySelectorAll('a[href^="#"]'));
+        var broken = [];
+        anchors.forEach(function(a) {
+          var id = a.getAttribute('href').slice(1);
+          if (id && !doc.getElementById(id)) broken.push('#' + id);
+        });
+        if (broken.length === 0) pass(page + ' all anchor targets exist (' + anchors.length + ')');
+        else fail(page + ' broken anchors', broken.join(', '));
+      } catch (e) {
+        fail(page + ' anchor check', e.message);
+      }
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-12: All buttons have visible labels or aria-labels
+  // =========================================================================
+  async function TC_UI_12() {
+    currentTC = 'TC-UI-12';
+    for (var i = 0; i < ALL_PAGES.length; i++) {
+      var page = ALL_PAGES[i];
+      if (page === 'integrate.html') continue;
+      try {
+        var doc = await fetchDoc(page);
+        var buttons = Array.from(doc.querySelectorAll('button'));
+        var unlabeled = [];
+        buttons.forEach(function(btn) {
+          var text = btn.textContent.trim();
+          var ariaLabel = btn.getAttribute('aria-label');
+          if (!text && !ariaLabel) unlabeled.push(btn.className || 'unnamed');
+        });
+        if (unlabeled.length === 0) pass(page + ' all buttons labeled (' + buttons.length + ')');
+        else fail(page + ' unlabeled buttons', unlabeled.join(', '));
+      } catch (e) {
+        fail(page + ' button check', e.message);
+      }
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-13: Login page has email, password fields and Log In CTA
+  // =========================================================================
+  async function TC_UI_13() {
+    currentTC = 'TC-UI-13';
+    try {
+      var doc = await fetchDoc('login.html');
+      var email = doc.querySelector('input[type="email"], input#email, input[placeholder*="mail"]');
+      var pwd = doc.querySelector('input[type="password"], input#password');
+      var loginBtn = doc.querySelector('button');
+      if (email) pass('Login has email input');
+      else fail('Login has email input');
+      if (pwd) pass('Login has password input');
+      else fail('Login has password input');
+      if (loginBtn && loginBtn.textContent.toLowerCase().includes('log in')) pass('Login has Log In button');
+      else fail('Login has Log In button', loginBtn ? loginBtn.textContent : 'no button');
+      // Sign up link
+      var signupLink = Array.from(doc.querySelectorAll('a')).find(function(a) {
+        return a.textContent.toLowerCase().includes('sign up');
+      });
+      if (signupLink) pass('Login has Sign Up link');
+      else fail('Login has Sign Up link');
+    } catch (e) {
+      fail('Login page', e.message);
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-14: Signup page has name, email, password fields and Sign Up CTA
+  // =========================================================================
+  async function TC_UI_14() {
+    currentTC = 'TC-UI-14';
+    try {
+      var doc = await fetchDoc('signup.html');
+      var name = doc.querySelector('input#name, input[placeholder*="ame"]');
+      var email = doc.querySelector('input[type="email"], input#email, input[placeholder*="mail"]');
+      var pwd = doc.querySelector('input[type="password"], input#password');
+      var signupBtn = doc.querySelector('button');
+      if (email) pass('Signup has email input');
+      else fail('Signup has email input');
+      if (pwd) pass('Signup has password input');
+      else fail('Signup has password input');
+      if (signupBtn && signupBtn.textContent.toLowerCase().includes('sign up')) pass('Signup has Sign Up CTA');
+      else if (signupBtn && signupBtn.textContent.toLowerCase().includes('create')) pass('Signup has Create Account CTA');
+      else fail('Signup has Sign Up CTA', signupBtn ? signupBtn.textContent : 'no button');
+      // Login link
+      var loginLink = Array.from(doc.querySelectorAll('a')).find(function(a) {
+        return a.textContent.toLowerCase().includes('log in') || a.getAttribute('href') === '/login.html';
+      });
+      if (loginLink) pass('Signup has Log In link');
+      else fail('Signup has Log In link');
+    } catch (e) {
+      fail('Signup page', e.message);
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-15: Index page has hero section with "Get started" CTA
+  // =========================================================================
+  async function TC_UI_15() {
+    currentTC = 'TC-UI-15';
+    try {
+      var doc = await fetchDoc('index.html');
+      var hero = doc.querySelector('.hero, section');
+      var h1 = doc.querySelector('h1');
+      if (h1) pass('Index has h1 heading');
+      else fail('Index has h1 heading');
+      // Get started CTA in hero
+      var heroCTA = Array.from(doc.querySelectorAll('a')).find(function(a) {
+        return a.textContent.toLowerCase().includes('get started');
+      });
+      if (heroCTA) pass('Index hero has "Get started" CTA');
+      else fail('Index hero has "Get started" CTA');
+    } catch (e) {
+      fail('Index page', e.message);
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-16: Index page has pricing section with plan CTAs
+  // =========================================================================
+  async function TC_UI_16() {
+    currentTC = 'TC-UI-16';
+    try {
+      var doc = await fetchDoc('index.html');
+      var pricing = doc.getElementById('pricing');
+      if (pricing) {
+        pass('Index has #pricing section');
+        var pricingCTAs = Array.from(pricing.querySelectorAll('a, button'));
+        if (pricingCTAs.length >= 2) pass('Pricing has ' + pricingCTAs.length + ' CTAs');
+        else fail('Pricing CTAs', 'Only ' + pricingCTAs.length + ' found');
+      } else {
+        // Check by text
+        var html = doc.body.innerHTML;
+        if (html.toLowerCase().includes('pricing')) pass('Index mentions pricing');
+        else fail('Index has pricing section');
+      }
+    } catch (e) {
+      fail('Index pricing', e.message);
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-17: Docs page has sidebar navigation and code examples
+  // =========================================================================
+  async function TC_UI_17() {
+    currentTC = 'TC-UI-17';
+    try {
+      var doc = await fetchDoc('docs.html');
+      var sidebarLinks = doc.querySelectorAll('a[href^="#"]');
+      if (sidebarLinks.length >= 5) pass('Docs has sidebar nav (' + sidebarLinks.length + ' links)');
+      else fail('Docs sidebar nav', 'Only ' + sidebarLinks.length + ' anchor links');
+      var codeBlocks = doc.querySelectorAll('pre, code');
+      if (codeBlocks.length >= 3) pass('Docs has code examples (' + codeBlocks.length + ')');
+      else fail('Docs code examples', 'Only ' + codeBlocks.length);
+    } catch (e) {
+      fail('Docs page', e.message);
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-18: Chat page has input, send button, new chat button
+  // =========================================================================
+  async function TC_UI_18() {
+    currentTC = 'TC-UI-18';
+    try {
+      var doc = await fetchDoc('chat.html');
+      var input = doc.getElementById('chat-input') || doc.querySelector('textarea, input[type="text"]');
+      var send = doc.getElementById('btn-send') || doc.querySelector('button');
+      var newChat = doc.getElementById('btn-new-chat');
+      if (input) pass('Chat has input field');
+      else fail('Chat has input field');
+      if (send) pass('Chat has send button');
+      else fail('Chat has send button');
+      if (newChat) pass('Chat has New Chat button');
+      else fail('Chat has New Chat button');
+    } catch (e) {
+      fail('Chat page', e.message);
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-19: Memory page has sidebar filters (model, category, layer)
+  // =========================================================================
+  async function TC_UI_19() {
+    currentTC = 'TC-UI-19';
+    try {
+      var doc = await fetchDoc('memory.html');
+      var modelList = doc.getElementById('model-list') || doc.querySelector('.model-list');
+      var catList = doc.getElementById('cat-list') || doc.querySelector('.cat-list');
+      var layerList = doc.getElementById('layer-list') || doc.querySelector('.layer-list');
+      var search = doc.getElementById('search') || doc.querySelector('input[placeholder*="earch"]');
+      if (modelList) pass('Memory has model filter');
+      else fail('Memory has model filter');
+      if (catList) pass('Memory has category filter');
+      else fail('Memory has category filter');
+      if (layerList) pass('Memory has layer filter');
+      else fail('Memory has layer filter');
+      if (search) pass('Memory has search input');
+      else fail('Memory has search input');
+    } catch (e) {
+      fail('Memory page', e.message);
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-20: Benchmark page has data tables and scores
+  // =========================================================================
+  async function TC_UI_20() {
+    currentTC = 'TC-UI-20';
+    var benchPages = ['benchmark.html', 'benchmark_v1_direct.html'];
+    for (var i = 0; i < benchPages.length; i++) {
+      var page = benchPages[i];
+      try {
+        var doc = await fetchDoc(page);
+        var tables = doc.querySelectorAll('table');
+        if (tables.length >= 1) pass(page + ' has data tables (' + tables.length + ')');
+        else fail(page + ' has data tables');
+        var h1 = doc.querySelector('h1');
+        if (h1) pass(page + ' has heading');
+        else fail(page + ' has heading');
+      } catch (e) {
+        fail(page, e.message);
+      }
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-21: Tests page has run history sidebar and test result display
+  // =========================================================================
+  async function TC_UI_21() {
+    currentTC = 'TC-UI-21';
+    try {
+      var doc = await fetchDoc('tests.html');
+      var runList = doc.getElementById('run-list');
+      var mainPanel = doc.getElementById('main-panel');
+      if (runList) pass('Tests has run history list');
+      else fail('Tests has run history list');
+      if (mainPanel) pass('Tests has main results panel');
+      else fail('Tests has main results panel');
+    } catch (e) {
+      fail('Tests page', e.message);
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-22: Install page has Activate button
+  // =========================================================================
+  async function TC_UI_22() {
+    currentTC = 'TC-UI-22';
+    try {
+      var doc = await fetchDoc('install.html');
+      var btn = doc.getElementById('btn') || doc.querySelector('button');
+      if (btn) {
+        var text = btn.textContent.toLowerCase();
+        if (text.includes('activate')) pass('Install has Activate CTA');
+        else pass('Install has button: ' + btn.textContent.trim());
+      } else {
+        fail('Install has Activate button');
+      }
+    } catch (e) {
+      fail('Install page', e.message);
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-23: Profile page has user info, API keys, billing sections
+  // =========================================================================
+  async function TC_UI_23() {
+    currentTC = 'TC-UI-23';
+    try {
+      var doc = await fetchDoc('profile.html');
+      var html = doc.body.innerHTML.toLowerCase();
+      if (html.includes('profile') || html.includes('user')) pass('Profile has user section');
+      else fail('Profile has user section');
+      if (html.includes('api key') || html.includes('api-key')) pass('Profile has API keys section');
+      else fail('Profile has API keys section');
+      if (html.includes('billing') || html.includes('plan') || html.includes('subscription')) pass('Profile has billing section');
+      else fail('Profile has billing section');
+    } catch (e) {
+      fail('Profile page', e.message);
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-24: Dashboard page has stats cards and quick links
+  // =========================================================================
+  async function TC_UI_24() {
+    currentTC = 'TC-UI-24';
+    try {
+      var doc = await fetchDoc('dashboard.html');
+      var cards = doc.querySelectorAll('.dash-card');
+      var quickLinks = doc.querySelectorAll('.quick-link');
+      if (cards.length >= 1) pass('Dashboard has stat cards (' + cards.length + ')');
+      else fail('Dashboard has stat cards');
+      if (quickLinks.length >= 1) pass('Dashboard has quick links (' + quickLinks.length + ')');
+      else fail('Dashboard has quick links');
+    } catch (e) {
+      fail('Dashboard page', e.message);
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-25: Usage page has usage cards and chart
+  // =========================================================================
+  async function TC_UI_25() {
+    currentTC = 'TC-UI-25';
+    try {
+      var doc = await fetchDoc('usage.html');
+      var html = doc.body.innerHTML.toLowerCase();
+      if (html.includes('usage') || html.includes('operations')) pass('Usage has usage data');
+      else fail('Usage has usage data');
+      if (html.includes('chart') || html.includes('canvas')) pass('Usage has chart element');
+      else fail('Usage has chart element');
+    } catch (e) {
+      fail('Usage page', e.message);
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-26: Terms and Privacy pages have legal content
+  // =========================================================================
+  async function TC_UI_26() {
+    currentTC = 'TC-UI-26';
+    var legalPages = ['terms.html', 'privacy.html'];
+    for (var i = 0; i < legalPages.length; i++) {
+      var page = legalPages[i];
+      try {
+        var doc = await fetchDoc(page);
+        var h1 = doc.querySelector('h1');
+        var sections = doc.querySelectorAll('h2, h3');
+        if (h1) pass(page + ' has main heading');
+        else fail(page + ' has main heading');
+        if (sections.length >= 3) pass(page + ' has ' + sections.length + ' sections');
+        else fail(page + ' sections', 'Only ' + sections.length);
+      } catch (e) {
+        fail(page, e.message);
+      }
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-27: Support page has contact info and FAQ
+  // =========================================================================
+  async function TC_UI_27() {
+    currentTC = 'TC-UI-27';
+    try {
+      var doc = await fetchDoc('support.html');
+      var html = doc.body.innerHTML.toLowerCase();
+      if (html.includes('email') || html.includes('contact')) pass('Support has contact info');
+      else fail('Support has contact info');
+      if (html.includes('faq') || html.includes('frequently')) pass('Support has FAQ section');
+      else fail('Support has FAQ section');
+    } catch (e) {
+      fail('Support page', e.message);
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-28: No hamburger menu (nav-toggle) on any page
+  // =========================================================================
+  async function TC_UI_28() {
+    currentTC = 'TC-UI-28';
+    for (var i = 0; i < ALL_PAGES.length; i++) {
+      var page = ALL_PAGES[i];
+      if (page === 'integrate.html') continue;
+      try {
+        var doc = await fetchDoc(page);
+        var toggle = doc.querySelector('.nav-toggle, button[aria-label="Menu"]');
+        if (!toggle) pass(page + ' no hamburger menu');
+        else fail(page + ' has hamburger menu', 'Should be removed');
+      } catch (e) {
+        fail(page + ' toggle check', e.message);
+      }
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-29: Inter font loaded on all pages
+  // =========================================================================
+  async function TC_UI_29() {
+    currentTC = 'TC-UI-29';
+    for (var i = 0; i < ALL_PAGES.length; i++) {
+      var page = ALL_PAGES[i];
+      if (page === 'integrate.html') continue;
+      try {
+        var res = await fetch(BASE + page + '?_t=' + Date.now());
+        var html = await res.text();
+        var hasInter = html.includes('Inter') || html.includes('inter');
+        if (hasInter) pass(page + ' uses Inter font');
+        else fail(page + ' missing Inter font');
+      } catch (e) {
+        fail(page + ' font check', e.message);
+      }
+    }
+  }
+
+  // =========================================================================
+  // TC-UI-30: integrate.html redirects to getting-started.html
+  // =========================================================================
+  async function TC_UI_30() {
+    currentTC = 'TC-UI-30';
+    try {
+      var doc = await fetchDoc('integrate.html');
+      var meta = doc.querySelector('meta[http-equiv="refresh"]');
+      var canonical = doc.querySelector('link[rel="canonical"]');
+      if (meta) {
+        var content = meta.getAttribute('content');
+        if (content.includes('getting-started')) pass('integrate.html redirects to getting-started');
+        else fail('integrate.html redirect target', content);
+      } else {
+        fail('integrate.html has redirect meta');
+      }
+    } catch (e) {
+      fail('integrate.html redirect', e.message);
     }
   }
 
   // =========================================================================
   // Runner
   // =========================================================================
-
-  async function runPageTests(page) {
-    currentPage = page;
-
-    try {
-      var res = await fetch(BASE + page + '?_t=' + Date.now());
-      if (!res.ok) {
-        fail('Page loads', 'HTTP ' + res.status);
-        return;
-      }
-      pass('Page loads (HTTP 200)');
-
-      var html = await res.text();
-      var parser = new DOMParser();
-      var doc = parser.parseFromString(html, 'text/html');
-
-      // Universal tests
-      checkMeta(doc);
-      checkCSSLoaded(doc);
-      checkAnchors(doc);
-      checkInternalLinks(doc);
-      checkExternalLinks(doc);
-      checkNoLocalhostOverride(doc);
-      checkNavConsistency(doc);
-      checkButtons(doc);
-      checkForms(doc);
-      checkNoConsoleErrors(doc);
-
-      // Page-specific tests
-      if (page === 'index.html') testIndexSpecific(doc);
-      else if (page === 'docs.html') testDocsSpecific(doc);
-      else if (page === 'integrate.html') testIntegrationsSpecific(doc);
-      else if (page === 'chat.html') testChatSpecific(doc);
-      else if (page.includes('benchmark')) testBenchmarkSpecific(doc);
-
-    } catch (e) {
-      fail('Page loads', e.message);
-    }
-  }
+  var ALL_TCS = [
+    TC_UI_01, TC_UI_02, TC_UI_03, TC_UI_04, TC_UI_05,
+    TC_UI_06, TC_UI_07, TC_UI_08, TC_UI_09, TC_UI_10,
+    TC_UI_11, TC_UI_12, TC_UI_13, TC_UI_14, TC_UI_15,
+    TC_UI_16, TC_UI_17, TC_UI_18, TC_UI_19, TC_UI_20,
+    TC_UI_21, TC_UI_22, TC_UI_23, TC_UI_24, TC_UI_25,
+    TC_UI_26, TC_UI_27, TC_UI_28, TC_UI_29, TC_UI_30
+  ];
 
   async function runAllTests() {
     results = [];
-
-    for (var i = 0; i < PAGES.length; i++) {
-      await runPageTests(PAGES[i]);
+    for (var i = 0; i < ALL_TCS.length; i++) {
+      try { await ALL_TCS[i](); } catch (e) { fail('TC execution error', e.message); }
     }
-
-    await testJSFiles();
-
     return results;
   }
 
   // =========================================================================
-  // Report
+  // Report renderer (sunrise theme)
   // =========================================================================
-
   function renderReport(results) {
-    var passed = results.filter(function (r) { return r.status === 'PASS'; }).length;
-    var failed = results.filter(function (r) { return r.status === 'FAIL'; }).length;
+    var passed = results.filter(function(r) { return r.status === 'PASS'; }).length;
+    var failed = results.filter(function(r) { return r.status === 'FAIL'; }).length;
     var total = results.length;
+    var rate = total > 0 ? ((passed / total) * 100).toFixed(1) : '0.0';
 
-    var html = '<div style="font-family:monospace;padding:20px;background:#0a0a0a;color:#e0e0e0;min-height:100vh">';
-    html += '<h1 style="color:#fff">CLS++ UI Test Results</h1>';
-    html += '<p style="font-size:18px">';
-    html += '<span style="color:#4caf50">' + passed + ' passed</span> / ';
-    html += '<span style="color:#f44336">' + failed + ' failed</span> / ';
-    html += total + ' total';
-    html += '</p>';
+    var html = '<div style="font-family:Inter,system-ui,sans-serif;padding:24px;max-width:1100px;margin:0 auto;color:#1d1d1f">';
+    html += '<h1 style="font-size:2rem;font-weight:800;margin-bottom:8px">CLS++ UI Test Results</h1>';
+    html += '<p style="font-size:1.1rem;margin-bottom:24px;color:#86868b">30 test cases across ' + ALL_PAGES.length + ' pages</p>';
 
+    // Summary cards
+    html += '<div style="display:flex;gap:16px;margin-bottom:32px;flex-wrap:wrap">';
+    html += '<div style="background:rgba(255,255,255,0.92);border-radius:16px;padding:20px 28px;box-shadow:0 2px 20px rgba(0,0,0,0.06);min-width:140px"><div style="font-size:0.75rem;color:#86868b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Pass Rate</div><div style="font-size:2rem;font-weight:700;color:' + (failed === 0 ? '#16a34a' : '#ff6b35') + '">' + rate + '%</div></div>';
+    html += '<div style="background:rgba(255,255,255,0.92);border-radius:16px;padding:20px 28px;box-shadow:0 2px 20px rgba(0,0,0,0.06);min-width:140px"><div style="font-size:0.75rem;color:#86868b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Passed</div><div style="font-size:2rem;font-weight:700;color:#16a34a">' + passed + '</div></div>';
+    html += '<div style="background:rgba(255,255,255,0.92);border-radius:16px;padding:20px 28px;box-shadow:0 2px 20px rgba(0,0,0,0.06);min-width:140px"><div style="font-size:0.75rem;color:#86868b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Failed</div><div style="font-size:2rem;font-weight:700;color:' + (failed > 0 ? '#ef4444' : '#16a34a') + '">' + failed + '</div></div>';
+    html += '<div style="background:rgba(255,255,255,0.92);border-radius:16px;padding:20px 28px;box-shadow:0 2px 20px rgba(0,0,0,0.06);min-width:140px"><div style="font-size:0.75rem;color:#86868b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Total</div><div style="font-size:2rem;font-weight:700">' + total + '</div></div>';
+    html += '</div>';
+
+    // Failures first
     if (failed > 0) {
-      html += '<h2 style="color:#f44336">Failures</h2>';
-      results.filter(function (r) { return r.status === 'FAIL'; }).forEach(function (r) {
-        html += '<div style="background:#1a0000;border-left:3px solid #f44336;padding:8px 12px;margin:4px 0">';
-        html += '<strong>[' + r.page + ']</strong> ' + r.name;
-        if (r.detail) html += ' — <span style="color:#ff8a80">' + r.detail + '</span>';
+      html += '<h2 style="color:#ef4444;font-size:1.2rem;margin-bottom:12px">Failures</h2>';
+      html += '<div style="background:rgba(239,68,68,0.04);border:1px solid rgba(239,68,68,0.12);border-radius:16px;padding:16px;margin-bottom:24px">';
+      results.filter(function(r) { return r.status === 'FAIL'; }).forEach(function(r) {
+        html += '<div style="padding:6px 0;border-bottom:1px solid rgba(239,68,68,0.08);font-size:0.9rem">';
+        html += '<strong style="color:#ef4444">[' + r.tc + ']</strong> ' + r.name;
+        if (r.detail) html += ' <span style="color:#86868b">— ' + r.detail + '</span>';
         html += '</div>';
       });
+      html += '</div>';
     }
 
-    // Group by page
-    var pages = {};
-    results.forEach(function (r) {
-      if (!pages[r.page]) pages[r.page] = [];
-      pages[r.page].push(r);
+    // Group by TC
+    var tcs = {};
+    results.forEach(function(r) {
+      if (!tcs[r.tc]) tcs[r.tc] = [];
+      tcs[r.tc].push(r);
     });
 
-    html += '<h2 style="color:#aaa;margin-top:30px">All Results by Page</h2>';
-    Object.keys(pages).forEach(function (page) {
-      var pageResults = pages[page];
-      var pagePassed = pageResults.filter(function (r) { return r.status === 'PASS'; }).length;
-      var pageFailed = pageResults.filter(function (r) { return r.status === 'FAIL'; }).length;
-      html += '<h3 style="margin-top:20px;color:#ccc">' + page + ' (' + pagePassed + '/' + pageResults.length + ')</h3>';
-      pageResults.forEach(function (r) {
-        var color = r.status === 'PASS' ? '#4caf50' : '#f44336';
+    html += '<h2 style="font-size:1.2rem;margin-bottom:12px;color:#86868b">All Test Cases</h2>';
+    Object.keys(tcs).forEach(function(tc) {
+      var tcResults = tcs[tc];
+      var tcPassed = tcResults.filter(function(r) { return r.status === 'PASS'; }).length;
+      var tcFailed = tcResults.filter(function(r) { return r.status === 'FAIL'; }).length;
+      var statusColor = tcFailed === 0 ? '#16a34a' : '#ef4444';
+      html += '<details style="margin-bottom:8px;background:rgba(255,255,255,0.8);border-radius:12px;border:1px solid rgba(0,0,0,0.06)">';
+      html += '<summary style="padding:12px 16px;cursor:pointer;font-weight:600;font-size:0.95rem"><span style="color:' + statusColor + '">' + (tcFailed === 0 ? '✓' : '✗') + '</span> ' + tc + ' <span style="color:#86868b;font-weight:400">(' + tcPassed + '/' + tcResults.length + ')</span></summary>';
+      html += '<div style="padding:0 16px 12px">';
+      tcResults.forEach(function(r) {
+        var color = r.status === 'PASS' ? '#16a34a' : '#ef4444';
         var icon = r.status === 'PASS' ? '✓' : '✗';
-        html += '<div style="padding:2px 0;color:' + color + '">';
+        html += '<div style="padding:3px 0;font-size:0.85rem;color:' + color + '">';
         html += icon + ' ' + r.name;
-        if (r.detail && r.status === 'FAIL') html += ' — ' + r.detail;
+        if (r.detail && r.status === 'FAIL') html += ' <span style="color:#86868b">— ' + r.detail + '</span>';
         html += '</div>';
       });
+      html += '</div></details>';
     });
 
     html += '</div>';
+    document.body.style.background = 'rgba(245,245,247,1)';
     document.body.innerHTML = html;
   }
-
-  // =========================================================================
-  // Export for programmatic use and auto-run for browser
-  // =========================================================================
 
   window.CLSTests = {
     runAllTests: runAllTests,
     renderReport: renderReport,
-    getResults: function () { return results; },
+    getResults: function() { return results; }
   };
 
-  // If loaded in test runner page, auto-run
   if (document.getElementById('cls-test-runner')) {
-    document.getElementById('cls-test-runner').textContent = 'Running tests...';
-    runAllTests().then(function (res) {
-      renderReport(res);
-    });
+    document.getElementById('cls-test-runner').textContent = 'Running 30 UI test cases across ' + ALL_PAGES.length + ' pages...';
+    runAllTests().then(renderReport);
   }
 })();

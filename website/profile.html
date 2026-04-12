@@ -4,23 +4,32 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Profile | CLS++</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=2">
   <script src="auth.js" defer></script>
 </head>
 <body>
-  <button class="sidebar-mobile-toggle" aria-label="Menu">&#9776;</button>
+  <div class="video-bg"><video autoplay muted loop playsinline poster="beach-bg.jpg"><source src="sunrise-ocean.mp4" type="video/mp4"></video></div>
+  <div class="video-overlay"></div>
 
-  <div class="app-layout">
-    <aside class="app-sidebar"></aside>
-
-    <main class="app-main">
-      <div class="app-main-header">
-        <h1>Profile</h1>
-        <span class="tier-badge" id="tier-badge">Loading...</span>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs.html">API</a>
+        <a href="/integrate.html">Integrate</a>
+        <a href="/#pricing">Pricing</a>
+        <div id="nav-auth" class="nav-auth"></div>
+        <a href="/getting-started.html" class="nav-cta">Get Started</a>
       </div>
+    </div>
+  </nav>
+
+  <div class="container" style="margin-top:100px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;flex-wrap:wrap;gap:12px;">
+      <h1 style="font-size:1.6rem;">Profile</h1>
+      <span class="tier-badge" id="tier-badge">Loading...</span>
+    </div>
 
       <!-- ============================================================ -->
       <!-- Section: User Information (#info) -->
@@ -280,13 +289,52 @@
           </div>
         </div>
       </div>
-    </main>
   </div>
 
+  <style>
+    .profile-section { border: 1px solid rgba(0,0,0,0.06); border-radius: 14px; margin-bottom: 12px; overflow: hidden; }
+    .profile-section h2 {
+      margin: 0; padding: 16px 20px; font-size: 1rem; font-weight: 600; cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(0,0,0,0.02); user-select: none; transition: background 0.15s;
+    }
+    .profile-section h2:hover { background: rgba(0,0,0,0.04); }
+    .profile-section h2::after { content: '\203A'; font-size: 1.3rem; color: #86868b; transition: transform 0.2s; }
+    .profile-section.expanded h2::after { transform: rotate(90deg); }
+    .profile-section .section-body { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+    .profile-section.expanded .section-body { max-height: 2000px; }
+    .profile-section .section-body-inner { padding: 16px 20px; }
+  </style>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('.profile-section').forEach(function(sec, i) {
+        var h2 = sec.querySelector('h2');
+        // Wrap content after h2 in section-body
+        var body = document.createElement('div');
+        body.className = 'section-body';
+        var inner = document.createElement('div');
+        inner.className = 'section-body-inner';
+        while (sec.children.length > 1) inner.appendChild(sec.children[1]);
+        body.appendChild(inner);
+        sec.appendChild(body);
+        // First section expanded by default
+        if (i === 0) sec.classList.add('expanded');
+        h2.addEventListener('click', function() { sec.classList.toggle('expanded'); });
+      });
+      // Auto-expand section from hash
+      if (window.location.hash) {
+        var target = document.querySelector(window.location.hash);
+        if (target && target.classList.contains('profile-section')) {
+          target.classList.add('expanded');
+          setTimeout(function() { target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 100);
+        }
+      }
+    });
+  </script>
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-  <script src="sidebar.js"></script>
   <script src="toast.js"></script>
   <script src="billing-ui.js"></script>
   <script src="profile.js"></script>
+  <script src="footer.js?v=2"></script>
 </body>
 </html>

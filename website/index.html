@@ -3,466 +3,427 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="CLS++ — Switch between Claude, GPT-4, and Gemini without losing context. The only memory layer that preserves your AI conversations across every model.">
-  <title>CLS++ | Switch AI Models Without Losing Context</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <meta name="description" content="CLS++ — Every AI remembers you. Cross-model memory for ChatGPT, Claude, Gemini.">
+  <title>CLS++ | Every AI Remembers You</title>
   <link rel="stylesheet" href="styles.css">
   <script src="auth.js" defer></script>
+  <style>
+    /* index.html — layout only. Typography comes from styles.css */
+    html, body { background: transparent; }
+
+    /* ── Content wrapper — frosted glass over video ── */
+    .content-wrap {
+      position: relative; z-index: 1;
+      max-width: 980px; margin: 0 auto;
+      background: rgba(255,255,255,0.92);
+      border-radius: 24px; margin-bottom: 20px;
+      box-shadow: 0 4px 40px rgba(0,0,0,0.08);
+    }
+    .content-dark { background: rgba(29,29,31,0.92); color: #fff; }
+
+    /* ── Shared section ── */
+    .section { max-width: 980px; margin: 0 auto; padding: 100px 22px; }
+
+    /* ── Frosted Glass Card ── */
+    .glass {
+      background: rgba(255,255,255,0.45);
+      backdrop-filter: blur(40px) saturate(1.8);
+      -webkit-backdrop-filter: blur(40px) saturate(1.8);
+      border: 1px solid rgba(255,255,255,0.6);
+      border-radius: 20px;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .glass:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.08); }
+    .glass-dark {
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(40px) saturate(1.8);
+      -webkit-backdrop-filter: blur(40px) saturate(1.8);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 20px;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .glass-dark:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.2); }
+
+    /* ── Hero — cinematic sunrise + bottom dock ── */
+    .hero { min-height: 100vh; display: flex; flex-direction: column; justify-content: flex-end; padding: 0; position: relative; }
+
+    /* Floating tagline over the sunrise */
+    .hero-tagline {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -80%);
+      text-align: center; z-index: 2;
+    }
+    .hero-tagline h1 {
+      font-size: clamp(52px, 8vw, 96px); color: #fff; letter-spacing: -0.03em;
+      text-shadow: 0 2px 30px rgba(0,0,0,0.3);
+    }
+    .hero-tagline h1 em { font-style: normal; color: #ff6b35; }
+    .hero-tagline .lead {
+      font-size: 19px; color: rgba(255,255,255,0.85); margin-top: 12px;
+      text-shadow: 0 1px 10px rgba(0,0,0,0.4); max-width: 500px; margin-left: auto; margin-right: auto;
+    }
+
+    /* Bottom dock — frosted dark panel */
+    .hero-dock {
+      position: relative; z-index: 2;
+      background: rgba(15,15,17,0.80);
+      backdrop-filter: blur(60px) saturate(1.8);
+      -webkit-backdrop-filter: blur(60px) saturate(1.8);
+      border-top: 1px solid rgba(255,255,255,0.08);
+      padding: 36px 0 32px;
+    }
+    .hero-dock-inner {
+      max-width: 980px; margin: 0 auto; padding: 0 28px;
+      display: grid; grid-template-columns: 1fr 1.2fr; gap: 48px; align-items: start;
+    }
+    .dock-left .label { color: rgba(255,255,255,0.35); margin-bottom: 10px; }
+    .dock-left .dock-headline { font-size: 24px; color: #fff; letter-spacing: -0.02em; margin-bottom: 10px; line-height: 1.2; }
+    .dock-left .dock-sub { font-size: 15px; color: rgba(255,255,255,0.55); line-height: 1.47; margin-bottom: 20px; }
+    .dock-left .hero-link {
+      font-size: 15px; color: #ff6b35; text-decoration: none;
+      font-weight: 500; display: inline-flex; align-items: center; gap: 6px;
+    }
+    .dock-left .hero-link:hover { text-decoration: underline; }
+
+    /* Live terminal */
+    .terminal {
+      background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px; overflow: hidden; font-family: var(--font-mono); font-size: 13px;
+    }
+    .terminal-bar {
+      display: flex; align-items: center; gap: 7px; padding: 10px 16px;
+      background: rgba(255,255,255,0.04); border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .terminal-bar span { width: 10px; height: 10px; border-radius: 50%; }
+    .t-dot-r { background: #ff5f57; } .t-dot-y { background: #febc2e; } .t-dot-g { background: #28c840; }
+    .terminal-bar .t-title { margin-left: auto; font-size: 11px; color: rgba(255,255,255,0.25); letter-spacing: 0.02em; }
+    .terminal-body { padding: 18px 20px; line-height: 1.9; color: rgba(255,255,255,0.88); min-height: 170px; }
+    .terminal-body .line { opacity: 0; transform: translateY(4px); animation: lineIn 0.3s ease forwards; }
+    .terminal-body .c-kw { color: #ff6b35; }
+    .terminal-body .c-fn { color: #58a6ff; }
+    .terminal-body .c-str { color: #7ee787; }
+    .terminal-body .c-cmt { color: rgba(255,255,255,0.25); font-style: italic; }
+    .terminal-body .c-out { color: #ff6b35; background: rgba(255,107,53,0.08); padding: 1px 6px; border-radius: 3px; }
+    .terminal-cursor { display: inline-block; width: 8px; height: 16px; background: #ff6b35; animation: blink-cursor 1s step-end infinite; vertical-align: text-bottom; margin-left: 2px; border-radius: 1px; }
+    @keyframes blink-cursor { 50% { opacity: 0; } }
+    @keyframes lineIn { to { opacity: 1; transform: translateY(0); } }
+
+    /* Terminal response badge */
+    .terminal-response {
+      margin-top: 8px; padding: 8px 14px; background: rgba(255,107,53,0.08);
+      border-left: 2px solid #ff6b35; border-radius: 0 6px 6px 0;
+      color: rgba(255,255,255,0.7); font-size: 12px; opacity: 0;
+    }
+    .terminal-response.visible { animation: lineIn 0.4s 0.2s ease forwards; }
+    .terminal-response .check { color: #28c840; margin-right: 4px; }
+
+    /* ── Steps ── */
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 60px; }
+    .step-card { padding: 40px 28px; text-align: center; background: #f5f5f7; border-radius: 20px; }
+    .step-num { font-size: 48px; font-weight: 600; color: #ff6b35; opacity: 0.15; margin-bottom: 16px; line-height: 1; }
+    .step-title { font-size: 17px; color: #1d1d1f; margin-bottom: 10px; }
+    .step-desc { font-size: 14px; line-height: 1.47; color: #86868b; }
+
+    /* ── Architecture ── */
+    .phases { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 60px; }
+    .phase-card { padding: 28px 20px; border-top: 2px solid #ff6b35; background: rgba(255,255,255,0.05); border-radius: 0 0 16px 16px; }
+    .phase-name { font-size: 28px; color: #fff; margin-bottom: 4px; }
+    .phase-label { font-size: 13px; font-weight: 600; color: #ff6b35; margin-bottom: 8px; }
+    .phase-desc { font-size: 13px; line-height: 1.47; color: rgba(255,255,255,0.45); }
+
+    /* ── Pricing ── */
+    .pricing-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 60px; }
+    .price-card {
+      padding: 32px 24px; display: flex; flex-direction: column; gap: 20px;
+      background: rgba(255,255,255,0.05); border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .price-name { font-size: 13px; color: rgba(255,255,255,0.45); font-weight: 500; }
+    .price-amt { font-size: 44px; color: #fff; letter-spacing: -0.02em; }
+    .price-per { font-size: 14px; color: rgba(255,255,255,0.3); }
+    .price-feat { font-size: 14px; color: rgba(255,255,255,0.56); line-height: 1.8; padding-left: 14px; position: relative; }
+    .price-feat::before { content: ''; position: absolute; left: 0; top: 10px; width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,0.25); }
+    .price-btn {
+      margin-top: auto; padding: 12px; border-radius: 980px;
+      font-size: 14px; font-weight: 500; cursor: pointer;
+      text-align: center; text-decoration: none; display: block; transition: opacity 0.2s;
+    }
+    .price-btn-fill { background: #ff6b35; color: #fff; border: none; }
+    .price-btn-fill:hover { opacity: 0.85; }
+    .price-btn-outline { background: transparent; color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.15); }
+    .price-btn-outline:hover { background: rgba(255,255,255,0.05); }
+    .price-card.featured { border: 1px solid rgba(255,107,53,0.4); }
+
+    /* Title variants */
+    .t-dark { color: #1d1d1f; }
+    .t-light { color: #fff; }
+    .t-sub { font-size: 19px; line-height: 1.47; max-width: 500px; }
+    .t-sub-dark { color: #86868b; }
+    .t-sub-light { color: rgba(255,255,255,0.56); }
+
+    .section-title {
+      font-size: clamp(36px, 5vw, 52px);
+      line-height: 1.08; letter-spacing: -0.009em; margin-bottom: 16px;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .hero-dock-inner { grid-template-columns: 1fr; }
+      .hero-tagline h1 { font-size: clamp(36px, 8vw, 52px); }
+      .steps { grid-template-columns: 1fr; }
+      .phases { grid-template-columns: 1fr 1fr; }
+      .pricing-grid { grid-template-columns: 1fr 1fr; }
+      .nav-links { display: none; }
+    }
+    @media (max-width: 480px) {
+      .phases { grid-template-columns: 1fr; }
+      .pricing-grid { grid-template-columns: 1fr; }
+    }
+  </style>
 </head>
 <body>
+
+  <!-- Animated Video Background -->
+  <div class="video-bg">
+    <video autoplay muted loop playsinline poster="beach-bg.jpg">
+      <source src="sunrise-ocean.mp4" type="video/mp4">
+    </video>
+  </div>
+  <div class="video-overlay"></div>
+
+  <!-- Frosted Nav -->
   <nav class="nav">
     <div class="nav-inner">
-      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <a href="/" class="nav-logo">CLS<span>++</span></a>
       <div class="nav-links">
-        <a href="/">Home</a>
         <a href="/docs.html">API</a>
         <a href="/integrate.html">Integrate</a>
         <a href="/#pricing">Pricing</a>
-        <a href="/getting-started.html">Get Started</a>
         <div id="nav-auth" class="nav-auth"></div>
+        <a href="/getting-started.html" class="nav-cta">Get Started</a>
       </div>
-      <button class="nav-toggle" aria-label="Menu">☰</button>
     </div>
   </nav>
 
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <!-- PRODUCT DEMO — always visible at top, auto-playing carousel     -->
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <section style="background:#06060c;padding:80px 0 40px;border-bottom:1px solid #1a1a2e;">
-    <div style="max-width:900px;margin:0 auto;padding:0 24px;position:relative;min-height:380px;">
+  <!-- ═══════ HERO ═══════ -->
+  <section class="hero">
+    <!-- Floating headline over sunrise -->
+    <div class="hero-tagline">
+      <h1>Every AI <em>remembers.</em></h1>
+      <p class="lead">One memory layer across every model.</p>
+    </div>
 
-      <!-- Slide 0: Problem -->
-      <div class="vslide" id="vs0">
-        <div style="text-align:center;margin-bottom:20px;">
-          <div style="font-size:2.5rem;font-weight:800;line-height:1.1;">Every AI <span style="background:linear-gradient(135deg,#818cf8,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">forgets you.</span></div>
-          <p style="color:#8b8b9a;margin-top:8px;">Tell ChatGPT your name. Switch to Claude. It has no idea.</p>
+    <!-- Bottom dock: info + live terminal -->
+    <div class="hero-dock">
+      <div class="hero-dock-inner">
+        <div class="dock-left">
+          <p class="label">Memory as a Service</p>
+          <h2 class="dock-headline">Tell ChatGPT your name.<br>Switch to Claude. It already knows.</h2>
+          <p class="dock-sub">Persistent, private, instant. Cross-model memory that works with every AI you use.</p>
+          <a href="/getting-started.html" class="hero-link">Get started &rarr;</a>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-          <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:18px;">
-            <div style="font-size:0.7rem;text-transform:uppercase;color:#19c37d;margin-bottom:8px;">GPT-4</div>
-            <div style="background:#6366f1;color:#fff;padding:7px 11px;border-radius:8px;font-size:0.82rem;margin:5px 0;max-width:85%;margin-left:auto;text-align:right;">I'm Raj, a Python dev at AlphaForge</div>
-            <div style="background:#1a1a2e;padding:7px 11px;border-radius:8px;font-size:0.82rem;margin:5px 0;max-width:85%;">Nice to meet you, Raj! How can I help?</div>
+        <div class="terminal" id="live-terminal">
+          <div class="terminal-bar">
+            <span class="t-dot-r"></span><span class="t-dot-y"></span><span class="t-dot-g"></span>
+            <span class="t-title">python3</span>
           </div>
-          <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:18px;">
-            <div style="font-size:0.7rem;text-transform:uppercase;color:#cc785c;margin-bottom:8px;">Claude</div>
-            <div style="background:#6366f1;color:#fff;padding:7px 11px;border-radius:8px;font-size:0.82rem;margin:5px 0;max-width:85%;margin-left:auto;text-align:right;">What's my name?</div>
-            <div style="background:#1a1a2e;padding:7px 11px;border-radius:8px;font-size:0.82rem;margin:5px 0;max-width:85%;color:#ef4444;">I don't have any information about you.</div>
-          </div>
+          <div class="terminal-body" id="terminal-lines"></div>
         </div>
       </div>
-
-      <!-- Slide 1: One Line Fix -->
-      <div class="vslide" id="vs1" style="display:none;">
-        <div style="font-size:2rem;font-weight:700;margin-bottom:6px;">Fix it in <span style="color:#6366f1;">one line.</span></div>
-        <p style="color:#8b8b9a;margin-bottom:14px;">No SDK. No install. Just change the base URL.</p>
-        <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:22px;font-family:'JetBrains Mono',monospace;font-size:0.82rem;line-height:2;">
-          <span style="color:#8b8b9a;"># Before:</span><br>
-          <span style="color:#ef4444;text-decoration:line-through;opacity:0.6;">client = OpenAI()</span><br><br>
-          <span style="color:#8b8b9a;"># After:</span><br>
-          <span style="color:#22c55e;font-weight:500;">client = OpenAI(base_url="https://your-cls-server/v1")</span><br><br>
-          <span style="color:#8b8b9a;"># That's it. Every user remembered forever.</span>
-        </div>
-      </div>
-
-      <!-- Slide 2: Cross-Model -->
-      <div class="vslide" id="vs2" style="display:none;">
-        <div style="font-size:2rem;font-weight:700;margin-bottom:10px;">Memory <span style="color:#6366f1;">crosses models.</span></div>
-        <div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:10px;padding:12px;margin-bottom:12px;font-size:0.8rem;">
-          <span style="font-size:0.65rem;text-transform:uppercase;color:#22c55e;font-weight:600;">CLS++ auto-injects</span><br>
-          Raj Jabbala · Founder, AlphaForge · Python + FastAPI · Hyderabad · Vegetarian
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-          <div style="background:#12121a;border:1px solid #2a2a35;border-radius:10px;padding:14px;">
-            <div style="font-size:0.65rem;text-transform:uppercase;color:#19c37d;margin-bottom:6px;">GPT-4 with memory</div>
-            <div style="background:#6366f1;color:#fff;padding:5px 9px;border-radius:6px;font-size:0.78rem;margin:3px 0;max-width:75%;margin-left:auto;text-align:right;">Suggest a tech stack</div>
-            <div style="background:#1a1a2e;padding:5px 9px;border-radius:6px;font-size:0.78rem;margin:3px 0;">Since you prefer <b>Python + FastAPI</b>...</div>
-          </div>
-          <div style="background:#12121a;border:1px solid #2a2a35;border-radius:10px;padding:14px;">
-            <div style="font-size:0.65rem;text-transform:uppercase;color:#cc785c;margin-bottom:6px;">Claude with same memory</div>
-            <div style="background:#6366f1;color:#fff;padding:5px 9px;border-radius:6px;font-size:0.78rem;margin:3px 0;max-width:75%;margin-left:auto;text-align:right;">Suggest dinner</div>
-            <div style="background:#1a1a2e;padding:5px 9px;border-radius:6px;font-size:0.78rem;margin:3px 0;">Hi <b>Raj</b>! <b>Vegetarian in Hyderabad</b> — try Dal Biryani...</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Slide 3: Brain SDK -->
-      <div class="vslide" id="vs3" style="display:none;">
-        <div style="font-size:2rem;font-weight:700;margin-bottom:6px;">The <span style="color:#6366f1;">Brain SDK.</span></div>
-        <p style="color:#8b8b9a;margin-bottom:12px;">4 methods. 0 config. Every LLM.</p>
-        <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:22px;font-family:'JetBrains Mono',monospace;font-size:0.82rem;line-height:2;">
-          from clsplusplus import Brain<br><br>
-          brain = Brain("alice")<br>
-          brain.learn("Prefers dark mode") &nbsp;<span style="color:#8b8b9a;"># Store</span><br>
-          brain.ask("What theme?") &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#8b8b9a;"># Recall</span><br>
-          brain.context("UI help") &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#8b8b9a;"># LLM prompt</span><br>
-          brain.forget("old fact") &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#8b8b9a;"># GDPR</span>
-        </div>
-      </div>
-
-      <!-- Slide 4: CTA -->
-      <div class="vslide" id="vs4" style="display:none;">
-        <div style="text-align:center;">
-          <div style="font-size:3rem;font-weight:800;">CLS<span style="color:#6366f1;">++</span></div>
-          <p style="color:#8b8b9a;font-size:1.15rem;margin:10px 0 20px;">Switch AI Models. Never Lose Context.</p>
-          <div style="display:flex;gap:14px;justify-content:center;margin-bottom:20px;">
-            <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:12px 22px;text-align:center;"><div style="font-size:1.6rem;font-weight:700;">1</div><div style="font-size:0.7rem;color:#8b8b9a;">Line to integrate</div></div>
-            <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:12px 22px;text-align:center;"><div style="font-size:1.6rem;font-weight:700;">4</div><div style="font-size:0.7rem;color:#8b8b9a;">SDK methods</div></div>
-            <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:12px 22px;text-align:center;"><div style="font-size:1.6rem;font-weight:700;">40+</div><div style="font-size:0.7rem;color:#8b8b9a;">Admin metrics</div></div>
-            <div style="background:#12121a;border:1px solid #2a2a35;border-radius:12px;padding:12px 22px;text-align:center;"><div style="font-size:1.6rem;font-weight:700;">Free</div><div style="font-size:0.7rem;color:#8b8b9a;">1K ops/month</div></div>
-          </div>
-          <a href="integrate.html" style="display:inline-block;padding:12px 28px;background:#6366f1;color:#fff;border-radius:12px;font-size:1rem;font-weight:600;text-decoration:none;">Start Integrating →</a>
-        </div>
-      </div>
-
-      <!-- Navigation dots -->
-      <div style="display:flex;justify-content:center;gap:8px;margin-top:16px;" id="vdots"></div>
     </div>
   </section>
 
   <script>
+  // Live typing terminal
   (function(){
-    var sl=document.querySelectorAll('.vslide'),tot=sl.length,cur=0,tm;
-    var dots=document.getElementById('vdots');
-    for(var i=0;i<tot;i++){var d=document.createElement('div');d.style.cssText='width:8px;height:8px;border-radius:50%;cursor:pointer;background:'+(i===0?'#6366f1':'#2a2a35');d.onclick=(function(x){return function(){go(x)};})(i);dots.appendChild(d);}
-    function go(n){sl[cur].style.display='none';cur=n;sl[cur].style.display='block';for(var i=0;i<dots.children.length;i++)dots.children[i].style.background=i===cur?'#6366f1':'#2a2a35';clearInterval(tm);tm=setInterval(function(){go((cur+1)%tot);},5000);}
-    tm=setInterval(function(){go((cur+1)%tot);},5000);
+    var lines = [
+      {text:'<span class="c-kw">from</span> clsplusplus <span class="c-kw">import</span> Brain', delay:400},
+      {text:'', delay:200},
+      {text:'brain = Brain(<span class="c-str">"cls_live_..."</span>)', delay:500},
+      {text:'', delay:300},
+      {text:'<span class="c-cmt"># Store — persists across sessions</span>', delay:400},
+      {text:'brain.<span class="c-fn">learn</span>(<span class="c-str">"User prefers dark mode"</span>)', delay:600},
+      {text:'', delay:200},
+      {text:'<span class="c-cmt"># Recall — semantic, not keyword</span>', delay:400},
+      {text:'result = brain.<span class="c-fn">ask</span>(<span class="c-str">"What theme?"</span>)', delay:600},
+      {text:'', delay:400},
+      {text:'<span class="c-out">→ "User prefers dark mode"</span>  <span style="color:#28c840">✓ recalled</span>', delay:0}
+    ];
+    var container = document.getElementById('terminal-lines');
+    var i = 0, cumDelay = 800;
+    function addLine(){
+      if(i >= lines.length){ addCursor(); return; }
+      var l = lines[i];
+      cumDelay += l.delay;
+      (function(line, d, idx){
+        setTimeout(function(){
+          var div = document.createElement('div');
+          div.className = 'line';
+          div.style.animationDelay = '0s';
+          div.innerHTML = line.text || '&nbsp;';
+          container.appendChild(div);
+        }, d);
+      })(l, cumDelay, i);
+      i++;
+      addLine();
+    }
+    function addCursor(){
+      setTimeout(function(){
+        var cursor = document.createElement('span');
+        cursor.className = 'terminal-cursor';
+        container.appendChild(cursor);
+      }, cumDelay + 200);
+    }
+    addLine();
   })();
   </script>
 
-  <header class="hero">
-    <div class="hero-bg"></div>
-    <div class="hero-content">
-      <p class="hero-badge">Provisional Patent Filed • AlphaForge AI Labs</p>
-      <h1>Switch AI Models.<br><span class="gradient-text">Never Lose Context.</span></h1>
-      <p class="hero-sub">Claude today. GPT-4 tomorrow. Gemini next week. Your preferences, corrections, and established facts follow you—because memory lives outside the model.</p>
-      <div class="hero-cta">
-        <a href="integrate.html" class="btn btn-large btn-primary">Start Integrating</a>
-        <a href="#pricing" class="btn btn-large btn-outline">View Pricing</a>
+  <!-- White content area below hero -->
+  <div class="content-wrap">
+
+  <!-- ═══════ HOW IT WORKS ═══════ -->
+  <section class="section">
+    <p class="label" style="color:#1d1d1f">How it works</p>
+    <h2 class="section-title t-dark">Three steps. Zero config.</h2>
+    <p class="t-sub t-sub-dark">Install the Chrome extension. Chat normally. Every AI knows you.</p>
+    <div class="steps">
+      <div class="step-card">
+        <div class="step-num">1</div>
+        <div class="step-title">Tell one AI</div>
+        <div class="step-desc">Chat with ChatGPT like you always do. CLS++ silently captures facts, preferences, and corrections.</div>
       </div>
-      <div class="hero-logos">
-        <span>Works with</span>
-        <div class="model-badges">
-          <span>Claude</span><span>GPT-4</span><span>Gemini</span><span>Llama</span><span>Any LLM</span>
-        </div>
+      <div class="step-card">
+        <div class="step-num">2</div>
+        <div class="step-title">Switch models</div>
+        <div class="step-desc">Open Claude or Gemini. CLS++ automatically injects your relevant memories before the AI responds.</div>
       </div>
-    </div>
-  </header>
-
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <!-- WHAT IT SOLVES                                                    -->
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <section class="section" style="padding:80px 0;">
-    <div class="container" style="text-align:center;">
-      <h2>What CLS++ Solves</h2>
-      <p class="section-lead" style="max-width:600px;margin:0 auto 48px;">One memory layer that works across every AI model. No lock-in. No retraining. No context loss.</p>
-
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px;text-align:left;">
-
-        <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:16px;padding:32px;">
-          <div style="font-size:2rem;margin-bottom:12px;">🔄</div>
-          <h3 style="font-size:1.1rem;margin-bottom:8px;">Cross-Model Memory</h3>
-          <p style="color:var(--text-muted);font-size:0.9rem;line-height:1.6;">Switch between Claude, GPT-4, and Gemini. Your user's preferences, corrections, and facts follow them — because memory lives outside the model.</p>
-        </div>
-
-        <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:16px;padding:32px;">
-          <div style="font-size:2rem;margin-bottom:12px;">⚡</div>
-          <h3 style="font-size:1.1rem;margin-bottom:8px;">Zero Integration</h3>
-          <p style="color:var(--text-muted);font-size:0.9rem;line-height:1.6;">Change one line — your <code>base_url</code>. No SDK required. No database setup. No embedding configuration. Your app gets persistent memory instantly.</p>
-        </div>
-
-        <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:16px;padding:32px;">
-          <div style="font-size:2rem;margin-bottom:12px;">🧠</div>
-          <h3 style="font-size:1.1rem;margin-bottom:8px;">Brain SDK</h3>
-          <p style="color:var(--text-muted);font-size:0.9rem;line-height:1.6;">Want full control? Four methods: <code>learn()</code>, <code>ask()</code>, <code>context()</code>, <code>forget()</code>. Plus 7 innovative methods for production AI apps.</p>
-        </div>
-
+      <div class="step-card">
+        <div class="step-num">3</div>
+        <div class="step-title">Every AI knows</div>
+        <div class="step-desc">Your preferences follow you everywhere. No copy-paste. No repeating yourself. It just works.</div>
       </div>
     </div>
   </section>
 
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <!-- INTEGRATIONS                                                      -->
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <section class="section" id="integrations" style="padding:80px 0;">
-    <div class="container" style="text-align:center;">
-      <h2>Integrations</h2>
-      <p class="section-lead" style="max-width:500px;margin:0 auto 48px;">Plug into your existing workflow. More connectors coming soon.</p>
+  </div><!-- end content-wrap white -->
 
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:700px;margin:0 auto;">
+  <!-- Dark content area -->
+  <div class="content-wrap content-dark">
 
-        <a href="/integrate.html" style="background:var(--bg-elevated);border:1px solid var(--accent);border-radius:14px;padding:28px 20px;text-decoration:none;color:var(--text);transition:all 0.2s;text-align:center;">
-          <div style="font-size:2rem;margin-bottom:8px;">🌐</div>
-          <div style="font-weight:600;margin-bottom:4px;">Chrome Extension</div>
-          <span style="display:inline-block;padding:2px 10px;border-radius:10px;font-size:0.7rem;font-weight:600;background:rgba(34,197,94,0.15);color:#22c55e;">Available</span>
-        </a>
-
-        <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:14px;padding:28px 20px;text-align:center;opacity:0.5;cursor:default;">
-          <div style="font-size:2rem;margin-bottom:8px;">🦜</div>
-          <div style="font-weight:600;margin-bottom:4px;">LangChain</div>
-          <span style="display:inline-block;padding:2px 10px;border-radius:10px;font-size:0.7rem;font-weight:600;background:rgba(139,139,154,0.15);color:var(--text-muted);">Coming Soon</span>
-        </div>
-
-        <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:14px;padding:28px 20px;text-align:center;opacity:0.5;cursor:default;">
-          <div style="font-size:2rem;margin-bottom:8px;">🕸️</div>
-          <div style="font-weight:600;margin-bottom:4px;">LangGraph</div>
-          <span style="display:inline-block;padding:2px 10px;border-radius:10px;font-size:0.7rem;font-weight:600;background:rgba(139,139,154,0.15);color:var(--text-muted);">Coming Soon</span>
-        </div>
-
-        <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:14px;padding:28px 20px;text-align:center;opacity:0.5;cursor:default;">
-          <div style="font-size:2rem;margin-bottom:8px;">💻</div>
-          <div style="font-weight:600;margin-bottom:4px;">VS Code Extension</div>
-          <span style="display:inline-block;padding:2px 10px;border-radius:10px;font-size:0.7rem;font-weight:600;background:rgba(139,139,154,0.15);color:var(--text-muted);">Coming Soon</span>
-        </div>
-
-        <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:14px;padding:28px 20px;text-align:center;opacity:0.5;cursor:default;">
-          <div style="font-size:2rem;margin-bottom:8px;">🤖</div>
-          <div style="font-weight:600;margin-bottom:4px;">CrewAI</div>
-          <span style="display:inline-block;padding:2px 10px;border-radius:10px;font-size:0.7rem;font-weight:600;background:rgba(139,139,154,0.15);color:var(--text-muted);">Coming Soon</span>
-        </div>
-
-        <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:14px;padding:28px 20px;text-align:center;opacity:0.5;cursor:default;">
-          <div style="font-size:2rem;margin-bottom:8px;">🔗</div>
-          <div style="font-weight:600;margin-bottom:4px;">Node Graph IDE</div>
-          <span style="display:inline-block;padding:2px 10px;border-radius:10px;font-size:0.7rem;font-weight:600;background:rgba(139,139,154,0.15);color:var(--text-muted);">Coming Soon</span>
-        </div>
-
+  <!-- ═══════ ARCHITECTURE ═══════ -->
+  <section class="section">
+    <p class="label" style="color:#fff">Architecture</p>
+    <h2 class="section-title t-light">Memory as<br>phase transitions.</h2>
+    <p class="t-sub t-sub-light">Inspired by neuroscience. Built for production.</p>
+    <div class="phases">
+      <div class="phase-card">
+        <div class="phase-name">Gas</div>
+        <div class="phase-label">Raw Experience</div>
+        <div class="phase-desc">Immediate episodic capture. High fidelity, fast decay.</div>
+      </div>
+      <div class="phase-card">
+        <div class="phase-name">Liquid</div>
+        <div class="phase-label">Active Memory</div>
+        <div class="phase-desc">Sharp-wave ripple consolidation. Pattern extraction.</div>
+      </div>
+      <div class="phase-card">
+        <div class="phase-name">Solid</div>
+        <div class="phase-label">Schema</div>
+        <div class="phase-desc">100 episodes compressed to 1 abstract knowledge schema.</div>
+      </div>
+      <div class="phase-card">
+        <div class="phase-name">Crystal</div>
+        <div class="phase-label">Axiom</div>
+        <div class="phase-desc">Immutable verified truth. Zero decay.</div>
       </div>
     </div>
   </section>
 
-  <section id="pricing" class="section pricing">
-    <div class="container">
-      <h2>Memory That <span class="gradient-text">Scales With You</span></h2>
-      <p class="section-lead">Pay for the memory tokens you need. Every plan includes the Chrome extension.</p>
-
-      <div class="token-calc">
-        <p class="token-calc-label">How many memory tokens do you need?</p>
-        <input type="range" min="0" max="3" step="1" value="0" id="token-slider">
-        <div class="token-marks">
-          <span>10K</span>
-          <span>100K</span>
-          <span>1M</span>
-          <span>Unlimited</span>
+  <!-- ═══════ PRICING ═══════ -->
+  <section id="pricing" class="section">
+    <p class="label" style="color:#fff">Pricing</p>
+    <h2 class="section-title t-light">Start free. Scale when ready.</h2>
+    <p class="t-sub t-sub-light">Every plan includes the Chrome extension and Python SDK.</p>
+    <div class="pricing-grid">
+      <div class="price-card">
+        <div>
+          <div class="price-name">Free</div>
+          <span class="price-amt">$0</span><span class="price-per">/forever</span>
         </div>
+        <div>
+          <div class="price-feat">1,000 operations/month</div>
+          <div class="price-feat">500 stored memories</div>
+          <div class="price-feat">1 namespace</div>
+          <div class="price-feat">Chrome extension</div>
+        </div>
+        <a href="/getting-started.html" class="price-btn price-btn-outline">Get Started</a>
       </div>
-
-      <div class="pricing-grid">
-        <div class="pricing-card pricing-silver pricing-highlight" id="tier-0">
-          <h3>Free</h3>
-          <div class="price"><span class="price-amount">$0</span><span class="price-period">/month</span></div>
-          <p class="price-desc">For individuals exploring AI memory</p>
-          <ul>
-            <li><strong>1,000</strong> operations/month</li>
-            <li>500 stored memories</li>
-            <li>1 namespace</li>
-            <li>Chrome extension included</li>
-            <li>Python SDK access</li>
-            <li>Community support</li>
-          </ul>
-          <a href="getting-started.html" class="btn btn-outline">Get Started Free</a>
+      <div class="price-card featured">
+        <div>
+          <div class="price-name">Pro</div>
+          <span class="price-amt">$9</span><span class="price-per">/month</span>
         </div>
-
-        <div class="pricing-card pricing-gold" id="tier-1">
-          <h3>Pro</h3>
-          <div class="price"><span class="price-amount">$9</span><span class="price-period">/month</span></div>
-          <p class="price-desc">For developers building with AI memory</p>
-          <ul>
-            <li><strong>50,000</strong> operations/month</li>
-            <li>50,000 stored memories</li>
-            <li>10 namespaces</li>
-            <li>All 4 memory layers</li>
-            <li>Full API + SDK access</li>
-            <li>Sleep cycle consolidation</li>
-            <li>Email support</li>
-          </ul>
-          <a href="/signup.html?next=/getting-started.html" class="btn btn-primary">Start Free Trial</a>
+        <div>
+          <div class="price-feat">50,000 operations/month</div>
+          <div class="price-feat">50,000 memories</div>
+          <div class="price-feat">10 namespaces</div>
+          <div class="price-feat">All 4 memory layers</div>
         </div>
-
-        <div class="pricing-card pricing-platinum pricing-card-featured" id="tier-2">
-          <span class="badge">Most Popular</span>
-          <h3>Business</h3>
-          <div class="price"><span class="price-amount">$29</span><span class="price-period">/month</span></div>
-          <p class="price-desc">For teams shipping AI products</p>
-          <ul>
-            <li><strong>200,000</strong> operations/month</li>
-            <li>200,000 stored memories</li>
-            <li>50 namespaces</li>
-            <li>All 4 memory layers</li>
-            <li>Full API + webhook events</li>
-            <li>Sleep cycle consolidation</li>
-            <li>Priority support</li>
-          </ul>
-          <a href="/signup.html?next=/getting-started.html" class="btn btn-primary">Start Free Trial</a>
+        <a href="/signup.html?next=%2Fprofile.html%3Ftier%3Dpro%23billing" class="price-btn price-btn-fill" data-tier="pro">Subscribe</a>
+      </div>
+      <div class="price-card">
+        <div>
+          <div class="price-name">Business</div>
+          <span class="price-amt">$29</span><span class="price-per">/month</span>
         </div>
-
-        <div class="pricing-card pricing-enterprise" id="tier-3">
-          <h3>Enterprise</h3>
-          <div class="price"><span class="price-amount">$149</span><span class="price-period">/month</span></div>
-          <p class="price-desc">For organizations at scale</p>
-          <ul>
-            <li><strong>1,000,000</strong> operations/month</li>
-            <li>1,000,000 stored memories</li>
-            <li>500 namespaces</li>
-            <li>All 4 memory layers</li>
-            <li>Full API + webhook events</li>
-            <li>SSO, RBAC, audit logs</li>
-            <li>Self-hosted option</li>
-            <li>Dedicated support + SLA</li>
-          </ul>
-          <a href="mailto:contact@alphaforge.ai?subject=CLS++%20Enterprise%20Inquiry" class="btn btn-primary">Contact Sales</a>
+        <div>
+          <div class="price-feat">200,000 operations/month</div>
+          <div class="price-feat">200,000 memories</div>
+          <div class="price-feat">50 namespaces</div>
+          <div class="price-feat">Webhook events</div>
         </div>
+        <a href="/signup.html?next=%2Fprofile.html%3Ftier%3Dbusiness%23billing" class="price-btn price-btn-fill" data-tier="business">Subscribe</a>
+      </div>
+      <div class="price-card">
+        <div>
+          <div class="price-name">Enterprise</div>
+          <span class="price-amt">$149</span><span class="price-per">/month</span>
+        </div>
+        <div>
+          <div class="price-feat">1,000,000 operations/month</div>
+          <div class="price-feat">1,000,000 memories</div>
+          <div class="price-feat">SSO, RBAC, audit logs</div>
+          <div class="price-feat">Dedicated support + SLA</div>
+        </div>
+        <a href="/signup.html?next=%2Fprofile.html%3Ftier%3Denterprise%23billing" class="price-btn price-btn-fill" data-tier="enterprise">Subscribe</a>
       </div>
     </div>
   </section>
 
-  <script>
-    (function(){
-      var slider = document.getElementById('token-slider');
-      if (!slider) return;
-      slider.addEventListener('input', function(){
-        var v = parseInt(this.value);
-        for (var i = 0; i < 4; i++) {
-          var card = document.getElementById('tier-' + i);
-          if (card) {
-            card.classList.toggle('pricing-highlight', i === v);
-          }
-        }
-      });
-    })();
-  </script>
-
-  <section class="section cta">
-    <div class="container">
-      <h2>Stop losing context.</h2>
-      <p class="section-lead">One memory layer. Every model.</p>
-      <div class="cta-buttons">
-        <a href="https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener" class="btn btn-large btn-primary">View on GitHub</a>
-        <a href="mailto:contact@alphaforge.ai" class="btn btn-large btn-outline">Get in Touch</a>
-      </div>
-    </div>
+  <!-- ═══════ CTA ═══════ -->
+  <section class="section" style="text-align: center;">
+    <h2 class="section-title t-light" style="max-width: 600px; margin: 0 auto 16px;">Stop losing context.</h2>
+    <p class="t-sub t-sub-light" style="margin: 0 auto 36px;">One memory layer. Every model. Free to start.</p>
+    <a href="/getting-started.html" class="hero-link" style="color: #ff6b35; font-size: 19px;">Get started &rarr;</a>
   </section>
 
-  <footer class="footer">
-    <div class="container">
-      <div class="footer-inner">
-        <div class="footer-brand">
-          <a href="#" class="logo">CLS<span class="logo-plus">++</span></a>
-          <p>AlphaForge AI Labs</p>
-        </div>
-        <div class="footer-links">
-          <a href="/docs.html">API</a>
-          <a href="/integrate.html">Integrate</a>
-          <a href="/getting-started.html">Get Started</a>
-          <a href="https://github.com/rajamohan1950/CLSplusplus" target="_blank" rel="noopener">GitHub</a>
-          <a href="mailto:contact@alphaforge.ai">Contact</a>
-        </div>
-      </div>
-      <p class="footer-legal">Provisional patent filed October 2025. © 2026 AlphaForge AI Labs. &nbsp;<a href="/terms.html" style="color:var(--text-muted);">Terms</a> · <a href="/privacy.html" style="color:var(--text-muted);">Privacy</a></p>
-    </div>
-  </footer>
-
+  </div><!-- end content-dark -->
 
   <script src="script.js"></script>
-  <script>
-    // Only use local API when explicitly requested via ?local=1
-    // Default: always hit the Render production API
-    if (window.location.search.includes('local=1')) {
-      window.CLS_API_URL = 'http://localhost:8090';
-    }
-  </script>
-  <!-- namespace.js must load before demo.js — sets window.CLS_USER_NAMESPACE -->
   <script src="namespace.js"></script>
-  <script src="demo.js"></script>
-
-  <!-- Razorpay checkout for logged-in users on pricing cards -->
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <script src="toast.js"></script>
   <script src="billing-ui.js"></script>
   <script>
-  (function () {
-    function isLoggedIn() {
-      return document.cookie.indexOf('cls_session=') !== -1;
-    }
-    if (!isLoggedIn()) return;
-
-    var tierMap = { 'tier-1': 'pro', 'tier-2': 'business' };
-    Object.keys(tierMap).forEach(function (cardId) {
-      var card = document.getElementById(cardId);
-      if (!card) return;
-      var link = card.querySelector('.btn-primary');
-      if (!link) return;
-
-      link.href = '#pricing';
-      link.textContent = 'Upgrade Now';
-      link.addEventListener('click', function (e) {
-        e.preventDefault();
-        var tier = tierMap[cardId];
-        if (this.dataset.loading) return;
-        this.dataset.loading = 'true';
-        this.textContent = 'Loading...';
-        var self = this;
-
-        showPaymentOverlay();
-
-        fetch('/v1/billing/order', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({ tier: tier }),
-        })
-        .then(function (resp) {
-          if (!resp.ok) return resp.json().then(function (err) { throw new Error(err.detail || 'Billing unavailable'); });
-          return resp.json();
-        })
-        .then(function (order) {
-          hidePaymentOverlay();
-          var rzp = new Razorpay({
-            key: order.key_id,
-            amount: order.amount,
-            currency: order.currency,
-            name: 'CLS++',
-            description: tier.charAt(0).toUpperCase() + tier.slice(1) + ' Plan',
-            order_id: order.order_id,
-            prefill: order.prefill || {},
-            theme: { color: '#6366f1', backdrop_color: 'rgba(10,10,15,0.92)' },
-            modal: { ondismiss: function () {
-              showBillingCancel();
-              self.textContent = 'Upgrade Now'; delete self.dataset.loading;
-            }},
-            handler: function (response) {
-              showPaymentOverlay();
-              fetch('/v1/billing/verify', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'same-origin',
-                body: JSON.stringify({
-                  order_id: response.razorpay_order_id,
-                  payment_id: response.razorpay_payment_id,
-                  signature: response.razorpay_signature,
-                  tier: tier,
-                }),
-              })
-              .then(function (r) { hidePaymentOverlay(); if (r.ok) { showBillingSuccess(); } else { return r.json().then(function (err) { showBillingFailure(err.detail); }); } })
-              .catch(function () { hidePaymentOverlay(); showBillingFailure('Network error during verification. Contact support if charged.'); });
-              self.textContent = 'Upgrade Now'; delete self.dataset.loading;
-            },
-          });
-          rzp.on('payment.failed', function (resp) {
-            showBillingFailure(resp.error.description || 'Payment failed.');
-            self.textContent = 'Upgrade Now'; delete self.dataset.loading;
-          });
-          rzp.open();
-        })
-        .catch(function (err) {
-          hidePaymentOverlay();
-          showToast(err.message || 'Network error. Please try again.', 'error');
-          self.textContent = 'Upgrade Now'; delete self.dataset.loading;
-        });
-      });
+  // If user is already logged in, Subscribe buttons go straight to profile billing
+  document.addEventListener('DOMContentLoaded', function () {
+    var token = localStorage.getItem('cls_token') || (document.cookie.match(/cls_token=([^;]+)/) || [])[1];
+    if (!token) return;
+    document.querySelectorAll('.price-btn[data-tier]').forEach(function (btn) {
+      var tier = btn.dataset.tier;
+      btn.href = '/profile.html?tier=' + tier + '#billing';
     });
-  })();
+  });
   </script>
+  <script src="footer.js?v=2"></script>
 </body>
 </html>

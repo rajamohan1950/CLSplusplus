@@ -66,6 +66,7 @@
             avatar +
             '<span class="nav-user-name">' + (user.name || user.email.split('@')[0]) + '</span>' +
           '</a>' +
+          '<span class="nav-sep">|</span>' +
           '<a href="#" onclick="CLSAuth.logout();return false;" class="nav-logout">Logout</a>';
       } else {
         container.innerHTML =

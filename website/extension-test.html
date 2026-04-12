@@ -2,22 +2,29 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>CLS++ Extension Test</title>
+  <link rel="stylesheet" href="styles.css?v=2"/>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{background:#06060c;color:#f0f0f8;font-family:system-ui,sans-serif;padding:30px;max-width:700px;margin:0 auto}
-    h1{font-size:20px;margin-bottom:20px;color:#7c6ef0}
-    .test{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:16px;margin-bottom:16px}
+    body{background:transparent;color:#1d1d1f;padding:30px;max-width:700px;margin-top:70px;margin-left:auto;margin-right:auto;position:relative;z-index:1}
+    h1{font-size:20px;margin-bottom:20px;color:#ff6b35}
+    .test{background:rgba(0,0,0,.03);border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:16px;margin-bottom:16px}
     .test h3{font-size:13px;font-weight:700;margin-bottom:8px}
     .status{font-size:12px;padding:6px 10px;border-radius:8px;margin-top:8px;font-family:monospace;white-space:pre-wrap;max-height:200px;overflow-y:auto}
-    .pass{background:rgba(93,224,197,.1);border:1px solid rgba(93,224,197,.2);color:#5de0c5}
-    .fail{background:rgba(240,93,154,.1);border:1px solid rgba(240,93,154,.2);color:#f05d9a}
-    .wait{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:rgba(240,240,248,.5)}
-    .btn{padding:8px 16px;background:#7c6ef0;border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;margin-top:8px}
-    .input{width:100%;padding:8px 12px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#f0f0f8;font-size:12px;margin-bottom:8px}
+    .pass{background:rgba(22,163,74,.08);border:1px solid rgba(22,163,74,.15);color:#16a34a}
+    .fail{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.15);color:#ef4444}
+    .wait{background:rgba(0,0,0,.03);border:1px solid rgba(0,0,0,.06);color:#86868b}
+    .btn{padding:8px 16px;background:#ff6b35;border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;margin-top:8px}
+    .input{width:100%;padding:8px 12px;background:rgba(0,0,0,.03);border:1px solid rgba(0,0,0,.1);border-radius:8px;color:#1d1d1f;font-size:12px;margin-bottom:8px}
   </style>
 </head>
 <body>
+<div class="video-bg"><video autoplay muted loop playsinline poster="beach-bg.jpg"><source src="sunrise-ocean.mp4" type="video/mp4"></video></div>
+<div class="video-overlay"></div>
+<nav class="nav"><div class="nav-inner"><a href="/" class="logo">CLS<span class="logo-plus">++</span></a><div class="nav-links"><a href="/">Home</a><a href="/docs.html">API</a><a href="/integrate.html">Integrate</a><a href="/#pricing">Pricing</a><div id="nav-auth" class="nav-auth"></div><a href="/getting-started.html" class="nav-cta">Get Started</a></div></div></nav>
+
+  <div style="background:rgba(255,255,255,0.92); border-radius:24px; box-shadow:0 4px 40px rgba(0,0,0,0.08); padding:30px; max-width:700px; margin:0 auto;">
   <h1>CLS++ Extension Diagnostic</h1>
 
   <div class="test">
@@ -55,6 +62,7 @@
   <div class="test">
     <h3>7. Chrome Storage State</h3>
     <div class="status wait" id="t7">Checking...</div>
+  </div>
   </div>
 
 <script>
@@ -150,5 +158,6 @@ if (typeof chrome !== 'undefined' && chrome.storage) {
   setStatus('t7', 'fail', 'chrome.storage not available.\nThis test must run from the extension context.\nOpen this page at: ' + API + '/extension-test.html');
 }
 </script>
+<script src="footer.js?v=2"></script>
 </body>
 </html>

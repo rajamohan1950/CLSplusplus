@@ -4,29 +4,26 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CLS++ | MemEval Benchmark Results — LoCoMo &amp; LongMemEval</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=2">
   <script src="auth.js" defer></script>
   <style>
     .bench-hero {
-      padding: 80px 20px 40px;
+      padding: 120px 20px 40px;
       text-align: center;
-      background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0a0a0a 100%);
     }
-    .bench-hero h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
-    .bench-hero .subtitle { color: #888; font-size: 1.1rem; max-width: 750px; margin: 0 auto; }
+    .bench-hero h1 { font-size: 2.5rem; margin-bottom: 0.5rem; color: #fff; text-shadow: 0 2px 16px rgba(0,0,0,0.5); }
+    .bench-hero .subtitle { color: rgba(255,255,255,0.85); font-size: 1.1rem; max-width: 750px; margin: 0 auto; text-shadow: 0 1px 8px rgba(0,0,0,0.4); }
 
-    .bench-container { max-width: 1200px; margin: 0 auto; padding: 40px 20px; }
+    .bench-container { max-width: 980px; margin: 0 auto; padding: 40px 24px; background: rgba(255,255,255,0.92); border-radius: 24px; margin-bottom: 24px; box-shadow: 0 4px 40px rgba(0,0,0,0.08); }
 
     .bench-section { margin-bottom: 60px; }
     .bench-section h2 {
       font-size: 1.6rem;
       margin-bottom: 10px;
-      color: #e0e0e0;
+      color: #1d1d1f;
     }
-    .bench-section .desc { color: #888; margin-bottom: 20px; font-size: 0.95rem; }
+    .bench-section .desc { color: #86868b; margin-bottom: 20px; font-size: 0.95rem; }
 
     .bench-table {
       width: 100%;
@@ -38,24 +35,24 @@
     .bench-table th, .bench-table td {
       padding: 12px 14px;
       text-align: center;
-      border-bottom: 1px solid #222;
+      border-bottom: 1px solid rgba(0,0,0,0.08);
       word-wrap: break-word;
       overflow-wrap: break-word;
       hyphens: auto;
       vertical-align: top;
     }
     .bench-table th {
-      background: #111;
-      color: #888;
+      background: rgba(0,0,0,0.03);
+      color: #86868b;
       font-weight: 500;
       text-transform: uppercase;
       font-size: 0.75rem;
       letter-spacing: 0.5px;
       white-space: normal;
     }
-    .bench-table td { color: #ccc; white-space: normal; }
-    .bench-table td:first-child { text-align: left; font-weight: 600; color: #e0e0e0; }
-    .bench-table tr:hover { background: rgba(99, 102, 241, 0.05); }
+    .bench-table td { color: #1d1d1f; white-space: normal; }
+    .bench-table td:first-child { text-align: left; font-weight: 600; color: #1d1d1f; }
+    .bench-table tr:hover { background: rgba(255,107,53,0.04); }
 
     /* Responsive table wrapper for horizontal scroll on small screens */
     .table-wrap {
@@ -89,7 +86,7 @@
 
     /* Competitor table — many even cols */
     .bench-table.tbl-compare th:first-child,
-    .bench-table.tbl-compare td:first-child { width: 4%; text-align: center; color: #555; font-size: 0.8rem; }
+    .bench-table.tbl-compare td:first-child { width: 4%; text-align: center; color: #86868b; font-size: 0.8rem; }
     .bench-table.tbl-compare th:nth-child(2),
     .bench-table.tbl-compare td:nth-child(2) { width: 16%; }
 
@@ -105,11 +102,11 @@
     .bench-table.tbl-methods th:nth-child(3),
     .bench-table.tbl-methods td:nth-child(3) { width: 35%; }
 
-    .score-high { color: #22c55e; font-weight: 700; }
-    .score-mid { color: #f59e0b; font-weight: 600; }
-    .score-low { color: #888; }
-    .score-perfect { color: #22c55e; font-weight: 700; background: rgba(34,197,94,0.1); border-radius: 4px; padding: 2px 8px; }
-    .score-na { color: #555; font-style: italic; }
+    .score-high { color: #16a34a; font-weight: 700; }
+    .score-mid { color: #d97706; font-weight: 600; }
+    .score-low { color: #86868b; }
+    .score-perfect { color: #16a34a; font-weight: 700; background: rgba(34,197,94,0.1); border-radius: 4px; padding: 2px 8px; }
+    .score-na { color: #acacac; font-style: italic; }
 
     .model-badge {
       display: inline-block;
@@ -118,10 +115,10 @@
       font-size: 0.75rem;
       font-weight: 600;
     }
-    .model-clspp { background: rgba(99,102,241,0.2); color: #818cf8; }
-    .model-gpt { background: rgba(16,185,129,0.2); color: #6ee7b7; }
-    .model-mem { background: rgba(236,72,153,0.2); color: #f9a8d4; }
-    .model-other { background: rgba(156,163,175,0.2); color: #d1d5db; }
+    .model-clspp { background: rgba(255,107,53,0.15); color: #e55a2b; }
+    .model-gpt { background: rgba(16,185,129,0.15); color: #059669; }
+    .model-mem { background: rgba(236,72,153,0.15); color: #db2777; }
+    .model-other { background: rgba(107,114,128,0.15); color: #6b7280; }
 
     .stats-grid {
       display: grid;
@@ -130,9 +127,9 @@
       margin-bottom: 30px;
     }
     .stat-card {
-      background: #111;
-      border: 1px solid #222;
-      border-radius: 8px;
+      background: rgba(255,255,255,0.7);
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 12px;
       padding: 20px;
       text-align: center;
     }
@@ -140,45 +137,46 @@
       font-size: 2rem;
       font-weight: 700;
       font-family: 'JetBrains Mono', monospace;
+      color: #1d1d1f;
     }
     .stat-card .stat-label {
-      color: #888;
+      color: #86868b;
       font-size: 0.8rem;
       margin-top: 4px;
     }
     .stat-card .stat-sub {
-      color: #555;
+      color: #acacac;
       font-size: 0.7rem;
       margin-top: 2px;
     }
 
     .formula-box {
-      background: #0a0a0a;
-      border: 1px solid #333;
-      border-radius: 8px;
+      background: #1d1d1f;
+      border: 1px solid rgba(0,0,0,0.12);
+      border-radius: 12px;
       padding: 20px;
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.9rem;
-      color: #818cf8;
+      color: #ff6b35;
       text-align: center;
       margin: 20px 0;
     }
 
     .note-box {
-      background: rgba(99,102,241,0.05);
-      border-left: 3px solid #818cf8;
+      background: rgba(255,107,53,0.05);
+      border-left: 3px solid #ff6b35;
       padding: 16px 20px;
       border-radius: 0 8px 8px 0;
       margin: 20px 0;
       font-size: 0.9rem;
-      color: #aaa;
+      color: #86868b;
     }
     .note-box.warn {
       border-left-color: #f59e0b;
       background: rgba(245,158,11,0.05);
     }
     .note-box.green {
-      border-left-color: #22c55e;
+      border-left-color: #16a34a;
       background: rgba(34,197,94,0.05);
     }
 
@@ -191,7 +189,7 @@
     }
     .cat-bar {
       height: 24px;
-      background: #1a1a1a;
+      background: rgba(0,0,0,0.06);
       border-radius: 4px;
       overflow: hidden;
     }
@@ -202,7 +200,7 @@
     }
     .cat-bar-fill.cat-5 { background: linear-gradient(90deg, #22c55e, #16a34a); }
     .cat-bar-fill.cat-3 { background: linear-gradient(90deg, #f59e0b, #d97706); }
-    .cat-bar-fill.cat-1 { background: linear-gradient(90deg, #6366f1, #4f46e5); }
+    .cat-bar-fill.cat-1 { background: linear-gradient(90deg, #ff6b35, #4f46e5); }
     .cat-bar-fill.cat-4 { background: linear-gradient(90deg, #3b82f6, #2563eb); }
     .cat-bar-fill.cat-2 { background: linear-gradient(90deg, #8b5cf6, #7c3aed); }
 
@@ -215,13 +213,13 @@
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
-    .metric-f1 { background: rgba(34,197,94,0.15); color: #22c55e; }
-    .metric-judge { background: rgba(245,158,11,0.15); color: #f59e0b; }
-    .metric-zero { background: rgba(99,102,241,0.15); color: #818cf8; }
+    .metric-f1 { background: rgba(34,197,94,0.12); color: #16a34a; }
+    .metric-judge { background: rgba(245,158,11,0.12); color: #d97706; }
+    .metric-zero { background: rgba(255,107,53,0.12); color: #e55a2b; }
 
     .version-row-highlight {
-      background: rgba(99,102,241,0.08) !important;
-      border-left: 3px solid #818cf8;
+      background: rgba(255,107,53,0.06) !important;
+      border-left: 3px solid #ff6b35;
     }
 
     .zero-llm-badge {
@@ -230,14 +228,16 @@
       border-radius: 16px;
       font-size: 0.8rem;
       font-weight: 700;
-      background: rgba(99,102,241,0.2);
-      color: #818cf8;
-      border: 1px solid #818cf8;
+      background: rgba(255,107,53,0.15);
+      color: #e55a2b;
+      border: 1px solid #ff6b35;
       letter-spacing: 0.5px;
     }
   </style>
 </head>
 <body>
+  <div class="video-bg"><video autoplay muted loop playsinline poster="beach-bg.jpg"><source src="sunrise-ocean.mp4" type="video/mp4"></video></div>
+  <div class="video-overlay"></div>
   <nav class="nav">
     <div class="nav-inner">
       <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
@@ -246,10 +246,9 @@
         <a href="/docs.html">API</a>
         <a href="/integrate.html">Integrate</a>
         <a href="/#pricing">Pricing</a>
-        <a href="/getting-started.html">Get Started</a>
         <div id="nav-auth" class="nav-auth"></div>
+        <a href="/getting-started.html" class="nav-cta">Get Started</a>
       </div>
-      <button class="nav-toggle" aria-label="Menu">☰</button>
     </div>
   </nav>
 
@@ -263,7 +262,7 @@
     </p>
     <div class="formula-box">
       F(&theta;, &Sigma;, &rho;, &tau;) = E<sub>prediction</sub>(&theta;) &minus; &Sigma; &middot; S<sub>model</sub>(&theta;) + &lambda; &middot; L<sub>landauer</sub>(&theta;, &tau;)
-      <br><span style="color: #555; font-size: 0.75rem;">&Delta;F(G) = F<sub>schema</sub> &minus; &Sigma; F<sub>liquid</sub>(i) + C<sub>abstraction</sub> &lt; 0 &nbsp;&mdash;&nbsp; Landauer Crystallization</span>
+      <br><span style="color: rgba(255,255,255,0.5); font-size: 0.75rem;">&Delta;F(G) = F<sub>schema</sub> &minus; &Sigma; F<sub>liquid</sub>(i) + C<sub>abstraction</sub> &lt; 0 &nbsp;&mdash;&nbsp; Landauer Crystallization</span>
     </div>
   </div>
 
@@ -660,12 +659,12 @@
 
     <!-- LongMemEval Section -->
     <div class="bench-section">
-      <h2>LongMemEval <span class="metric-badge" style="background:rgba(99,102,241,0.15);color:#818cf8;">ICLR 2025</span></h2>
+      <h2>LongMemEval <span class="metric-badge" style="background:rgba(255,107,53,0.15);color:#ff6b35;">ICLR 2025</span></h2>
       <p class="desc">
         Official LongMemEval benchmark &mdash; 500 high-quality questions across 5 long-term memory abilities.
         Each question requires parsing a long timestamped chat history (53 sessions on average) and deriving an answer.
         Run against CLS++ v1.2.1, retrieval-only mode (zero LLM), 100-question sample.
-        <a href="https://github.com/rajamohan1950/CLSplusplus/issues?q=label%3Alongmemeval" style="color:#818cf8;">All 100 failures logged as GitHub issues →</a>
+        <a href="https://github.com/rajamohan1950/CLSplusplus/issues?q=label%3Alongmemeval" style="color:#ff6b35;">All 100 failures logged as GitHub issues →</a>
       </p>
 
       <div class="stats-grid" style="margin-bottom:28px;">
@@ -728,7 +727,7 @@
             <td style="font-size:0.8rem;color:#888;">Requires summing across multiple sessions — retrieval returns individual facts, not aggregates</td>
           </tr>
           <tr style="background:rgba(99,102,241,0.04);">
-            <td colspan="2" style="color:#818cf8;font-weight:600;">Hardest subtypes</td>
+            <td colspan="2" style="color:#ff6b35;font-weight:600;">Hardest subtypes</td>
             <td colspan="3" style="font-size:0.8rem;color:#888;">Counting ("how many"), temporal math ("how much more than"), abstention ("you didn't mention this"), and cross-session aggregation all require LLM synthesis, not raw retrieval.</td>
           </tr>
         </tbody>
@@ -755,12 +754,12 @@
         Information Extraction &bull; Multi-Session Reasoning &bull; Knowledge Updates &bull; Temporal Reasoning &bull; Abstention.
         <br>
         All 100 failure cases filed as GitHub issues with labels
-        <code style="background:rgba(99,102,241,0.15);color:#818cf8;padding:1px 5px;border-radius:3px;">benchmark</code>
-        <code style="background:rgba(99,102,241,0.15);color:#818cf8;padding:1px 5px;border-radius:3px;">longmemeval</code>
+        <code style="background:rgba(255,107,53,0.15);color:#ff6b35;padding:1px 5px;border-radius:3px;">benchmark</code>
+        <code style="background:rgba(255,107,53,0.15);color:#ff6b35;padding:1px 5px;border-radius:3px;">longmemeval</code>
         <code style="background:rgba(181,2,5,0.15);color:#fca5a5;padding:1px 5px;border-radius:3px;">eval-failure</code>
         for tracking and prioritization.
         <br><br>
-        Dataset: <a href="https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned" style="color:#818cf8;">xiaowu0162/longmemeval-cleaned</a> &mdash; ICLR 2025, 500 questions, timestamped chat history.
+        Dataset: <a href="https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned" style="color:#ff6b35;">xiaowu0162/longmemeval-cleaned</a> &mdash; ICLR 2025, 500 questions, timestamped chat history.
       </div>
     </div>
 
@@ -860,7 +859,7 @@
         </thead>
         <tbody>
           <tr>
-            <td style="text-align:left;font-weight:600;color:#818cf8;">1. Dual Ingest</td>
+            <td style="text-align:left;font-weight:600;color:#ff6b35;">1. Dual Ingest</td>
             <td style="text-align:left;font-size:0.85rem;">
               <strong>A)</strong> Raw dialog stored with [Session N, DATE] tags (keyword retrieval)<br>
               <strong>B)</strong> LLM extracts structured triplets: subject|relation|value (entity retrieval)
@@ -868,7 +867,7 @@
             <td>1 per turn</td>
           </tr>
           <tr>
-            <td style="text-align:left;font-weight:600;color:#818cf8;">2. Recall Agent</td>
+            <td style="text-align:left;font-weight:600;color:#ff6b35;">2. Recall Agent</td>
             <td style="text-align:left;font-size:0.85rem;">
               After ingest, touch ALL items: increment retrieval_count.<br>
               Ensures s(t) &ge; STRENGTH_FLOOR for every memory. No pointer loss.
@@ -876,7 +875,7 @@
             <td>0</td>
           </tr>
           <tr>
-            <td style="text-align:left;font-weight:600;color:#818cf8;">3. Full-Context Retrieval</td>
+            <td style="text-align:left;font-weight:600;color:#ff6b35;">3. Full-Context Retrieval</td>
             <td style="text-align:left;font-size:0.85rem;">
               Retrieve ALL items in namespace (no top-K limit).<br>
               &le;22K tokens &rarr; fits in one LLM call. No divide-and-conquer needed.
@@ -884,7 +883,7 @@
             <td>0</td>
           </tr>
           <tr>
-            <td style="text-align:left;font-weight:600;color:#818cf8;">4. Category-Aware QA</td>
+            <td style="text-align:left;font-weight:600;color:#ff6b35;">4. Category-Aware QA</td>
             <td style="text-align:left;font-size:0.85rem;">
               5 specialized prompts: CoT for multi-hop, date extraction for temporal,<br>
               strict verification for adversarial. "Use EXACT words from conversation."
@@ -892,7 +891,7 @@
             <td>1 per question</td>
           </tr>
           <tr>
-            <td style="text-align:left;font-weight:600;color:#818cf8;">5. Contradiction CoT</td>
+            <td style="text-align:left;font-weight:600;color:#ff6b35;">5. Contradiction CoT</td>
             <td style="text-align:left;font-size:0.85rem;">
               When new facts contradict old: keep BOTH, annotate chain-of-thought.<br>
               Never override. Never lose information. Let user decide.
@@ -1085,8 +1084,8 @@
           <div class="stat-label">Store latency (per item)</div>
           <div class="stat-sub">Batch mode, 100 items</div>
         </div>
-        <div class="stat-card" style="border-color: #818cf8;">
-          <div class="stat-value" style="color: #818cf8; font-size: 1.5rem;">0.74ms</div>
+        <div class="stat-card" style="border-color: #ff6b35;">
+          <div class="stat-value" style="color: #ff6b35; font-size: 1.5rem;">0.74ms</div>
           <div class="stat-label">Search latency (per query)</div>
           <div class="stat-sub">TSF hash lookup, top-10</div>
         </div>
@@ -1212,8 +1211,8 @@
             Only system to report Cat 5. Phase thermodynamics naturally rejects hallucinated memories.
           </div>
         </div>
-        <div class="stat-card" style="border-color: #818cf8;">
-          <div class="stat-value" style="color: #818cf8; font-size: 1.5rem;">4 Phases</div>
+        <div class="stat-card" style="border-color: #ff6b35;">
+          <div class="stat-value" style="color: #ff6b35; font-size: 1.5rem;">4 Phases</div>
           <div class="stat-label" style="color: #ccc; font-size: 0.9rem;">Gas &rarr; Liquid &rarr; Solid &rarr; Glass</div>
           <div class="stat-sub" style="color: #888; font-size: 0.8rem; margin-top: 8px;">
             Memories have thermodynamic state. Weak ones evaporate. Strong ones crystallize into schemas.
@@ -1342,7 +1341,7 @@
           <div class="stat-sub">Sliding window (w=5) vs all-pairs</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value" style="color: #818cf8;">~1 MB</div>
+          <div class="stat-value" style="color: #ff6b35;">~1 MB</div>
           <div class="stat-label">Fixed memory</div>
           <div class="stat-sub">Count-Min Sketch replaces unbounded dict</div>
         </div>
@@ -1427,18 +1426,15 @@
     <div class="bench-section">
       <h2>Sources</h2>
       <div class="note-box" style="border-left-color: #555;">
-        <strong>F1 scores:</strong> Mem0 paper (<a href="https://arxiv.org/abs/2504.19413" target="_blank" rel="noopener" style="color:#818cf8;">arXiv:2504.19413</a>), LoCoMo ACL 2024 (<a href="https://aclanthology.org/2024.acl-long.747/" target="_blank" rel="noopener" style="color:#818cf8;">Maharana et al.</a>)
-        <br><strong>LLM-Judge:</strong> Hindsight (<a href="https://arxiv.org/abs/2512.12818" target="_blank" rel="noopener" style="color:#818cf8;">arXiv:2512.12818</a>), MemMachine (<a href="https://memmachine.ai/blog/2025/12/" target="_blank" rel="noopener" style="color:#818cf8;">blog</a>), Backboard (<a href="https://github.com/Backboard-io/Backboard-Locomo-Benchmark" target="_blank" rel="noopener" style="color:#818cf8;">GitHub</a>)
+        <strong>F1 scores:</strong> Mem0 paper (<a href="https://arxiv.org/abs/2504.19413" target="_blank" rel="noopener" style="color:#ff6b35;">arXiv:2504.19413</a>), LoCoMo ACL 2024 (<a href="https://aclanthology.org/2024.acl-long.747/" target="_blank" rel="noopener" style="color:#ff6b35;">Maharana et al.</a>)
+        <br><strong>LLM-Judge:</strong> Hindsight (<a href="https://arxiv.org/abs/2512.12818" target="_blank" rel="noopener" style="color:#ff6b35;">arXiv:2512.12818</a>), MemMachine (<a href="https://memmachine.ai/blog/2025/12/" target="_blank" rel="noopener" style="color:#ff6b35;">blog</a>), Backboard (<a href="https://github.com/Backboard-io/Backboard-Locomo-Benchmark" target="_blank" rel="noopener" style="color:#ff6b35;">GitHub</a>)
         <br><strong>Not benchmarked on LoCoMo:</strong> AWS AgentCore Memory, RMT
-        <br><strong>Controversy:</strong> Zep score disputed (<a href="https://github.com/getzep/zep-papers/issues/5" target="_blank" rel="noopener" style="color:#818cf8;">GitHub issue #5</a>)
+        <br><strong>Controversy:</strong> Zep score disputed (<a href="https://github.com/getzep/zep-papers/issues/5" target="_blank" rel="noopener" style="color:#ff6b35;">GitHub issue #5</a>)
       </div>
     </div>
 
   </div>
 
-  <footer style="text-align: center; padding: 40px 20px; color: #555; font-size: 0.85rem; border-top: 1px solid #222;">
-    CLS++ v0.5.0 &middot; AlphaForge AI Labs &middot; Memory is a Phase of Matter
-    <br><span style="font-size: 0.75rem;">Benchmark last updated: March 17, 2026 &middot; 4 runs (Baseline, LLM Extract, TRR v1, Enhanced v1) &middot; 1,098 tests passing</span>
-  </footer>
+  <script src="footer.js?v=2"></script>
 </body>
 </html>

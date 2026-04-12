@@ -4,18 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CLS++ | Test Suite</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=2">
   <script src="auth.js" defer></script>
   <style>
-    body { background: #0a0a0a; color: #e0e0e0; font-family: 'DM Sans', sans-serif; min-height: 100vh; }
+    body { background: transparent; color: #1d1d1f; min-height: 100vh; }
 
-    .page { max-width: 1200px; margin: 0 auto; padding: 80px 20px 60px; }
+    .page { background: rgba(255,255,255,0.92); border-radius: 24px; box-shadow: 0 4px 40px rgba(0,0,0,0.08); max-width: 980px; margin: 0 auto; padding: 80px 20px 60px; margin-top: 80px; }
 
     .page-header { margin-bottom: 32px; }
     .page-header h1 { font-size: 1.8rem; margin-bottom: 6px; }
-    .page-header .subtitle { color: #666; font-size: 0.9rem; }
+    .page-header .subtitle { color: #86868b; font-size: 0.9rem; }
 
     /* ---- Layout ---- */
     .layout { display: grid; grid-template-columns: 280px 1fr; gap: 24px; }
@@ -23,22 +22,22 @@
 
     /* ---- Run History Sidebar ---- */
     .sidebar { display: flex; flex-direction: column; gap: 8px; }
-    .sidebar-title { color: #888; font-size: 0.72rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
+    .sidebar-title { color: #86868b; font-size: 0.72rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
 
     .run-item {
-      background: #111; border: 1px solid #1e1e1e; border-radius: 8px;
+      background: rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.08); border-radius: 8px;
       cursor: pointer; padding: 10px 12px; transition: border-color 0.15s;
     }
-    .run-item:hover { border-color: #6366f1; }
-    .run-item.active { border-color: #6366f1; background: rgba(99,102,241,0.08); }
-    .run-item .run-ts { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #666; margin-bottom: 4px; }
+    .run-item:hover { border-color: #ff6b35; }
+    .run-item.active { border-color: #ff6b35; background: rgba(255,107,53,0.06); }
+    .run-item .run-ts { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #86868b; margin-bottom: 4px; }
     .run-item .run-score {
       font-size: 1.1rem; font-weight: 600;
     }
     .run-item .run-score.perfect { color: #34d399; }
-    .run-item .run-score.good { color: #6366f1; }
+    .run-item .run-score.good { color: #ff6b35; }
     .run-item .run-score.bad { color: #f87171; }
-    .run-item .run-meta { color: #555; font-size: 0.72rem; margin-top: 2px; }
+    .run-item .run-meta { color: #86868b; font-size: 0.72rem; margin-top: 2px; }
 
     /* ---- Main Panel ---- */
     .main {}
@@ -46,24 +45,24 @@
     /* Summary cards */
     .summary-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
     .card {
-      background: #111; border: 1px solid #1e1e1e; border-radius: 10px;
+      background: rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.08); border-radius: 10px;
       padding: 16px 20px; flex: 1; min-width: 120px;
     }
-    .card .card-label { color: #555; font-size: 0.72rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; }
+    .card .card-label { color: #86868b; font-size: 0.72rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; }
     .card .card-value { font-size: 1.6rem; font-weight: 600; }
     .card .card-value.green { color: #34d399; }
-    .card .card-value.indigo { color: #818cf8; }
+    .card .card-value.indigo { color: #ff6b35; }
     .card .card-value.yellow { color: #fbbf24; }
     .card .card-value.red { color: #f87171; }
-    .card .card-sub { color: #555; font-size: 0.78rem; margin-top: 2px; }
+    .card .card-sub { color: #86868b; font-size: 0.78rem; margin-top: 2px; }
 
     /* Category summary table */
-    .section-title { color: #888; font-size: 0.72rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin: 24px 0 10px; }
+    .section-title { color: #86868b; font-size: 0.72rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin: 24px 0 10px; }
 
     table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-    thead th { color: #666; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; padding: 6px 10px; text-align: left; border-bottom: 1px solid #1e1e1e; }
-    tbody tr { border-bottom: 1px solid #141414; transition: background 0.1s; cursor: default; }
-    tbody tr:hover { background: rgba(255,255,255,0.02); }
+    thead th { color: #86868b; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; padding: 6px 10px; text-align: left; border-bottom: 1px solid rgba(0,0,0,0.08); }
+    tbody tr { border-bottom: 1px solid rgba(0,0,0,0.06); transition: background 0.1s; cursor: default; }
+    tbody tr:hover { background: rgba(0,0,0,0.02); }
     tbody td { padding: 9px 10px; }
     td.mono { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; }
 
@@ -73,41 +72,44 @@
     }
     .badge.pass { background: rgba(52,211,153,0.15); color: #34d399; }
     .badge.fail { background: rgba(248,113,113,0.15); color: #f87171; }
-    .badge.cat { background: rgba(99,102,241,0.15); color: #818cf8; }
+    .badge.cat { background: rgba(255,107,53,0.12); color: #ff6b35; }
 
-    .bar-wrap { background: #1a1a1a; border-radius: 4px; height: 6px; width: 80px; display: inline-block; vertical-align: middle; }
-    .bar-fill { border-radius: 4px; height: 6px; background: #6366f1; }
+    .bar-wrap { background: rgba(0,0,0,0.06); border-radius: 4px; height: 6px; width: 80px; display: inline-block; vertical-align: middle; }
+    .bar-fill { border-radius: 4px; height: 6px; background: #ff6b35; }
     .bar-fill.green { background: #34d399; }
     .bar-fill.red { background: #f87171; }
 
     /* Test result rows */
     .test-row { cursor: pointer; }
-    .test-row .expand-icon { color: #444; font-size: 0.8rem; transition: transform 0.2s; }
+    .test-row .expand-icon { color: #86868b; font-size: 0.8rem; transition: transform 0.2s; }
     .test-row.open .expand-icon { transform: rotate(90deg); }
     .detail-row td { padding: 0; }
     .detail-box {
-      background: #0d0d0d; border: 1px solid #1e1e1e; border-radius: 8px;
+      background: rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.08); border-radius: 8px;
       margin: 4px 10px 8px; padding: 14px 16px; font-size: 0.82rem; line-height: 1.6;
     }
     .detail-box .dl { display: grid; grid-template-columns: 160px 1fr; gap: 4px 12px; }
-    .detail-box .dl dt { color: #555; font-size: 0.75rem; }
-    .detail-box .dl dd { color: #ccc; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; word-break: break-word; margin: 0; }
+    .detail-box .dl dt { color: #86868b; font-size: 0.75rem; }
+    .detail-box .dl dd { color: #1d1d1f; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; word-break: break-word; margin: 0; }
 
     /* Engine diagnostics */
     .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
     @media (max-width: 600px) { .diag-grid { grid-template-columns: 1fr; } }
-    .diag-item { background: #111; border: 1px solid #1e1e1e; border-radius: 6px; padding: 10px 12px; }
-    .diag-item dt { color: #555; font-size: 0.7rem; margin-bottom: 2px; }
-    .diag-item dd { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #a5b4fc; margin: 0; }
+    .diag-item { background: rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.08); border-radius: 6px; padding: 10px 12px; }
+    .diag-item dt { color: #86868b; font-size: 0.7rem; margin-bottom: 2px; }
+    .diag-item dd { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #ff6b35; margin: 0; }
     .diag-item dd.on { color: #34d399; }
     .diag-item dd.off { color: #f87171; }
 
-    .empty-state { color: #444; text-align: center; padding: 48px; font-size: 0.9rem; }
+    .empty-state { color: #86868b; text-align: center; padding: 48px; font-size: 0.9rem; }
 
-    .loading { color: #555; font-size: 0.85rem; padding: 20px 0; }
+    .loading { color: #86868b; font-size: 0.85rem; padding: 20px 0; }
   </style>
 </head>
 <body>
+
+  <div class="video-bg"><video autoplay muted loop playsinline poster="beach-bg.jpg"><source src="sunrise-ocean.mp4" type="video/mp4"></video></div>
+  <div class="video-overlay"></div>
 
   <nav class="nav">
     <div class="nav-inner">
@@ -117,10 +119,9 @@
         <a href="/docs.html">API</a>
         <a href="/integrate.html">Integrate</a>
         <a href="/#pricing">Pricing</a>
-        <a href="/getting-started.html">Get Started</a>
         <div id="nav-auth" class="nav-auth"></div>
+        <a href="/getting-started.html" class="nav-cta">Get Started</a>
       </div>
-      <button class="nav-toggle" aria-label="Menu">☰</button>
     </div>
   </nav>
 
@@ -342,7 +343,7 @@
       if (!manifest.length) {
         renderSidebar([], null);
         document.getElementById('main-panel').innerHTML =
-          '<div class="empty-state">No test runs yet.<br><br>Run: <code style="font-family:monospace;color:#818cf8">python3 run_tests.py</code></div>';
+          '<div class="empty-state">No test runs yet.<br><br>Run: <code style="font-family:monospace;color:#ff6b35">python3 run_tests.py</code></div>';
         return;
       }
       // Load most recent run automatically
@@ -351,6 +352,7 @@
       renderMain(latest);
     })();
   </script>
+  <script src="footer.js?v=2"></script>
 
 </body>
 </html>

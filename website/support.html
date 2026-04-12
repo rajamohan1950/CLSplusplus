@@ -4,26 +4,28 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>CLS++ Support</title>
+  <link rel="stylesheet" href="styles.css?v=2"/>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{background:#06060c;color:#f0f0f8;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif;
+    body{background:transparent;color:#1d1d1f;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif;
       -webkit-font-smoothing:antialiased;padding:40px 20px;line-height:1.7}
-    .container{max-width:720px;margin:0 auto}
-    h1{font-size:28px;font-weight:800;margin-bottom:8px;color:#7c6ef0}
-    .sub{font-size:14px;color:rgba(240,240,248,0.5);margin-bottom:32px}
-    h2{font-size:18px;font-weight:700;margin:28px 0 12px;color:#5de0c5}
-    p,li{font-size:14px;color:rgba(240,240,248,0.8);margin-bottom:12px}
+    .support-container{max-width:720px;margin:80px auto 0;background:rgba(255,255,255,0.92);border-radius:24px;box-shadow:0 4px 40px rgba(0,0,0,0.08);padding:40px;position:relative;z-index:1}
+    h1{font-size:28px;margin-bottom:8px;color:#ff6b35}
+    .sub{font-size:14px;color:#86868b;margin-bottom:32px}
+    h2{font-size:18px;margin:28px 0 12px;color:#ff6b35}
+    p,li{font-size:14px;color:#1d1d1f;margin-bottom:12px}
     ul{padding-left:24px;margin-bottom:16px}
-    a{color:#7c6ef0}
-    code{background:rgba(124,110,240,0.1);padding:2px 6px;border-radius:4px;font-size:13px}
-    .contact{background:rgba(93,224,197,0.08);border:1px solid rgba(93,224,197,0.2);
+    a{color:#ff6b35}
+    code{background:rgba(255,107,53,0.1);padding:2px 6px;border-radius:4px;font-size:13px}
+    .contact{background:rgba(255,107,53,0.06);border:1px solid rgba(255,107,53,0.15);
       border-radius:12px;padding:20px;margin:20px 0}
-    .footer{margin-top:40px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08);
-      font-size:12px;color:rgba(240,240,248,0.3)}
   </style>
 </head>
 <body>
-<div class="container">
+<div class="video-bg"><video autoplay muted loop playsinline poster="beach-bg.jpg"><source src="sunrise-ocean.mp4" type="video/mp4"></video></div>
+<div class="video-overlay"></div>
+<nav class="nav"><div class="nav-inner"><a href="/" class="logo">CLS<span class="logo-plus">++</span></a><div class="nav-links"><a href="/">Home</a><a href="/docs.html">API</a><a href="/integrate.html">Integrate</a><a href="/#pricing">Pricing</a><div id="nav-auth" class="nav-auth"></div><a href="/getting-started.html" class="nav-cta">Get Started</a></div></div></nav>
+<div class="support-container">
   <h1>CLS++ Support</h1>
   <div class="sub">Get help with CLS++ Memory extension and server</div>
 
@@ -69,9 +71,7 @@
   <h2>The brain icon doesn't appear in the menu bar</h2>
   <p>The menu bar daemon needs Accessibility permission. Go to <strong>System Settings → Privacy & Security → Accessibility</strong> and enable Python or Terminal.</p>
 
-  <div class="footer">
-    AlphaForge AI Labs &middot; CLS++ Memory &middot; <a href="index.html">Back to CLS++</a>
-  </div>
 </div>
+<script src="footer.js?v=2"></script>
 </body>
 </html>

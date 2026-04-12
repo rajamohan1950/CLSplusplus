@@ -4,10 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Log In | CLS++</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=2">
   <style>
     .auth-page { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px; }
     .auth-card { background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius-lg); padding:48px 40px; width:100%; max-width:420px; }
@@ -31,6 +28,23 @@
   </style>
 </head>
 <body>
+  <div class="video-bg"><video autoplay muted loop playsinline poster="beach-bg.jpg"><source src="sunrise-ocean.mp4" type="video/mp4"></video></div>
+  <div class="video-overlay"></div>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs.html">API</a>
+        <a href="/integrate.html">Integrate</a>
+        <a href="/#pricing">Pricing</a>
+        <div id="nav-auth" class="nav-auth"></div>
+        <a href="/getting-started.html" class="nav-cta">Get Started</a>
+      </div>
+    </div>
+  </nav>
+
   <div class="auth-page">
     <div class="auth-card">
       <a href="/" class="logo" style="display:block;text-align:center;margin-bottom:24px;font-size:1.8rem;text-decoration:none;color:var(--text);">CLS<span class="logo-plus" style="color:var(--accent);">++</span></a>
@@ -130,5 +144,6 @@
       return false;
     }
   </script>
+  <script src="footer.js?v=2"></script>
 </body>
 </html>

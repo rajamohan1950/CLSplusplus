@@ -71,6 +71,13 @@
       showBillingCancel();
       window.history.replaceState({}, '', '/profile.html#billing');
     }
+
+    // Auto-launch checkout if tier param is present (from pricing page)
+    var requestedTier = params.get('tier');
+    if (requestedTier && ['pro', 'business', 'enterprise'].indexOf(requestedTier) !== -1) {
+      window.history.replaceState({}, '', '/profile.html#billing');
+      setTimeout(function () { window.startCheckout(requestedTier); }, 600);
+    }
   }
 
   function renderUserInfo() {

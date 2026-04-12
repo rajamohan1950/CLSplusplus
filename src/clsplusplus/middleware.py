@@ -21,6 +21,7 @@ _PUBLIC_PATHS = frozenset({
     "/v1/memory/health",
     "/v1/demo/status",
     "/v1/demo/chat",
+    "/v1/demo/classify",
     "/v1/auth/register",
     "/v1/auth/login",
     "/v1/auth/google",

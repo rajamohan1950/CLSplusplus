@@ -4,15 +4,15 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>CLS++ · Activate Memory</title>
+  <link rel="stylesheet" href="styles.css?v=2">
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{
-      --bg:#05050a;--accent:#7c6ef0;--accent2:#5de0c5;
-      --text:#f0f0f8;--muted:rgba(240,240,248,.45);
-      --ok:#5de0c5;--err:#f06e9a;
+      --accent:#ff6b35;--accent2:#ff8c5a;
+      --text:#f0f0f8;--muted:rgba(255,255,255,0.6);
+      --ok:#16a34a;--err:#ef4444;
     }
-    html,body{height:100%;background:var(--bg);color:var(--text);overflow:hidden;
-      font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;
+    html,body{height:100%;background:transparent;color:var(--text);
       -webkit-font-smoothing:antialiased}
     canvas{position:fixed;inset:0;pointer-events:none;z-index:0}
 
@@ -24,31 +24,31 @@
 
     /* ── S1 : one button ────────────────────────────── */
     #s1 .logo{display:flex;align-items:center;gap:9px;margin-bottom:42px}
-    #s1 .dot{width:9px;height:9px;border-radius:50%;background:var(--accent2);
-      box-shadow:0 0 10px var(--accent2);animation:blink 1.8s ease-in-out infinite}
+    #s1 .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);
+      box-shadow:0 0 10px var(--accent);animation:blink 1.8s ease-in-out infinite}
     @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
-    #s1 .logo-name{font-size:15px;font-weight:700}
-    #s1 h1{font-size:clamp(28px,5vw,52px);font-weight:800;letter-spacing:-.04em;
+    #s1 .logo-name{font-size:15px;font-weight:600}
+    #s1 h1{font-size:clamp(28px,5vw,52px);font-weight:600;letter-spacing:-.04em;
       line-height:1.06;text-align:center;margin-bottom:12px;
-      background:linear-gradient(140deg,#fff 20%,var(--accent) 55%,var(--accent2) 90%);
+      background:linear-gradient(140deg,#fff 20%,#ff6b35 55%,#ff8c5a 90%);
       -webkit-background-clip:text;-webkit-text-fill-color:transparent}
     #s1 .tagline{font-size:14px;color:var(--muted);text-align:center;
       margin-bottom:62px;max-width:360px;line-height:1.65}
 
     /* big button */
     #btn{width:200px;height:200px;border-radius:50%;border:none;cursor:pointer;outline:none;
-      background:conic-gradient(from 200deg,#4a3da8,#7c6ef0,#9d90ff,#5de0c5,#7c6ef0,#4a3da8);
-      box-shadow:0 0 60px rgba(124,110,240,.5),0 0 120px rgba(93,224,197,.2),0 12px 50px rgba(0,0,0,.7);
+      background:conic-gradient(from 200deg,#cc4400,#ff6b35,#ff8c5a,#ffab76,#ff6b35,#cc4400);
+      box-shadow:0 0 60px rgba(255,107,53,.5),0 0 120px rgba(255,140,90,.2),0 12px 50px rgba(0,0,0,.7);
       animation:breathe 2.6s ease-in-out infinite;transition:transform .15s ease}
     #btn:hover{transform:scale(1.06)}
     #btn:active{transform:scale(.93)}
     @keyframes breathe{
-      0%,100%{box-shadow:0 0 60px rgba(124,110,240,.5),0 0 120px rgba(93,224,197,.2),0 12px 50px rgba(0,0,0,.7)}
-      50%{box-shadow:0 0 0 30px rgba(124,110,240,.04),0 0 110px rgba(124,110,240,.7),0 0 180px rgba(93,224,197,.3),0 12px 50px rgba(0,0,0,.7)}}
+      0%,100%{box-shadow:0 0 60px rgba(255,107,53,.5),0 0 120px rgba(255,140,90,.2),0 12px 50px rgba(0,0,0,.7)}
+      50%{box-shadow:0 0 0 30px rgba(255,107,53,.04),0 0 110px rgba(255,107,53,.7),0 0 180px rgba(255,140,90,.3),0 12px 50px rgba(0,0,0,.7)}}
     .btn-inner{display:flex;flex-direction:column;align-items:center;
       justify-content:center;height:100%;gap:10px;pointer-events:none}
     .btn-icon{font-size:62px;line-height:1}
-    .btn-word{font-size:12px;font-weight:700;letter-spacing:.15em;
+    .btn-word{font-size:12px;font-weight:600;letter-spacing:.15em;
       text-transform:uppercase;color:rgba(255,255,255,.82)}
     #s1 .hint{margin-top:28px;font-size:11px;color:var(--muted);text-align:center}
 
@@ -59,7 +59,7 @@
     #warn a{color:inherit}
 
     /* ── S2 : progress ──────────────────────────────── */
-    #s2 .prog-title{font-size:22px;font-weight:800;letter-spacing:-.03em;
+    #s2 .prog-title{font-size:22px;font-weight:600;letter-spacing:-.03em;
       margin-bottom:6px;text-align:center}
     #s2 .prog-sub{font-size:13px;color:var(--muted);margin-bottom:44px;text-align:center}
 
@@ -70,20 +70,20 @@
     .step:not(:last-child)::after{content:'';position:absolute;left:17px;
       top:51px;width:2px;height:calc(100% - 14px);
       background:rgba(255,255,255,.06);z-index:0}
-    .step.done::after{background:linear-gradient(180deg,rgba(93,224,197,.5),rgba(93,224,197,.08))}
+    .step.done::after{background:linear-gradient(180deg,rgba(22,163,74,.5),rgba(22,163,74,.08))}
 
     .ico{width:34px;height:34px;border-radius:50%;flex-shrink:0;
       display:flex;align-items:center;justify-content:center;font-size:15px;
       position:relative;z-index:1;
       background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.1);
       transition:all .3s}
-    .step.active .ico{background:rgba(124,110,240,.18);border-color:var(--accent);
-      box-shadow:0 0 16px rgba(124,110,240,.35)}
-    .step.done  .ico{background:rgba(93,224,197,.14);border-color:var(--ok);
-      box-shadow:0 0 10px rgba(93,224,197,.3)}
+    .step.active .ico{background:rgba(255,107,53,.18);border-color:var(--accent);
+      box-shadow:0 0 16px rgba(255,107,53,.35)}
+    .step.done  .ico{background:rgba(22,163,74,.14);border-color:var(--ok);
+      box-shadow:0 0 10px rgba(22,163,74,.3)}
 
     .sbody{flex:1}
-    .stitle{font-size:13px;font-weight:700;transition:color .3s}
+    .stitle{font-size:13px;font-weight:600;transition:color .3s}
     .step.pending .stitle{color:var(--muted)}
     .step.active  .stitle{color:var(--text)}
     .step.done    .stitle{color:var(--ok)}
@@ -91,33 +91,33 @@
     .step.pending .sdetail{opacity:0}
 
     .spin{display:inline-block;width:13px;height:13px;
-      border:2px solid rgba(124,110,240,.3);border-top-color:var(--accent);
+      border:2px solid rgba(255,107,53,.3);border-top-color:var(--accent);
       border-radius:50%;animation:spin .65s linear infinite;vertical-align:middle}
     @keyframes spin{to{transform:rotate(360deg)}}
 
     /* ── S3 : done ──────────────────────────────────── */
     #s3{gap:0}
     .done-ring{width:120px;height:120px;border-radius:50%;
-      background:radial-gradient(circle at 40% 35%,var(--accent2),#3abfa8);
+      background:radial-gradient(circle at 40% 35%,#ff8c5a,#ff6b35);
       display:flex;align-items:center;justify-content:center;font-size:54px;
       animation:pop .45s cubic-bezier(.18,.89,.32,1.28) forwards}
     @keyframes pop{
-      0%{transform:scale(.2);box-shadow:0 0 0 80px rgba(93,224,197,.18)}
-      70%{transform:scale(1.14);box-shadow:0 0 0 0 rgba(93,224,197,0)}
-      100%{transform:scale(1);box-shadow:0 0 48px rgba(93,224,197,.4)}}
-    #s3 .done-lbl{font-size:12px;font-weight:700;letter-spacing:.15em;
-      text-transform:uppercase;color:var(--accent2);margin-top:20px;
+      0%{transform:scale(.2);box-shadow:0 0 0 80px rgba(255,107,53,.18)}
+      70%{transform:scale(1.14);box-shadow:0 0 0 0 rgba(255,107,53,0)}
+      100%{transform:scale(1);box-shadow:0 0 48px rgba(255,107,53,.4)}}
+    #s3 .done-lbl{font-size:12px;font-weight:600;letter-spacing:.15em;
+      text-transform:uppercase;color:#ff6b35;margin-top:20px;
       opacity:0;animation:fi .25s .3s ease forwards}
     @keyframes fi{to{opacity:1}}
     #s3 .done-msg{font-size:13px;color:var(--muted);margin-top:8px;text-align:center;
       opacity:0;animation:fi .3s .5s ease forwards;max-width:320px;line-height:1.65}
-    #s3 .done-note{font-size:11px;color:rgba(93,224,197,.5);margin-top:16px;
+    #s3 .done-note{font-size:11px;color:rgba(255,107,53,.5);margin-top:16px;
       opacity:0;animation:fi .3s .85s ease forwards;text-align:center}
     #s3 #btn-mem{margin-top:22px;opacity:0;animation:fi .3s 1s ease forwards;
-      padding:11px 26px;background:rgba(93,224,197,.1);border:1px solid rgba(93,224,197,.3);
-      border-radius:30px;color:var(--accent2);font-size:12px;font-weight:700;
+      padding:11px 26px;background:rgba(255,107,53,.1);border:1px solid rgba(255,107,53,.3);
+      border-radius:30px;color:#ff6b35;font-size:12px;font-weight:600;
       cursor:pointer;text-decoration:none;transition:all .18s;display:inline-block}
-    #s3 #btn-mem:hover{background:rgba(93,224,197,.18)}
+    #s3 #btn-mem:hover{background:rgba(255,107,53,.18)}
 
     /* particles */
     .p{position:fixed;border-radius:50%;pointer-events:none;z-index:50;
@@ -127,6 +127,23 @@
   </style>
 </head>
 <body>
+<div class="video-bg"><video autoplay muted loop playsinline poster="beach-bg.jpg"><source src="sunrise-ocean.mp4" type="video/mp4"></video></div>
+<div class="video-overlay"></div>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+    <div class="nav-links">
+      <a href="/">Home</a>
+      <a href="/docs.html">API</a>
+      <a href="/integrate.html">Integrate</a>
+      <a href="/#pricing">Pricing</a>
+      <div id="nav-auth" class="nav-auth"></div>
+      <a href="/getting-started.html" class="nav-cta">Get Started</a>
+    </div>
+  </div>
+</nav>
+
 <canvas id="cv"></canvas>
 
 <!-- S1: the button -->
@@ -193,7 +210,7 @@ const API = window.location.origin;
 const cv=document.getElementById('cv'),cx=cv.getContext('2d');
 let W,H; function rsz(){W=cv.width=innerWidth;H=cv.height=innerHeight;} rsz();addEventListener('resize',rsz);
 const pts=Array.from({length:80},()=>({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.3+.3,vx:(Math.random()-.5)*.12,vy:(Math.random()-.5)*.12,a:Math.random()*.28+.04}));
-(function draw(){cx.clearRect(0,0,W,H);pts.forEach(p=>{cx.beginPath();cx.arc(p.x,p.y,p.r,0,Math.PI*2);cx.fillStyle=`rgba(124,110,240,${p.a})`;cx.fill();p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;});requestAnimationFrame(draw);})();
+(function draw(){cx.clearRect(0,0,W,H);pts.forEach(p=>{cx.beginPath();cx.arc(p.x,p.y,p.r,0,Math.PI*2);cx.fillStyle=`rgba(255,107,53,${p.a})`;cx.fill();p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;});requestAnimationFrame(draw);})();
 
 function show(id){document.querySelectorAll('.scr').forEach(s=>s.classList.add('out'));document.getElementById(id).classList.remove('out');}
 function setState(n,s){const e=document.getElementById('st'+n);e.classList.remove('pending','active','done','error');e.classList.add(s);}
@@ -202,7 +219,7 @@ function setDetail(n,h){document.getElementById('sd'+n).innerHTML=h;}
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 function burst(bx,by){
-  const c=['#7c6ef0','#5de0c5','#f0c05d','#f06e9a','#a78fff','#fff'];
+  const c=['#ff6b35','#ff8c5a','#ffab76','#fff','#cc4400','#ffd4b8'];
   for(let i=0;i<40;i++){
     const el=document.createElement('div');el.className='p';
     const a=Math.random()*Math.PI*2,d=80+Math.random()*160,sz=3+Math.random()*8;
@@ -286,5 +303,6 @@ async function go(){
 
 checkBrowserAvailable();
 </script>
+<script src="footer.js?v=2"></script>
 </body>
 </html>

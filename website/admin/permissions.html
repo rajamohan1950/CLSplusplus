@@ -4,20 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Permissions | CLS++ Admin</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../styles.css">
   <link rel="stylesheet" href="styles.css">
   <script src="../auth.js" defer></script>
   <style>
-    .perm-layout { display:grid; grid-template-columns:260px 1fr; min-height:calc(100vh - 60px); margin-top:60px; }
+    html,body { background:transparent; }
+    .perm-layout { display:grid; grid-template-columns:260px 1fr; min-height:calc(100vh - 60px); margin-top:60px; max-width:980px; margin-left:auto; margin-right:auto; background:rgba(255,255,255,0.92); border-radius:24px; box-shadow:0 4px 40px rgba(0,0,0,0.08); overflow:hidden; position:relative; z-index:1; }
     .perm-sidebar { background:var(--bg-elevated); border-right:1px solid var(--border); padding:20px 0; overflow-y:auto; }
     .perm-sidebar h3 { padding:0 16px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin:20px 0 8px; }
     .perm-sidebar h3:first-child { margin-top:0; }
     .perm-item { display:block; padding:8px 16px; cursor:pointer; color:var(--text); text-decoration:none; font-size:0.9rem; border-left:3px solid transparent; }
-    .perm-item:hover { background:rgba(99,102,241,0.08); }
-    .perm-item.active { border-left-color:var(--accent); background:rgba(99,102,241,0.12); color:var(--accent-light); }
+    .perm-item:hover { background:rgba(255,107,53,0.08); }
+    .perm-item.active { border-left-color:var(--accent); background:rgba(255,107,53,0.12); color:var(--accent-light); }
     .perm-main { padding:24px 32px; overflow-y:auto; }
     .perm-main h2 { margin-bottom:16px; }
     .perm-search { display:block; width:calc(100% - 32px); margin:0 16px 12px; padding:8px 12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:0.85rem; outline:none; font-family:inherit; }
@@ -31,7 +29,7 @@
     .scope-check.denied { border-color:#ef4444; background:rgba(239,68,68,0.05); }
 
     .tag { display:inline-block; padding:3px 10px; border-radius:12px; font-size:0.75rem; font-weight:600; margin:2px; }
-    .tag-role { background:rgba(99,102,241,0.15); color:var(--accent-light); }
+    .tag-role { background:rgba(255,107,53,0.15); color:var(--accent-light); }
     .tag-group { background:rgba(34,197,94,0.15); color:#22c55e; }
     .tag-remove { cursor:pointer; margin-left:4px; opacity:0.6; }
     .tag-remove:hover { opacity:1; }
@@ -61,20 +59,17 @@
   </style>
 </head>
 <body>
+  <div class="video-bg"><video autoplay muted loop playsinline poster="../beach-bg.jpg"><source src="../sunrise-ocean.mp4" type="video/mp4"></video></div>
   <nav class="nav">
     <div class="nav-inner">
       <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
       <div class="nav-links">
         <a href="/">Home</a>
-        <a href="/admin/dashboard.html">Dashboard</a>
-        <a href="/admin/permissions.html">Permissions</a>
+        <a href="/docs.html">API</a>
         <a href="/integrate.html">Integrate</a>
         <a href="/#pricing">Pricing</a>
-        <a href="/docs.html">API</a>
-        <a href="/chat.html">Chat</a>
-        <a href="/trace.html">Traces</a>
-        <a href="/tests.html">Tests</a>
         <div id="nav-auth" class="nav-auth"></div>
+        <a href="/getting-started.html" class="nav-cta">Get Started</a>
       </div>
     </div>
   </nav>
@@ -105,5 +100,6 @@
   </div>
 
   <script src="permissions.js"></script>
+  <script src="../footer.js"></script>
 </body>
 </html>

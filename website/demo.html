@@ -4,14 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CLS++ Demo — Switch AI Models, Never Lose Context</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=2"/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    :root { --bg:#0a0a0f; --text:#e8e8ed; --muted:#8b8b9a; --accent:#6366f1; --green:#22c55e; --red:#ef4444; }
+    :root { --text:#1d1d1f; --muted:#86868b; --accent:#ff6b35; --green:#22c55e; --red:#ef4444; }
     * { box-sizing:border-box; margin:0; padding:0; }
-    body { background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; overflow:hidden; height:100vh; display:flex; align-items:center; justify-content:center; }
+    body { background:transparent; color:var(--text); overflow:hidden; height:100vh; display:flex; align-items:center; justify-content:center; }
 
-    .stage { width:900px; max-width:95vw; }
+    .stage { width:900px; max-width:95vw; position:relative; z-index:1; margin-top:70px; }
     .slide { display:none; animation:fadeIn 0.5s ease; }
     .slide.active { display:block; }
     @keyframes fadeIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
@@ -19,18 +19,18 @@
     h1 { font-size:2.5rem; text-align:center; margin-bottom:12px; }
     h2 { font-size:1.8rem; margin-bottom:16px; }
     .sub { color:var(--muted); text-align:center; font-size:1.1rem; margin-bottom:32px; }
-    .gradient { background:linear-gradient(135deg, #818cf8, #c084fc); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+    .gradient { background:linear-gradient(135deg, #ff6b35, #ff8c5a); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
 
-    .code-block { background:#12121a; border:1px solid #2a2a35; border-radius:12px; padding:24px; font-family:'JetBrains Mono',monospace; font-size:0.85rem; line-height:1.8; margin:16px 0; overflow-x:auto; }
+    .code-block { background:rgba(29,29,31,0.92); border:1px solid rgba(0,0,0,0.1); border-radius:12px; padding:24px; font-family:'JetBrains Mono',monospace; font-size:0.85rem; line-height:1.8; margin:16px 0; overflow-x:auto; color:#e8e8ed; }
     .code-block .old { color:var(--red); text-decoration:line-through; opacity:0.6; }
     .code-block .new { color:var(--green); font-weight:500; }
-    .code-block .dim { color:var(--muted); }
+    .code-block .dim { color:#8b8b9a; }
 
-    .chat { background:#12121a; border:1px solid #2a2a35; border-radius:12px; padding:20px; margin:12px 0; }
+    .chat { background:rgba(29,29,31,0.92); border:1px solid rgba(0,0,0,0.1); border-radius:12px; padding:20px; margin:12px 0; }
     .chat-label { font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); margin-bottom:8px; }
     .chat-msg { padding:10px 14px; border-radius:10px; margin:6px 0; font-size:0.9rem; max-width:80%; }
     .chat-user { background:var(--accent); color:#fff; margin-left:auto; text-align:right; }
-    .chat-bot { background:#1a1a2e; }
+    .chat-bot { background:rgba(0,0,0,0.05); color:var(--text); }
 
     .inject { background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.2); border-radius:10px; padding:16px; margin:12px 0; font-size:0.85rem; }
     .inject-label { font-size:0.7rem; text-transform:uppercase; color:var(--green); font-weight:600; margin-bottom:6px; }
@@ -41,23 +41,27 @@
     .badge-claude { background:rgba(204,120,92,0.15); color:#cc785c; }
 
     .kpi-row { display:flex; gap:16px; justify-content:center; margin:20px 0; }
-    .kpi { background:#12121a; border:1px solid #2a2a35; border-radius:12px; padding:16px 24px; text-align:center; }
-    .kpi-val { font-size:1.8rem; font-weight:700; }
-    .kpi-label { font-size:0.75rem; color:var(--muted); margin-top:4px; }
+    .kpi { background:rgba(29,29,31,0.92); border:1px solid rgba(0,0,0,0.1); border-radius:12px; padding:16px 24px; text-align:center; color:#e8e8ed; }
+    .kpi-val { font-size:1.8rem; font-weight:600; }
+    .kpi-label { font-size:0.75rem; color:#8b8b9a; margin-top:4px; }
 
-    .progress { position:fixed; bottom:0; left:0; height:3px; background:var(--accent); transition:width 0.3s; }
-    .nav-dots { position:fixed; bottom:20px; display:flex; gap:8px; left:50%; transform:translateX(-50%); }
-    .dot { width:8px; height:8px; border-radius:50%; background:#2a2a35; cursor:pointer; }
+    .progress { position:fixed; bottom:0; left:0; height:3px; background:var(--accent); transition:width 0.3s; z-index:2; }
+    .nav-dots { position:fixed; bottom:20px; display:flex; gap:8px; left:50%; transform:translateX(-50%); z-index:2; }
+    .dot { width:8px; height:8px; border-radius:50%; background:rgba(0,0,0,0.2); cursor:pointer; }
     .dot.active { background:var(--accent); }
-    .skip { position:fixed; top:20px; right:20px; color:var(--muted); font-size:0.85rem; cursor:pointer; text-decoration:none; }
+    .skip { position:fixed; top:20px; right:20px; color:var(--muted); font-size:0.85rem; cursor:pointer; text-decoration:none; z-index:2; }
     .skip:hover { color:var(--text); }
 
     .cta { display:inline-block; padding:14px 32px; background:var(--accent); color:#fff; border-radius:12px; font-size:1rem; font-weight:600; text-decoration:none; margin-top:16px; }
-    .cta:hover { background:#4f46e5; }
+    .cta:hover { background:#e55a2b; }
     .center { text-align:center; }
   </style>
 </head>
 <body>
+
+<div class="video-bg"><video autoplay muted loop playsinline poster="beach-bg.jpg"><source src="sunrise-ocean.mp4" type="video/mp4"></video></div>
+<div class="video-overlay"></div>
+<nav class="nav"><div class="nav-inner"><a href="/" class="logo">CLS<span class="logo-plus">++</span></a><div class="nav-links"><a href="/">Home</a><a href="/docs.html">API</a><a href="/integrate.html">Integrate</a><a href="/#pricing">Pricing</a><div id="nav-auth" class="nav-auth"></div><a href="/getting-started.html" class="nav-cta">Get Started</a></div></div></nav>
 
 <div class="stage">
 
@@ -143,7 +147,7 @@ brain.forget("old fact")                 <span class="dim"># → GDPR delete</sp
   <div class="slide" id="s5">
     <h2>Full <span class="gradient">SaaS platform.</span> Built in.</h2>
     <div class="kpi-row">
-      <div class="kpi"><div class="kpi-val" style="color:var(--text)">12</div><div class="kpi-label">Total Users</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#e8e8ed">12</div><div class="kpi-label">Total Users</div></div>
       <div class="kpi"><div class="kpi-val" style="color:var(--green)">$281</div><div class="kpi-label">Monthly Revenue</div></div>
       <div class="kpi"><div class="kpi-val" style="color:var(--red)">$0.02</div><div class="kpi-label">Monthly Cost</div></div>
       <div class="kpi"><div class="kpi-val" style="color:var(--green)">100%</div><div class="kpi-label">Margin</div></div>
@@ -212,5 +216,6 @@ document.addEventListener('keydown', function(e) {
 // Start auto-play
 resetAuto();
 </script>
+<script src="footer.js?v=2"></script>
 </body>
 </html>

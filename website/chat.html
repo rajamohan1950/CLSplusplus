@@ -5,30 +5,36 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="CLS++ Chat — Persistent memory across every LLM. Just chat.">
   <title>CLS++ | Chat</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=2">
   <script src="auth.js" defer></script>
 </head>
 <body class="chat-body">
+  <div class="video-bg"><video autoplay muted loop playsinline poster="beach-bg.jpg"><source src="sunrise-ocean.mp4" type="video/mp4"></video></div>
+  <div class="video-overlay"></div>
 
-  <div class="chat-layout">
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs.html">API</a>
+        <a href="/integrate.html">Integrate</a>
+        <a href="/#pricing">Pricing</a>
+        <div id="nav-auth" class="nav-auth"></div>
+        <a href="/getting-started.html" class="nav-cta">Get Started</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="chat-layout" style="margin-top:60px;">
     <!-- Sidebar -->
     <aside class="chat-sidebar" id="chat-sidebar">
       <div class="chat-sidebar-header">
-        <a href="index.html" class="chat-logo">CLS<span class="logo-plus">++</span></a>
         <button class="chat-new-btn" id="btn-new-chat">+ New Chat</button>
       </div>
       <div class="chat-session-list" id="session-list">
         <!-- Sessions rendered by JS -->
-      </div>
-      <div class="chat-sidebar-footer">
-        <a href="index.html">Home</a>
-        <a href="docs.html">Docs</a>
-        <a href="integrate.html">Integrations</a>
-        <a href="memory.html">Memory</a>
-        <a href="install.html">Install</a>
       </div>
     </aside>
 
@@ -101,5 +107,6 @@
     })();
   </script>
   <script src="chat.js?v=4"></script>
+  <script src="footer.js?v=2"></script>
 </body>
 </html>

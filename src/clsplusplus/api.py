@@ -14,7 +14,8 @@ from pathlib import Path as FilePath
 from fastapi import FastAPI, HTTPException, Path, Query, Request, Body
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from clsplusplus.config import Settings
@@ -79,9 +80,34 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         title="CLS++ API",
         description="Brain-inspired, model-agnostic persistent memory for LLMs",
         version="1.5.0",
-        docs_url="/docs",
-        redoc_url="/redoc",
+        docs_url=None,
+        redoc_url=None,
     )
+
+    @app.get("/docs", include_in_schema=False)
+    async def custom_swagger_ui():
+        swagger_html = get_swagger_ui_html(
+            openapi_url=app.openapi_url,
+            title=app.title + " — API Documentation",
+            swagger_css_url="/swagger-override.css",
+        )
+        # Inject video background after <body>
+        body = swagger_html.body.decode()
+        video_html = (
+            '<div class="video-bg" style="position:fixed;inset:0;z-index:-2;overflow:hidden">'
+            '<video autoplay muted loop playsinline poster="/beach-bg.jpg" '
+            'style="width:100%;height:100%;object-fit:cover">'
+            '<source src="/sunrise-ocean.mp4" type="video/mp4"></video></div>'
+        )
+        body = body.replace("<body>", "<body>" + video_html, 1)
+        return HTMLResponse(content=body)
+
+    @app.get("/redoc", include_in_schema=False)
+    async def custom_redoc():
+        return get_redoc_html(
+            openapi_url=app.openapi_url,
+            title=app.title + " — API Documentation",
+        )
 
     cors_origins = ["*"]  # Allow all origins — Chrome extensions, localhost, production
     app.add_middleware(
@@ -670,6 +696,64 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "openai": bool(getattr(settings, "openai_api_key", None)),
             "gemini": bool(getattr(settings, "google_api_key", None)),
         }
+
+    @app.post("/v1/demo/classify")
+    async def demo_classify(request: Request):
+        """Classify visitor intent for generative homepage.
+
+        Uses local keyword matching first, falls back to Claude API.
+        Returns { persona: "developer"|"founder"|"researcher", subtitle: "..." }
+        """
+        body = await request.json()
+        text = (body.get("text") or "").strip()
+        if not text or len(text) < 2:
+            return {"persona": "developer", "subtitle": ""}
+
+        # Local classifier (instant, no API call)
+        lower = text.lower()
+        dev_signals = ["api", "sdk", "integrate", "code", "build", "install", "npm", "pip",
+                       "docker", "deploy", "endpoint", "webhook", "python", "javascript",
+                       "fastapi", "langchain", "crewai", "framework", "library", "package"]
+        founder_signals = ["startup", "product", "saas", "users", "customers", "ship", "launch",
+                           "mvp", "pricing", "scale", "revenue", "business", "app", "platform",
+                           "chatbot", "support bot", "ai product", "remember"]
+        research_signals = ["paper", "neuroscience", "cls", "hippocampus", "neocortex",
+                            "consolidation", "mcclelland", "memory theory", "cognitive",
+                            "research", "academic", "architecture", "dual store", "schema", "phase"]
+
+        dev = sum(1 for s in dev_signals if s in lower)
+        founder = sum(1 for s in founder_signals if s in lower)
+        research = sum(1 for s in research_signals if s in lower)
+
+        if research > dev and research > founder:
+            return {"persona": "researcher", "subtitle": ""}
+        if founder > dev:
+            return {"persona": "founder", "subtitle": ""}
+        if dev > 0:
+            return {"persona": "developer", "subtitle": ""}
+
+        # Ambiguous — try Claude API for nuanced classification
+        if settings.anthropic_api_key:
+            try:
+                import httpx, json as _json
+                async with httpx.AsyncClient(timeout=8.0) as client:
+                    r = await client.post("https://api.anthropic.com/v1/messages", headers={
+                        "x-api-key": settings.anthropic_api_key,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json",
+                    }, json={
+                        "model": "claude-sonnet-4-20250514",
+                        "max_tokens": 200,
+                        "messages": [{"role": "user", "content": f'Classify this visitor intent into exactly ONE persona. Visitor typed: "{text}"\n\nRespond ONLY in JSON: {{"persona": "developer|founder|researcher", "subtitle": "One tailored sentence"}}'}],
+                    })
+                    if r.status_code == 200:
+                        content = r.json().get("content", [{}])[0].get("text", "")
+                        parsed = _json.loads(content.replace("```json", "").replace("```", "").strip())
+                        return {"persona": parsed.get("persona", "developer"), "subtitle": parsed.get("subtitle", "")}
+            except Exception as e:
+                logger.warning("Demo classify Claude fallback failed: %s", e)
+
+        return {"persona": "developer", "subtitle": ""}
 
     @app.post("/v1/demo/chat")
     async def demo_chat(req: DemoChatRequest, request: Request):
