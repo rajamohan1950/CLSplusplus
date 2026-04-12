@@ -35,10 +35,23 @@ _PUBLIC_PATHS = frozenset({
 })
 
 
+_STATIC_EXTENSIONS = frozenset({
+    ".html", ".css", ".js", ".json", ".map",
+    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp",
+    ".mp4", ".webm", ".ogg", ".mp3",
+    ".woff", ".woff2", ".ttf", ".eot",
+    ".pdf", ".txt", ".xml",
+})
+
+
 def _is_public(path: str, method: str) -> bool:
     if method == "OPTIONS":
         return True
     normalized = path.rstrip("/") or "/"
+    # Static assets are always public
+    dot_idx = path.rfind(".")
+    if dot_idx != -1 and path[dot_idx:].split("?")[0].lower() in _STATIC_EXTENSIONS:
+        return True
     return (normalized in _PUBLIC_PATHS
             or path.startswith("/docs") or path.startswith("/redoc"))
 
