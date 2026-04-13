@@ -213,6 +213,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         """Return PostHog API key from environment. No auth required."""
         return {"posthog_key": os.environ.get("POSTHOG_API_KEY", "")}
 
+    @app.get("/v1/config/analytics-dashboard")
+    async def analytics_dashboard_config():
+        """Return PostHog shared dashboard URL from environment. No auth required (admin-only page)."""
+        return {"dashboard_url": os.environ.get("POSTHOG_DASHBOARD_URL", "")}
+
     # Per-user metrics emitter (shared across all endpoints)
     from clsplusplus.metrics import MetricsEmitter
     _metrics = MetricsEmitter(settings)

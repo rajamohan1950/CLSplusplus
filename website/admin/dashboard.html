@@ -192,6 +192,18 @@
       <div class="kpi-sub">This billing period</div>
     </div>
 
+    <!-- ============================================================ -->
+    <!-- SECTION: POSTHOG ANALYTICS                                  -->
+    <!-- ============================================================ -->
+    <div class="section-card" id="posthog-section">
+      <h2>PostHog Analytics</h2>
+      <p class="section-sub">Live product analytics — page views, sessions, funnels, user behavior.</p>
+      <div id="posthog-container" style="min-height:800px;border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.2);display:flex;align-items:center;justify-content:center;">
+        <p id="posthog-loading" style="color:var(--text-muted);font-size:0.9rem;">Loading PostHog dashboard...</p>
+        <iframe id="posthog-iframe" style="display:none;width:100%;height:800px;border:none;border-radius:12px;" allowfullscreen></iframe>
+      </div>
+    </div>
+
     <!-- Per-User Table -->
     <div class="section-card">
       <h2>Per-User Breakdown</h2>
@@ -238,5 +250,25 @@
 
   <script src="dashboard.js"></script>
   <script src="../footer.js"></script>
+  <script>
+    // Load PostHog embedded dashboard from POSTHOG_DASHBOARD_URL env var
+    fetch('/v1/config/analytics-dashboard')
+      .then(function(r) { return r.json(); })
+      .then(function(cfg) {
+        var container = document.getElementById('posthog-container');
+        var loading = document.getElementById('posthog-loading');
+        var iframe = document.getElementById('posthog-iframe');
+        if (cfg.dashboard_url) {
+          iframe.src = cfg.dashboard_url;
+          iframe.style.display = 'block';
+          loading.style.display = 'none';
+        } else {
+          loading.textContent = 'PostHog dashboard not configured. Set POSTHOG_DASHBOARD_URL env var on Render with your shared dashboard link.';
+        }
+      })
+      .catch(function() {
+        document.getElementById('posthog-loading').textContent = 'Could not load PostHog dashboard configuration.';
+      });
+  </script>
 </body>
 </html>

@@ -30,6 +30,7 @@ _PUBLIC_PATHS = frozenset({
     "/v1/billing/webhook",
     "/v1/billing/razorpay-webhook",
     "/v1/config/analytics",
+    "/v1/config/analytics-dashboard",
     "/docs",
     "/redoc",
     "/openapi.json",
