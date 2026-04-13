@@ -19,7 +19,7 @@
       border-radius: 24px; margin-bottom: 20px;
       box-shadow: 0 4px 40px rgba(0,0,0,0.08);
     }
-    .content-dark { background: rgba(29,29,31,0.92); color: #fff; }
+    .content-dark { background: #1d1d1f; color: #fff; }
 
     /* ── Shared section ── */
     .section { max-width: 980px; margin: 0 auto; padding: 100px 22px; }
@@ -45,12 +45,12 @@
     .glass-dark:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.2); }
 
     /* ── Hero — cinematic sunrise + bottom dock ── */
-    .hero { min-height: 100vh; display: flex; flex-direction: column; justify-content: flex-end; padding: 0; position: relative; }
+    .hero { min-height: 100vh; display: flex; flex-direction: column; justify-content: flex-end; padding: 0; position: relative; padding-top: 60px; }
 
     /* Floating tagline over the sunrise */
     .hero-tagline {
       position: relative; text-align: center; z-index: 2;
-      padding: 80px 24px 24px; flex-shrink: 0;
+      padding: 40px 24px 20px; flex-shrink: 0;
     }
     .hero-tagline h1 {
       font-size: clamp(52px, 8vw, 96px); color: #fff; letter-spacing: -0.03em;
@@ -69,16 +69,16 @@
       backdrop-filter: blur(60px) saturate(1.8);
       -webkit-backdrop-filter: blur(60px) saturate(1.8);
       border-top: 1px solid rgba(255,255,255,0.08);
-      padding: 36px 0 32px;
+      padding: 40px 0 36px;
     }
     .hero-dock-inner {
-      max-width: 1120px; margin: 0 auto; padding: 0 28px;
+      max-width: 1200px; margin: 0 auto; padding: 0 32px;
     }
     .dock-top {
       text-align: center; margin-bottom: 28px;
     }
     .dock-top .label { color: rgba(255,255,255,0.35); margin-bottom: 10px; }
-    .dock-top .dock-headline { font-size: 24px; color: #fff; letter-spacing: -0.02em; margin-bottom: 8px; line-height: 1.2; }
+    .dock-top .dock-headline { font-size: 24px; color: #fff; letter-spacing: -0.02em; margin-bottom: 8px; line-height: 1.3; font-weight: 500; }
     .dock-top .dock-sub { font-size: 15px; color: rgba(255,255,255,0.55); line-height: 1.47; margin-bottom: 14px; max-width: 540px; margin-left: auto; margin-right: auto; }
     .dock-top .hero-link {
       font-size: 15px; color: #ff6b35; text-decoration: none;
@@ -140,11 +140,11 @@
     }
     .panel-header[data-model="chatgpt"] .panel-name { color: #10a37f; }
     .panel-header[data-model="claude"] .panel-name { color: #d97757; }
-    .panel-header[data-model="gemini"] .panel-name { color: #4285f4; }
+    .panel-header[data-model="gemini"] .panel-name { color: rgba(255,255,255,0.75); }
 
     /* Messages area */
     .showcase-messages {
-      height: 200px; overflow-y: auto; padding: 12px 12px;
+      height: 240px; overflow-y: auto; padding: 14px 14px;
       display: flex; flex-direction: column; gap: 7px;
       scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.08) transparent;
     }
@@ -167,7 +167,7 @@
     }
     .showcase-msg-user[data-model="chatgpt"] { background: #10a37f; }
     .showcase-msg-user[data-model="claude"] { background: #d97757; }
-    .showcase-msg-user[data-model="gemini"] { background: #4285f4; }
+    .showcase-msg-user[data-model="gemini"] { background: rgba(255,255,255,0.18); color: #fff; }
     .showcase-msg-ai {
       align-self: flex-start; color: rgba(255,255,255,0.85);
       background: rgba(255,255,255,0.06); border-bottom-left-radius: 3px;
@@ -225,12 +225,29 @@
     .showcase-send:disabled { opacity: 0.4; cursor: not-allowed; }
     .showcase-send svg { width: 14px; height: 14px; }
 
-    /* ── Steps ── */
-    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 60px; }
-    .step-card { padding: 40px 28px; text-align: center; background: #f5f5f7; border-radius: 20px; }
-    .step-num { font-size: 48px; font-weight: 600; color: #ff6b35; opacity: 0.15; margin-bottom: 16px; line-height: 1; }
-    .step-title { font-size: 17px; color: #1d1d1f; margin-bottom: 10px; }
-    .step-desc { font-size: 14px; line-height: 1.47; color: #86868b; }
+    /* ── Demo/Live Toggle ── */
+    .showcase-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 18px;
+    }
+    .showcase-header-left {
+      font-size: 13px; color: rgba(255,255,255,0.35);
+      font-family: var(--font-sans); letter-spacing: 0.04em;
+    }
+    .mode-toggle {
+      display: flex; gap: 0; background: rgba(255,255,255,0.06);
+      border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08);
+    }
+    .mode-btn {
+      padding: 6px 18px; font-size: 12px; font-weight: 500;
+      font-family: var(--font-sans); color: rgba(255,255,255,0.4);
+      background: transparent; border: none; cursor: pointer;
+      transition: all 0.25s ease; letter-spacing: 0.02em;
+    }
+    .mode-btn.active {
+      background: #ff6b35; color: #fff;
+    }
+    .mode-btn:hover:not(.active) { color: rgba(255,255,255,0.7); }
 
     /* ── Architecture ── */
     .phases { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 60px; }
@@ -277,11 +294,11 @@
     /* ── Responsive ── */
     @media (max-width: 900px) {
       .showcase-grid { grid-template-columns: 1fr; max-width: 400px; margin: 0 auto; }
-      .showcase-messages { height: 160px; }
+      .showcase-messages { height: 180px; }
+      .showcase-header { flex-direction: column; gap: 10px; align-items: flex-start; }
     }
     @media (max-width: 768px) {
       .hero-tagline h1 { font-size: clamp(36px, 8vw, 52px); }
-      .steps { grid-template-columns: 1fr; }
       .phases { grid-template-columns: 1fr 1fr; }
       .pricing-grid { grid-template-columns: 1fr 1fr; }
       .nav-links { display: none; }
@@ -344,6 +361,15 @@
           <span class="hub-status" id="hub-status">Connected</span>
         </div>
 
+        <!-- Demo / Live toggle + panels header -->
+        <div class="showcase-header">
+          <span class="showcase-header-left">Cross-model memory in action</span>
+          <div class="mode-toggle">
+            <button class="mode-btn active" id="mode-demo" onclick="switchMode('demo')">Demo</button>
+            <button class="mode-btn" id="mode-live" onclick="switchMode('live')">Live</button>
+          </div>
+        </div>
+
         <!-- 3 independent chat panels -->
         <div class="showcase-grid" id="memory-showcase">
           <!-- ChatGPT -->
@@ -387,7 +413,7 @@
           <!-- Gemini -->
           <div class="showcase-panel" data-panel="gemini">
             <div class="panel-header" data-model="gemini">
-              <span class="panel-dot" style="background:#4285f4"></span>
+              <span class="panel-dot" style="background:rgba(255,255,255,0.6)"></span>
               <span class="panel-name">Gemini</span>
             </div>
             <div class="showcase-messages" id="msgs-gemini"></div>
@@ -409,6 +435,35 @@
 
   <script>
   /* ── Cross-Model Memory Showcase — 3 Independent Panels ── */
+  var _showcaseMode = 'demo';   // 'demo' or 'live'
+  var _autoplayTimers = [];
+
+  function switchMode(mode) {
+    _showcaseMode = mode;
+    document.getElementById('mode-demo').classList.toggle('active', mode === 'demo');
+    document.getElementById('mode-live').classList.toggle('active', mode === 'live');
+
+    // Clear any running autoplay timers
+    _autoplayTimers.forEach(function(t){ clearTimeout(t); });
+    _autoplayTimers = [];
+
+    // Clear all panels
+    ['chatgpt','claude','gemini'].forEach(function(m){
+      document.getElementById('msgs-' + m).innerHTML = '';
+      var inp = document.querySelector('.showcase-input[data-model="' + m + '"]');
+      var btn = document.querySelector('.showcase-send[data-model="' + m + '"]');
+      if (mode === 'live') {
+        inp.disabled = false; btn.disabled = false;
+        inp.placeholder = m === 'chatgpt' ? 'Tell ChatGPT a fact\u2026' : 'Ask ' + m.charAt(0).toUpperCase() + m.slice(1) + '\u2026';
+      } else {
+        inp.disabled = true; btn.disabled = true;
+        inp.placeholder = m === 'chatgpt' ? 'Tell ChatGPT a fact\u2026' : 'Ask ' + m.charAt(0).toUpperCase() + m.slice(1) + '\u2026';
+      }
+    });
+
+    if (mode === 'demo') { _runAutoPlay(); }
+  }
+
   (function(){
     var NAMESPACE = window.CLS_USER_NAMESPACE || 'demo-showcase';
     var MODEL_API = { chatgpt: 'openai', claude: 'claude', gemini: 'gemini' };
@@ -486,62 +541,59 @@
     }
 
     /* ── Auto-play: all 3 panels animate in sequence ── */
-    function autoPlay() {
+    window._runAutoPlay = function() {
       var t = 800;
 
-      /* Step 1: User types fact in ChatGPT */
-      setTimeout(function(){
+      _autoplayTimers.push(setTimeout(function(){
         highlightPanel('chatgpt');
         typeText('chatgpt', 'My name is Alex and I prefer dark mode.', 'user', function(){
-          setTimeout(function(){ addMsg('chatgpt', '', 'typing'); }, 250);
-          setTimeout(function(){
+          _autoplayTimers.push(setTimeout(function(){ addMsg('chatgpt', '', 'typing'); }, 250));
+          _autoplayTimers.push(setTimeout(function(){
             removeTyping('chatgpt');
             addMsg('chatgpt', 'Got it, Alex! I\u2019ll remember that.', 'ai');
             flashHub('\u2728 Memory stored');
-          }, 1400);
+          }, 1400));
         });
-      }, t);
+      }, t));
 
-      /* Step 2: Claude recalls — starts after ChatGPT finishes */
-      setTimeout(function(){
+      _autoplayTimers.push(setTimeout(function(){
         highlightPanel('claude');
         typeText('claude', 'What\u2019s my name?', 'user', function(){
-          setTimeout(function(){ addMsg('claude', '', 'typing'); }, 250);
-          setTimeout(function(){
+          _autoplayTimers.push(setTimeout(function(){ addMsg('claude', '', 'typing'); }, 250));
+          _autoplayTimers.push(setTimeout(function(){
             removeTyping('claude');
             addMsg('claude', 'recalled via shared memory', 'memory');
             addMsg('claude', 'Your name is Alex, and you prefer dark mode!', 'ai');
             flashHub('\u26a1 Recalled');
-          }, 1200);
+          }, 1200));
         });
-      }, t + 4200);
+      }, t + 4200));
 
-      /* Step 3: Gemini recalls */
-      setTimeout(function(){
+      _autoplayTimers.push(setTimeout(function(){
         highlightPanel('gemini');
         typeText('gemini', 'Do you know me?', 'user', function(){
-          setTimeout(function(){ addMsg('gemini', '', 'typing'); }, 250);
-          setTimeout(function(){
+          _autoplayTimers.push(setTimeout(function(){ addMsg('gemini', '', 'typing'); }, 250));
+          _autoplayTimers.push(setTimeout(function(){
             removeTyping('gemini');
             addMsg('gemini', 'recalled via shared memory', 'memory');
             addMsg('gemini', 'You\u2019re Alex! You like dark mode.', 'ai');
             flashHub('\u26a1 Recalled');
-          }, 1200);
+          }, 1200));
         });
-      }, t + 7800);
+      }, t + 7800));
 
-      /* Enable all inputs for interactive mode */
-      setTimeout(function(){
+      /* After demo completes, enable inputs so user can continue */
+      _autoplayTimers.push(setTimeout(function(){
         enablePanel('chatgpt');
         enablePanel('claude');
         enablePanel('gemini');
         var inp = document.querySelector('.showcase-input[data-model="chatgpt"]');
         inp.placeholder = 'Try it \u2014 type a fact\u2026';
-      }, t + 11500);
-    }
+      }, t + 11500));
+    };
 
     /* ── Interactive: each panel sends to its own model ── */
-    function sendMessage(model) {
+    window._sendShowcaseMsg = function(model) {
       var inp = document.querySelector('.showcase-input[data-model="' + model + '"]');
       var btn = document.querySelector('.showcase-send[data-model="' + model + '"]');
       var text = inp.value.trim();
@@ -570,50 +622,24 @@
         addMsg(model, 'Server warming up\u2026 try again.', 'ai');
         btn.disabled = false;
       });
-    }
+    };
 
     /* ── Wire up all 3 panels ── */
     document.querySelectorAll('.showcase-send').forEach(function(btn){
-      btn.addEventListener('click', function(){ sendMessage(btn.dataset.model); });
+      btn.addEventListener('click', function(){ window._sendShowcaseMsg(btn.dataset.model); });
     });
     document.querySelectorAll('.showcase-input').forEach(function(inp){
       inp.addEventListener('keydown', function(e){
-        if (e.key === 'Enter') { e.preventDefault(); sendMessage(inp.dataset.model); }
+        if (e.key === 'Enter') { e.preventDefault(); window._sendShowcaseMsg(inp.dataset.model); }
       });
     });
 
-    autoPlay();
+    /* Start in demo mode by default */
+    _runAutoPlay();
   })();
   </script>
 
-  <!-- White content area below hero -->
-  <div class="content-wrap">
-
-  <!-- ═══════ HOW IT WORKS ═══════ -->
-  <section class="section">
-    <p class="label" style="color:#1d1d1f">How it works</p>
-    <h2 class="section-title t-dark">Three steps. Zero config.</h2>
-    <p class="t-sub t-sub-dark">Install the Chrome extension. Chat normally. Every AI knows you.</p>
-    <div class="steps">
-      <div class="step-card">
-        <div class="step-num">1</div>
-        <div class="step-title">Tell one AI</div>
-        <div class="step-desc">Chat with ChatGPT like you always do. CLS++ silently captures facts, preferences, and corrections.</div>
-      </div>
-      <div class="step-card">
-        <div class="step-num">2</div>
-        <div class="step-title">Switch models</div>
-        <div class="step-desc">Open Claude or Gemini. CLS++ automatically injects your relevant memories before the AI responds.</div>
-      </div>
-      <div class="step-card">
-        <div class="step-num">3</div>
-        <div class="step-title">Every AI knows</div>
-        <div class="step-desc">Your preferences follow you everywhere. No copy-paste. No repeating yourself. It just works.</div>
-      </div>
-    </div>
-  </section>
-
-  </div><!-- end content-wrap white -->
+  <!-- end hero, straight to dark content -->
 
   <!-- Dark content area -->
   <div class="content-wrap content-dark">
