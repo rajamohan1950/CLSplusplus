@@ -14,6 +14,7 @@
 
     var user = (typeof CLSAuth !== 'undefined') ? await CLSAuth.getUser() : null;
     if (!user) return;
+    if (window.CLSAnalytics) CLSAnalytics.track('usage_page_viewed', { tier: user.tier });
 
     // Render sidebar
     if (typeof renderSidebar === 'function') {

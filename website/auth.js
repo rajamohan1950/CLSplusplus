@@ -22,6 +22,7 @@
         if (resp.ok) {
           _user = await resp.json();
           window._CLS_USER_ID = _user.id;
+          if (window.CLSAnalytics) CLSAnalytics.identify(_user);
           return _user;
         }
       } catch (e) { /* not logged in */ }
@@ -38,6 +39,7 @@
       try {
         await fetch('/v1/auth/logout', { method: 'POST', credentials: 'same-origin' });
       } catch (e) { /* ignore */ }
+      if (window.CLSAnalytics) { CLSAnalytics.track('user_logged_out'); CLSAnalytics.reset(); }
       _user = null;
       _checked = false;
       window._CLS_USER_ID = null;

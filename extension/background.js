@@ -1,3 +1,5 @@
+importScripts('analytics.js');
+
 // CLS++ Background Service Worker — v6.0.2
 // Core store/fetch path restored from v5.1.0 (proven working).
 // Added: side panel handlers (ACTIVITY, USAGE, SEARCH, etc.)
@@ -146,13 +148,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'STORE') {
     storeMemory(msg.text);
     incrementDailyCounter('cls_daily_stored');
+    chrome.storage.local.get('cls_user', function(r) {
+      var uid = (r.cls_user && r.cls_user.id) ? String(r.cls_user.id) : 'anonymous';
+      CLSExtAnalytics.captureFromBackground('memory_stored', { text_length: msg.text.length }, uid);
+    });
     sendResponse({ ok: true });
     return false;
   }
 
   // CORE — fetch memories for injection (proven path from v5.1.0)
   if (msg.type === 'FETCH') {
-    fetchMemories(msg.limit || 15).then(facts => sendResponse({ facts }));
+    fetchMemories(msg.limit || 15).then(facts => {
+      chrome.storage.local.get('cls_user', function(r) {
+        var uid = (r.cls_user && r.cls_user.id) ? String(r.cls_user.id) : 'anonymous';
+        CLSExtAnalytics.captureFromBackground('memories_fetched', { count: facts.length }, uid);
+      });
+      sendResponse({ facts });
+    });
     return true;
   }
 
@@ -170,7 +182,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // Side panel — search
   if (msg.type === 'SEARCH') {
-    searchMemories(msg.query, msg.limit || 10).then(data => sendResponse(data));
+    searchMemories(msg.query, msg.limit || 10).then(data => {
+      chrome.storage.local.get('cls_user', function(r) {
+        var uid = (r.cls_user && r.cls_user.id) ? String(r.cls_user.id) : 'anonymous';
+        CLSExtAnalytics.captureFromBackground('memories_searched', { query_length: (msg.query || '').length, result_count: data.total || 0 }, uid);
+      });
+      sendResponse(data);
+    });
     return true;
   }
 
@@ -194,9 +212,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const r = await fetch(`${API}/v1/auth/me`, {
           headers: { 'Authorization': `Bearer ${msg.key}` },
         });
-        if (r.ok) { sendResponse(await r.json()); setTimeout(updateBadge, 500); }
-        else sendResponse(null);
-      } catch (_) { sendResponse(null); }
+        if (r.ok) {
+          var userData = await r.json();
+          CLSExtAnalytics.captureFromBackground('api_key_verified', { success: true }, userData.id ? String(userData.id) : 'anonymous');
+          sendResponse(userData);
+          setTimeout(updateBadge, 500);
+        } else {
+          CLSExtAnalytics.captureFromBackground('api_key_verified', { success: false }, 'anonymous');
+          sendResponse(null);
+        }
+      } catch (_) {
+        CLSExtAnalytics.captureFromBackground('api_key_verified', { success: false }, 'anonymous');
+        sendResponse(null);
+      }
     })();
     return true;
   }

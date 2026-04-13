@@ -13,6 +13,7 @@
 
     var user = (typeof CLSAuth !== 'undefined') ? await CLSAuth.getUser() : null;
     if (!user) return;
+    if (window.CLSAnalytics) CLSAnalytics.track('dashboard_viewed', { tier: user.tier });
 
     // Admin users go straight to admin dashboard
     if (user.is_admin) {

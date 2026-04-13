@@ -174,6 +174,9 @@ function clsRenderThemeGrid(container, activeId) {
 
     swatch.addEventListener('click', function () {
       clsApplyTheme(theme.id);
+      if (typeof CLSExtAnalytics !== 'undefined') {
+        CLSExtAnalytics.track('theme_changed', { theme: theme.id });
+      }
       // Update active states
       container.querySelectorAll('.cls-theme-swatch').forEach(function (s) {
         s.classList.toggle('active', s.dataset.theme === theme.id);

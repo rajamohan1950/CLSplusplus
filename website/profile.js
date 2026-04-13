@@ -19,6 +19,7 @@
 
     _user = (typeof CLSAuth !== 'undefined') ? await CLSAuth.getUser() : null;
     if (!_user) return;
+    if (window.CLSAnalytics) CLSAnalytics.track('profile_viewed', { tier: _user.tier });
 
     // Render sidebar
     if (typeof renderSidebar === 'function') {
@@ -65,6 +66,7 @@
     // Check URL params for billing result
     var params = new URLSearchParams(window.location.search);
     if (params.get('billing') === 'success') {
+      if (window.CLSAnalytics) CLSAnalytics.track('billing_checkout_completed');
       showBillingSuccess();
       window.history.replaceState({}, '', '/profile.html#billing');
     } else if (params.get('billing') === 'cancel') {
@@ -301,6 +303,7 @@
         if (data.api_key && data.api_key.key) {
           document.getElementById('new-key-value').textContent = data.api_key.key;
           document.getElementById('new-key-box').classList.add('visible');
+          if (window.CLSAnalytics) CLSAnalytics.track('api_key_created');
         }
         await loadIntegrations();
       } else {
@@ -814,6 +817,7 @@
   }
 
   window.startCheckout = async function (tier) {
+    if (window.CLSAnalytics) CLSAnalytics.track('billing_checkout_started', { tier: tier });
     var btn = document.querySelector('.plan-btn[data-tier="' + tier + '"]');
     if (btn) {
       if (btn.dataset.loading) return;

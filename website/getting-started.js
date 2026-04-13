@@ -7,6 +7,9 @@
 
   var _apiKey = null;
 
+  // Track onboarding page view
+  if (window.CLSAnalytics) CLSAnalytics.track('onboarding_started');
+
   // ── Init ──────────────────────────────────────────────────────────────────
 
   async function init() {

@@ -6,6 +6,7 @@
   "permissions": ["storage", "sidePanel"],
   "host_permissions": [
     "https://www.clsplusplus.com/*",
+    "https://us.i.posthog.com/*",
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
     "https://claude.ai/*",

@@ -10,6 +10,8 @@
 
   // ── Init ──
   clsLoadTheme();
+  CLSExtAnalytics.initBrowser();
+  CLSExtAnalytics.track('sidepanel_opened');
   checkServerAndLoad();
 
   // ── Server check + load state ──
@@ -86,6 +88,7 @@
   });
 
   document.getElementById('btn-unlink').addEventListener('click', function () {
+    CLSExtAnalytics.track('account_unlinked');
     chrome.storage.local.remove(['cls_api_key', 'cls_user']);
     showUnlinked();
   });
@@ -98,6 +101,7 @@
       document.querySelectorAll('.cls-tab-content').forEach(function (p) { p.classList.remove('active'); });
       tab.classList.add('active');
       document.querySelector('[data-panel="' + target + '"]').classList.add('active');
+      CLSExtAnalytics.track('tab_switched', { tab: target });
 
       // Refresh data when switching tabs
       if (target === 'activity') {
@@ -224,6 +228,7 @@
         renderMemories();
         document.getElementById('memory-count').innerHTML = '<strong>' + (data.total || 0) + '</strong> results';
         document.getElementById('load-more').style.display = 'none';
+        CLSExtAnalytics.track('memories_searched', { query_length: query.length, result_count: data.total || 0 });
       });
     }, 300);
   });
@@ -236,6 +241,7 @@
     document.querySelectorAll('.cls-chip').forEach(function (c) { c.classList.remove('active'); });
     chip.classList.add('active');
     renderMemories();
+    CLSExtAnalytics.track('filter_changed', { filter: currentFilter });
   });
 
   // ── Load more ──
@@ -309,6 +315,7 @@
 
   document.getElementById('toggle-injection').addEventListener('change', function (e) {
     chrome.storage.local.set({ cls_injection_paused: !e.target.checked });
+    CLSExtAnalytics.track('toggle_changed', { toggle: 'injection', enabled: e.target.checked });
   });
 
   ['chatgpt', 'claude', 'gemini'].forEach(function (site) {
@@ -316,6 +323,7 @@
       var obj = {};
       obj['cls_site_' + site] = e.target.checked;
       chrome.storage.local.set(obj);
+      CLSExtAnalytics.track('toggle_changed', { toggle: 'site_' + site, enabled: e.target.checked });
     });
   });
 

@@ -5,6 +5,8 @@
 
   // Load theme
   clsLoadTheme();
+  CLSExtAnalytics.initBrowser();
+  CLSExtAnalytics.track('popup_opened');
 
   // Check server
   fetch(API + '/health').then(function (r) {
@@ -108,6 +110,8 @@
       if (user && user.email) {
         chrome.storage.local.set({ cls_api_key: key, cls_user: user });
         showLinked(user);
+        CLSExtAnalytics.identifyUser(user);
+        CLSExtAnalytics.track('account_linked', { method: 'api_key' });
       } else {
         err.textContent = 'Invalid key or server unreachable';
         err.classList.add('visible');
@@ -120,6 +124,7 @@
   // Open Side Panel
   document.getElementById('btn-panel').addEventListener('click', function () {
     // Use sidePanel API from popup context
+    CLSExtAnalytics.track('sidepanel_opened_from_popup');
     chrome.sidePanel.open({ windowId: chrome.windows.WINDOW_ID_CURRENT }).then(function () {
       window.close(); // close popup after opening panel
     }).catch(function () {

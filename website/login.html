@@ -26,6 +26,7 @@
     .auth-footer a { color:var(--accent-light); text-decoration:none; }
     .auth-footer a:hover { text-decoration:underline; }
   </style>
+  <script src="posthog.js" defer></script>
 </head>
 <body>
   <div class="video-bg"><video autoplay muted loop playsinline poster="beach-bg.jpg"><source src="sunrise-ocean.mp4" type="video/mp4"></video></div>
@@ -80,6 +81,7 @@
 
       form.addEventListener('submit', async function(e) {
         e.preventDefault();
+        if (window.CLSAnalytics) CLSAnalytics.track('login_attempted', { method: 'email' });
         errorEl.style.display = 'none';
         submitBtn.disabled = true;
         submitBtn.textContent = 'Logging in...';
@@ -96,6 +98,7 @@
           });
 
           if (resp.ok) {
+            if (window.CLSAnalytics) CLSAnalytics.track('login_succeeded', { method: 'email' });
             var user = await resp.json();
             var params = new URLSearchParams(window.location.search);
             var next = params.get('next');
