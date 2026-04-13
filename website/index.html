@@ -19,7 +19,7 @@
       border-radius: 24px; margin-bottom: 20px;
       box-shadow: 0 4px 40px rgba(0,0,0,0.08);
     }
-    .content-dark { background: #1d1d1f; color: #fff; }
+    .content-dark { background: #1d1d1f; color: #fff; margin-top: 60px; }
 
     /* ── Shared section ── */
     .section { max-width: 980px; margin: 0 auto; padding: 100px 22px; }
@@ -51,10 +51,10 @@
       padding: 0 !important; position: relative; overflow: visible !important;
     }
 
-    /* Tagline — sits above the dock, over the sun */
+    /* Tagline — above the sun */
     .hero-tagline {
       position: relative; text-align: center; z-index: 2;
-      padding: 0 24px 16px; flex-shrink: 0;
+      padding: 0 24px 20px; flex-shrink: 0; margin-top: auto;
     }
     .hero-tagline h1 {
       font-size: clamp(40px, 6vw, 64px); color: #fff; letter-spacing: -0.03em;
@@ -72,7 +72,7 @@
       padding: 18px 0 24px;
     }
     .hero-dock-inner {
-      max-width: 100%; margin: 0 auto; padding: 0 24px;
+      max-width: 1080px; margin: 0 auto; padding: 0 28px;
     }
 
     /* Cross-model memory showcase — 3-column layout */
@@ -133,7 +133,7 @@
 
     /* Messages area */
     .showcase-messages {
-      height: 240px; overflow-y: auto; padding: 14px 14px;
+      height: 180px; overflow-y: auto; padding: 12px 12px;
       display: flex; flex-direction: column; gap: 7px;
       scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.08) transparent;
     }
@@ -515,55 +515,97 @@
     }
 
     /* ── Auto-play: all 3 panels animate in sequence ── */
-    window._runAutoPlay = function() {
-      var t = 800;
+    /* Demo scenarios — loops like a movie */
+    var DEMO_SCENES = [
+      {
+        store: { model: 'chatgpt', msg: 'My name is Alex and I prefer dark mode.' },
+        storeReply: 'Got it, Alex! I\u2019ll remember your preferences.',
+        recalls: [
+          { model: 'claude', ask: 'What\u2019s my name?', reply: 'Your name is Alex, and you prefer dark mode!' },
+          { model: 'gemini', ask: 'Do you know me?', reply: 'You\u2019re Alex! Dark mode is your thing.' }
+        ]
+      },
+      {
+        store: { model: 'claude', msg: 'I\u2019m a Python developer working on a FastAPI project.' },
+        storeReply: 'Noted! I\u2019ll keep your dev context in mind.',
+        recalls: [
+          { model: 'gemini', ask: 'What language do I code in?', reply: 'You\u2019re a Python developer, working on FastAPI!' },
+          { model: 'chatgpt', ask: 'What am I building?', reply: 'You\u2019re building a FastAPI project in Python.' }
+        ]
+      },
+      {
+        store: { model: 'gemini', msg: 'My favorite food is sushi and I live in San Francisco.' },
+        storeReply: 'I\u2019ll remember that \u2014 sushi in SF!',
+        recalls: [
+          { model: 'chatgpt', ask: 'Where do I live?', reply: 'You live in San Francisco, and you love sushi!' },
+          { model: 'claude', ask: 'What\u2019s my favorite food?', reply: 'Sushi! You mentioned you\u2019re based in San Francisco.' }
+        ]
+      }
+    ];
 
+    var _sceneIndex = 0;
+
+    window._runAutoPlay = function() {
+      /* Clear all panels at start of each scene */
+      ['chatgpt','claude','gemini'].forEach(function(m){
+        document.getElementById('msgs-' + m).innerHTML = '';
+      });
+      var scene = DEMO_SCENES[_sceneIndex % DEMO_SCENES.length];
+      _sceneIndex++;
+      var t = 600;
+
+      /* Step 1: Store a fact */
       _autoplayTimers.push(setTimeout(function(){
-        highlightPanel('chatgpt');
-        typeText('chatgpt', 'My name is Alex and I prefer dark mode.', 'user', function(){
-          _autoplayTimers.push(setTimeout(function(){ addMsg('chatgpt', '', 'typing'); }, 250));
+        highlightPanel(scene.store.model);
+        typeText(scene.store.model, scene.store.msg, 'user', function(){
+          _autoplayTimers.push(setTimeout(function(){ addMsg(scene.store.model, '', 'typing'); }, 200));
           _autoplayTimers.push(setTimeout(function(){
-            removeTyping('chatgpt');
-            addMsg('chatgpt', 'Got it, Alex! I\u2019ll remember that.', 'ai');
+            removeTyping(scene.store.model);
+            addMsg(scene.store.model, scene.storeReply, 'ai');
             flashHub('\u2728 Memory stored');
-          }, 1400));
+          }, 1200));
         });
       }, t));
 
+      /* Step 2: First recall */
+      var r1 = scene.recalls[0];
       _autoplayTimers.push(setTimeout(function(){
-        highlightPanel('claude');
-        typeText('claude', 'What\u2019s my name?', 'user', function(){
-          _autoplayTimers.push(setTimeout(function(){ addMsg('claude', '', 'typing'); }, 250));
+        highlightPanel(r1.model);
+        typeText(r1.model, r1.ask, 'user', function(){
+          _autoplayTimers.push(setTimeout(function(){ addMsg(r1.model, '', 'typing'); }, 200));
           _autoplayTimers.push(setTimeout(function(){
-            removeTyping('claude');
-            addMsg('claude', 'recalled via shared memory', 'memory');
-            addMsg('claude', 'Your name is Alex, and you prefer dark mode!', 'ai');
+            removeTyping(r1.model);
+            addMsg(r1.model, 'recalled via shared memory', 'memory');
+            addMsg(r1.model, r1.reply, 'ai');
             flashHub('\u26a1 Recalled');
-          }, 1200));
+          }, 1000));
         });
-      }, t + 4200));
+      }, t + 3800));
 
+      /* Step 3: Second recall */
+      var r2 = scene.recalls[1];
       _autoplayTimers.push(setTimeout(function(){
-        highlightPanel('gemini');
-        typeText('gemini', 'Do you know me?', 'user', function(){
-          _autoplayTimers.push(setTimeout(function(){ addMsg('gemini', '', 'typing'); }, 250));
+        highlightPanel(r2.model);
+        typeText(r2.model, r2.ask, 'user', function(){
+          _autoplayTimers.push(setTimeout(function(){ addMsg(r2.model, '', 'typing'); }, 200));
           _autoplayTimers.push(setTimeout(function(){
-            removeTyping('gemini');
-            addMsg('gemini', 'recalled via shared memory', 'memory');
-            addMsg('gemini', 'You\u2019re Alex! You like dark mode.', 'ai');
+            removeTyping(r2.model);
+            addMsg(r2.model, 'recalled via shared memory', 'memory');
+            addMsg(r2.model, r2.reply, 'ai');
             flashHub('\u26a1 Recalled');
-          }, 1200));
+          }, 1000));
         });
-      }, t + 7800));
+      }, t + 6800));
 
-      /* After demo completes, enable inputs so user can continue */
+      /* Step 4: Pause, clear, loop to next scene */
       _autoplayTimers.push(setTimeout(function(){
-        enablePanel('chatgpt');
-        enablePanel('claude');
-        enablePanel('gemini');
-        var inp = document.querySelector('.showcase-input[data-model="chatgpt"]');
-        inp.placeholder = 'Try it \u2014 type a fact\u2026';
-      }, t + 11500));
+        /* Fade out and clear all panels */
+        ['chatgpt','claude','gemini'].forEach(function(m){
+          document.getElementById('msgs-' + m).innerHTML = '';
+        });
+        /* Start next scene */
+        if (_showcaseMode === 'demo') { _runAutoPlay(); }
+      }, t + 11000));
     };
 
     /* ── Interactive: each panel sends to its own model ── */
