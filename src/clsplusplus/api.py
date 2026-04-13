@@ -208,6 +208,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         """Quick liveness probe. chat.js and other clients call this on startup."""
         return {"status": "ok", "version": getattr(settings, "version", "0.7")}
 
+    @app.get("/v1/config/analytics")
+    async def analytics_config():
+        """Return PostHog API key from environment. No auth required."""
+        return {"posthog_key": os.environ.get("POSTHOG_API_KEY", "")}
+
     # Per-user metrics emitter (shared across all endpoints)
     from clsplusplus.metrics import MetricsEmitter
     _metrics = MetricsEmitter(settings)

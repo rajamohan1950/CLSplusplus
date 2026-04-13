@@ -1,30 +1,50 @@
 /**
  * CLS++ Extension Analytics (PostHog)
+ * Fetches PostHog API key from /v1/config/analytics (server env var).
  * Shared wrapper for popup, sidepanel (full SDK), and background (HTTP POST).
- *
- * Replace 'phc_YOUR_PROJECT_API_KEY' with your actual PostHog project API key.
  */
 var CLSExtAnalytics = (function () {
   'use strict';
 
-  var PH_KEY = 'phc_YOUR_PROJECT_API_KEY';
   var PH_HOST = 'https://us.i.posthog.com';
+  var API = 'https://www.clsplusplus.com';
+  var _phKey = null;
+  var _keyPromise = null;
+
+  /**
+   * Fetch the PostHog key from the server (cached after first call).
+   */
+  function _getKey() {
+    if (_phKey) return Promise.resolve(_phKey);
+    if (_keyPromise) return _keyPromise;
+    _keyPromise = fetch(API + '/v1/config/analytics')
+      .then(function (r) { return r.json(); })
+      .then(function (cfg) {
+        _phKey = cfg.posthog_key || '';
+        return _phKey;
+      })
+      .catch(function () { _phKey = ''; return ''; });
+    return _keyPromise;
+  }
 
   /**
    * Initialize full PostHog SDK (call from popup.js / sidepanel.js).
    * Requires posthog.min.js to be loaded first.
    */
   function initBrowser() {
-    if (typeof posthog !== 'undefined' && posthog.init) {
-      posthog.init(PH_KEY, {
-        api_host: PH_HOST,
-        person_profiles: 'identified_only',
-        autocapture: true,
-        capture_pageview: true,
-        persistence: 'localStorage',
-        session_recording: { enabled: false },
-      });
-    }
+    _getKey().then(function (key) {
+      if (!key) return;
+      if (typeof posthog !== 'undefined' && posthog.init) {
+        posthog.init(key, {
+          api_host: PH_HOST,
+          person_profiles: 'identified_only',
+          autocapture: true,
+          capture_pageview: true,
+          persistence: 'localStorage',
+          session_recording: { enabled: false },
+        });
+      }
+    });
   }
 
   /**
@@ -32,19 +52,22 @@ var CLSExtAnalytics = (function () {
    * No SDK dependency — just a fetch call.
    */
   function captureFromBackground(event, properties, distinctId) {
-    fetch(PH_HOST + '/capture/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        api_key: PH_KEY,
-        event: event,
-        properties: Object.assign({}, properties || {}, {
-          distinct_id: distinctId || 'anonymous_extension_user',
-          $lib: 'cls-extension-bg',
+    _getKey().then(function (key) {
+      if (!key) return;
+      fetch(PH_HOST + '/capture/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_key: key,
+          event: event,
+          properties: Object.assign({}, properties || {}, {
+            distinct_id: distinctId || 'anonymous_extension_user',
+            $lib: 'cls-extension-bg',
+          }),
+          timestamp: new Date().toISOString(),
         }),
-        timestamp: new Date().toISOString(),
-      }),
-    }).catch(function () { /* silently fail */ });
+      }).catch(function () { /* silently fail */ });
+    });
   }
 
   /**

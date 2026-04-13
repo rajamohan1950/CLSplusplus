@@ -29,6 +29,7 @@ _PUBLIC_PATHS = frozenset({
     "/v1/auth/google/callback",
     "/v1/billing/webhook",
     "/v1/billing/razorpay-webhook",
+    "/v1/config/analytics",
     "/docs",
     "/redoc",
     "/openapi.json",
