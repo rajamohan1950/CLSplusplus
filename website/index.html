@@ -44,46 +44,36 @@
     }
     .glass-dark:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.2); }
 
-    /* ── Hero — same dark tone as navbar, chat-focused ── */
+    /* ── Hero — clear sunset, sun visible, no overlay ── */
     .hero {
-      min-height: 100vh; display: flex; flex-direction: column; justify-content: flex-start;
-      padding: 0; position: relative;
-      background: rgba(0,0,0,0.5);
+      min-height: 100vh; display: flex; flex-direction: column; justify-content: flex-end;
+      align-items: stretch !important;
+      padding: 0 !important; position: relative; overflow: visible !important;
     }
 
-    /* Tagline — compact, near top */
+    /* Tagline — sits above the dock, over the sun */
     .hero-tagline {
       position: relative; text-align: center; z-index: 2;
-      padding: 80px 24px 12px; flex-shrink: 0;
+      padding: 0 24px 16px; flex-shrink: 0;
     }
     .hero-tagline h1 {
-      font-size: clamp(44px, 7vw, 76px); color: #fff; letter-spacing: -0.03em;
-      text-shadow: 0 2px 30px rgba(0,0,0,0.3);
+      font-size: clamp(40px, 6vw, 64px); color: #fff; letter-spacing: -0.03em;
+      text-shadow: 0 2px 20px rgba(0,0,0,0.4);
     }
     .hero-tagline h1 em { font-style: normal; color: #ff6b35; }
-    .hero-tagline .lead {
-      font-size: 17px; color: rgba(255,255,255,0.7); margin-top: 8px;
-      max-width: 460px; margin-left: auto; margin-right: auto;
-    }
 
-    /* Dock — seamless with hero, minimal padding, chat is the star */
+    /* Dock — frosted dark strip at bottom, only for chat boxes */
     .hero-dock {
       position: relative; z-index: 2;
-      padding: 16px 0 32px;
+      background: rgba(15,15,17,0.82);
+      backdrop-filter: blur(60px) saturate(1.8);
+      -webkit-backdrop-filter: blur(60px) saturate(1.8);
+      border-top: 1px solid rgba(255,255,255,0.08);
+      padding: 18px 0 24px;
     }
     .hero-dock-inner {
-      max-width: 1200px; margin: 0 auto; padding: 0 32px;
+      max-width: 100%; margin: 0 auto; padding: 0 24px;
     }
-    .dock-top {
-      text-align: center; margin-bottom: 10px;
-    }
-    .dock-top .dock-headline { font-size: 18px; color: rgba(255,255,255,0.6); letter-spacing: -0.01em; margin-bottom: 0; line-height: 1.4; font-weight: 400; }
-    .dock-top .hero-link {
-      font-size: 14px; color: #ff6b35; text-decoration: none;
-      font-weight: 500; display: inline-flex; align-items: center; gap: 6px;
-      margin-left: 12px;
-    }
-    .dock-top .hero-link:hover { text-decoration: underline; }
 
     /* Cross-model memory showcase — 3-column layout */
     .memory-hub {
@@ -108,9 +98,9 @@
     }
     .hub-status.active { color: #ff6b35; }
 
-    /* 3-panel grid */
+    /* 3-panel grid — full width, panels stretch to fill */
     .showcase-grid {
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
     }
 
     /* Individual chat panel */
@@ -227,7 +217,7 @@
     /* ── Demo/Live Toggle ── */
     .showcase-header {
       display: flex; align-items: center; justify-content: space-between;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
     }
     .showcase-header-left {
       font-size: 13px; color: rgba(255,255,255,0.35);
@@ -301,7 +291,6 @@
       .phases { grid-template-columns: 1fr 1fr; }
       .pricing-grid { grid-template-columns: 1fr 1fr; }
       .nav-links { display: none; }
-      .dock-top .dock-headline { font-size: 15px; }
     }
     @media (max-width: 480px) {
       .phases { grid-template-columns: 1fr; }
@@ -338,28 +327,17 @@
     <!-- Floating headline over sunrise -->
     <div class="hero-tagline">
       <h1>Every AI <em>remembers.</em></h1>
-      <p class="lead">One memory layer across every model.</p>
     </div>
 
     <!-- Bottom dock: text above, 3 panels below -->
     <div class="hero-dock">
       <div class="hero-dock-inner">
-        <!-- One-line intro + hub -->
-        <div class="dock-top">
-          <h2 class="dock-headline">Tell one AI a fact. Every other AI remembers it. <a href="/getting-started.html" class="hero-link">Get started &rarr;</a></h2>
-        </div>
+        <!-- Hub status (hidden, used by JS) -->
+        <span class="hub-status" id="hub-status" style="display:none;">Connected</span>
 
-        <!-- Memory hub strip -->
-        <div class="memory-hub" style="position:relative;">
-          <div class="hub-line"></div>
-          <div class="hub-node">CLS++ Memory</div>
-          <div class="hub-line"></div>
-          <span class="hub-status" id="hub-status">Connected</span>
-        </div>
-
-        <!-- Demo / Live toggle + panels header -->
+        <!-- Mode toggle — top right -->
         <div class="showcase-header">
-          <span class="showcase-header-left">Cross-model memory in action</span>
+          <span class="showcase-header-left"></span>
           <div class="mode-toggle">
             <button class="mode-btn active" id="mode-demo" onclick="switchMode('demo')">Demo</button>
             <button class="mode-btn" id="mode-live" onclick="switchMode('live')">Live</button>
