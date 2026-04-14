@@ -62,7 +62,7 @@
         var adminLink = user.is_admin
           ? '<div class="nav-admin-wrap">' +
               '<a href="/admin/dashboard.html" class="nav-admin-link">Admin</a>' +
-              '<div class="nav-admin-dropdown">' +
+              '<div class="nav-admin-dropdown"><div class="nav-admin-dropdown-inner">' +
                 '<div class="nav-dd-group">' +
                   '<div class="nav-dd-heading">Core</div>' +
                   '<a href="/admin/dashboard.html">Admin Dashboard</a>' +
@@ -94,9 +94,12 @@
                   '<a href="/privacy.html">Privacy</a>' +
                   '<a href="/terms.html">Terms</a>' +
                 '</div>' +
-              '</div>' +
+              '</div></div>' +
             '</div>'
           : '';
+        // Hide standalone API nav link for admin (it's in the dropdown)
+        var apiLink = document.querySelector('.nav-links > a[href="/docs.html"]');
+        if (apiLink && user.is_admin) apiLink.style.display = 'none';
         container.innerHTML =
           adminLink +
           '<a href="/dashboard.html" class="nav-user">' +

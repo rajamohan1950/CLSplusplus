@@ -281,16 +281,19 @@ code, pre, .code-card, .gs-code {
   position: absolute;
   top: 100%;
   right: 0;
-  margin-top: 8px;
-  background: rgba(20,20,22,0.96);
+  padding-top: 4px;
+  z-index: 200;
+}
+
+.nav-admin-dropdown-inner {
+  background: rgba(0,0,0,0.5);
   backdrop-filter: blur(20px) saturate(1.8);
   -webkit-backdrop-filter: blur(20px) saturate(1.8);
-  border: 1px solid rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 12px;
   padding: 12px 0;
   min-width: 200px;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.5);
-  z-index: 200;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.4);
   columns: 2;
   column-gap: 0;
 }
