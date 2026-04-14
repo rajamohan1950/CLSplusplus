@@ -1556,14 +1556,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         if user_id == admin_id:
             raise HTTPException(status_code=400, detail="Cannot delete your own account")
         try:
-            target = await user_service.get_user(user_id)
-            if not target:
-                raise HTTPException(status_code=404, detail="User not found")
-            # Clean up ALL related records before deleting user
             import uuid as _uuid
-            uid = _uuid.UUID(user_id) if not hasattr(user_id, 'hex') else user_id
+            uid = _uuid.UUID(user_id)
             pool = await user_service.store.get_pool()
             async with pool.acquire() as conn:
+                # Verify user exists
+                exists = await conn.fetchval("SELECT 1 FROM users WHERE id = $1", uid)
+                if not exists:
+                    raise HTTPException(status_code=404, detail="User not found")
+                # Clean up ALL FK tables
                 for tbl in (
                     "revenue_events", "password_reset_tokens",
                     "email_verification_tokens", "monthly_metrics",
@@ -1572,8 +1573,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 ):
                     try:
                         await conn.execute(f"DELETE FROM {tbl} WHERE user_id = $1", uid)
-                    except Exception as ex:
-                        logger.debug("Cleanup %s for %s: %s", tbl, user_id, ex)
+                    except Exception:
+                        pass
+                # Delete user
                 result = await conn.execute("DELETE FROM users WHERE id = $1", uid)
                 if result != "DELETE 1":
                     raise HTTPException(status_code=500, detail="Deletion failed")
@@ -1582,7 +1584,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             raise
         except Exception as e:
             logger.error("Admin user delete error: %s: %s", type(e).__name__, e)
-            raise HTTPException(status_code=500, detail="User deletion failed")
+            raise HTTPException(status_code=500, detail=f"User deletion failed: {type(e).__name__}: {e}")
 
     @app.get("/admin/metrics/user/{user_id}")
     async def admin_user_detail(request: Request, user_id: str = Path(...)):
