@@ -1564,14 +1564,24 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 exists = await conn.fetchval("SELECT 1 FROM users WHERE id = $1", uid)
                 if not exists:
                     raise HTTPException(status_code=404, detail="User not found")
-                # Clean up ALL FK tables (including ones created outside DDL)
-                for tbl in (
-                    "discovery_runs",
-                    "revenue_events", "password_reset_tokens",
-                    "email_verification_tokens", "monthly_metrics",
-                    "namespace_aliases", "prompt_log", "context_log",
-                    "user_permissions", "user_roles", "user_groups",
-                ):
+                # Dynamically find ALL tables with FK to users(id) and clean them
+                fk_tables = await conn.fetch("""
+                    SELECT DISTINCT tc.table_name
+                    FROM information_schema.table_constraints tc
+                    JOIN information_schema.constraint_column_usage ccu
+                      ON tc.constraint_name = ccu.constraint_name
+                    WHERE tc.constraint_type = 'FOREIGN KEY'
+                      AND ccu.table_name = 'users'
+                      AND ccu.column_name = 'id'
+                """)
+                for row in fk_tables:
+                    tbl = row["table_name"]
+                    try:
+                        await conn.execute(f"DELETE FROM {tbl} WHERE user_id = $1", uid)
+                    except Exception:
+                        pass
+                # Also clean tables with user_id but no FK constraint
+                for tbl in ("prompt_log", "context_log"):
                     try:
                         await conn.execute(f"DELETE FROM {tbl} WHERE user_id = $1", uid)
                     except Exception:
