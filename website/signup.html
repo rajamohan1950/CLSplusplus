@@ -53,13 +53,30 @@
       <p class="subtitle">Start with 1,000 free operations per month.</p>
 
       <div id="error" class="auth-error"></div>
+      <div id="success-msg" class="auth-error" style="background:rgba(22,163,74,0.1);border-color:rgba(22,163,74,0.3);color:#16a34a;"></div>
 
-      <form id="signup-form" onsubmit="return false;">
-        <input type="text" name="name" class="auth-input" placeholder="Full name" autocomplete="name">
-        <input type="email" name="email" class="auth-input" placeholder="Email address" required autocomplete="email">
-        <input type="password" name="password" class="auth-input" placeholder="Password (8+ characters)" required minlength="8" autocomplete="new-password">
-        <button type="submit" class="auth-btn" id="submit-btn">Create Account</button>
-      </form>
+      <!-- Step 1: Registration form -->
+      <div id="signup-step">
+        <form id="signup-form" onsubmit="return false;">
+          <input type="text" name="name" class="auth-input" placeholder="Full name" autocomplete="name">
+          <input type="email" name="email" class="auth-input" placeholder="Email address" required autocomplete="email">
+          <input type="password" name="password" class="auth-input" placeholder="Password (8+ characters)" required minlength="8" autocomplete="new-password">
+          <button type="submit" class="auth-btn" id="submit-btn">Create Account</button>
+        </form>
+      </div>
+
+      <!-- Step 2: OTP verification -->
+      <div id="verify-step" style="display:none;">
+        <h1 style="font-size:1.3rem;margin-bottom:8px;">Verify your email</h1>
+        <p class="subtitle">Enter the 6-digit code sent to <strong id="verify-email-display"></strong></p>
+        <div style="display:flex;gap:8px;justify-content:center;margin-bottom:20px;">
+          <input type="text" id="otp-input" class="auth-input" placeholder="000000" maxlength="6" style="text-align:center;font-size:1.5rem;font-weight:700;letter-spacing:6px;max-width:220px;" autocomplete="one-time-code">
+        </div>
+        <button class="auth-btn" id="verify-btn" disabled>Verify</button>
+        <div style="text-align:center;margin-top:16px;">
+          <a href="#" id="resend-link" style="color:var(--accent-light);font-size:0.85rem;text-decoration:none;">Resend code</a>
+        </div>
+      </div>
 
       <div class="auth-divider">or</div>
 
@@ -78,14 +95,24 @@
     (function() {
       var form = document.getElementById('signup-form');
       var errorEl = document.getElementById('error');
+      var successEl = document.getElementById('success-msg');
       var submitBtn = document.getElementById('submit-btn');
+      var signupStep = document.getElementById('signup-step');
+      var verifyStep = document.getElementById('verify-step');
+      var otpInput = document.getElementById('otp-input');
+      var verifyBtn = document.getElementById('verify-btn');
+      var resendLink = document.getElementById('resend-link');
+      var emailDisplay = document.getElementById('verify-email-display');
+      var _userEmail = '';
 
       form.addEventListener('submit', async function(e) {
         e.preventDefault();
         if (window.CLSAnalytics) CLSAnalytics.track('signup_attempted');
         errorEl.style.display = 'none';
+        successEl.style.display = 'none';
         submitBtn.disabled = true;
         submitBtn.textContent = 'Creating account...';
+        _userEmail = form.email.value.trim();
 
         try {
           var resp = await fetch('/v1/auth/register', {
@@ -94,15 +121,20 @@
             credentials: 'same-origin',
             body: JSON.stringify({
               name: form.name.value.trim(),
-              email: form.email.value.trim(),
+              email: _userEmail,
               password: form.password.value,
             }),
           });
 
           if (resp.ok) {
             if (window.CLSAnalytics) CLSAnalytics.track('signup_succeeded');
-            var params = new URLSearchParams(window.location.search);
-            window.location.href = params.get('next') || '/dashboard.html';
+            // Show OTP verification step
+            signupStep.style.display = 'none';
+            document.querySelector('.auth-divider').style.display = 'none';
+            document.querySelector('.google-btn').style.display = 'none';
+            verifyStep.style.display = 'block';
+            emailDisplay.textContent = _userEmail;
+            otpInput.focus();
           } else {
             var data = await resp.json();
             errorEl.textContent = data.message || data.detail || 'Registration failed';
@@ -115,6 +147,71 @@
 
         submitBtn.disabled = false;
         submitBtn.textContent = 'Create Account';
+      });
+
+      // Auto-enable verify button when 6 digits entered
+      otpInput.addEventListener('input', function() {
+        this.value = this.value.replace(/\D/g, '').slice(0, 6);
+        verifyBtn.disabled = this.value.length !== 6;
+        if (this.value.length === 6) submitOTP();
+      });
+
+      verifyBtn.addEventListener('click', submitOTP);
+
+      async function submitOTP() {
+        var code = otpInput.value.trim();
+        if (code.length !== 6) return;
+        verifyBtn.disabled = true;
+        verifyBtn.textContent = 'Verifying...';
+        errorEl.style.display = 'none';
+        try {
+          var resp = await fetch('/v1/auth/verify-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ otp_code: code }),
+          });
+          if (resp.ok) {
+            successEl.textContent = 'Email verified! Redirecting...';
+            successEl.style.display = 'block';
+            setTimeout(function() {
+              window.location.href = '/dashboard.html';
+            }, 1500);
+          } else {
+            var data = await resp.json();
+            errorEl.textContent = data.detail || 'Invalid code. Please try again.';
+            errorEl.style.display = 'block';
+            otpInput.value = '';
+            otpInput.focus();
+          }
+        } catch (err) {
+          errorEl.textContent = 'Network error. Please try again.';
+          errorEl.style.display = 'block';
+        }
+        verifyBtn.disabled = false;
+        verifyBtn.textContent = 'Verify';
+      }
+
+      resendLink.addEventListener('click', async function(e) {
+        e.preventDefault();
+        errorEl.style.display = 'none';
+        try {
+          var resp = await fetch('/v1/auth/resend-verification', {
+            method: 'POST',
+            credentials: 'same-origin',
+          });
+          if (resp.ok) {
+            successEl.textContent = 'New verification code sent!';
+            successEl.style.display = 'block';
+          } else {
+            var data = await resp.json();
+            errorEl.textContent = data.detail || 'Could not resend code.';
+            errorEl.style.display = 'block';
+          }
+        } catch (err) {
+          errorEl.textContent = 'Network error.';
+          errorEl.style.display = 'block';
+        }
       });
     })();
 

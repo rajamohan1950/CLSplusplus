@@ -960,10 +960,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return response
 
     @app.post("/v1/auth/register")
-    async def register_user(req: UserRegisterRequest):
+    async def register_user(request: Request, req: UserRegisterRequest):
         """Register a new user with email and password."""
+        base_url = str(request.base_url).rstrip("/")
+        if request.headers.get("x-forwarded-proto") == "https":
+            base_url = base_url.replace("http://", "https://", 1)
         try:
-            user, token = await user_service.register(req.email, req.password, req.name)
+            user, token = await user_service.register(req.email, req.password, req.name, base_url=base_url)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
@@ -985,17 +988,19 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return _set_session_cookie(response, token)
 
     @app.post("/v1/auth/forgot-password")
-    async def forgot_password(req: PasswordResetRequest):
-        """Request a password reset token."""
+    async def forgot_password(request: Request, req: PasswordResetRequest):
+        """Request a password reset token. Sends email if Resend is configured."""
+        base_url = str(request.base_url).rstrip("/")
+        if request.headers.get("x-forwarded-proto") == "https":
+            base_url = base_url.replace("http://", "https://", 1)
         try:
-            token = await user_service.request_password_reset(req.email)
+            token = await user_service.request_password_reset(req.email, base_url=base_url)
         except Exception as e:
             logger.error("Password reset request error: %s", e)
-            # Always return 200 to prevent user enumeration
-            return {"detail": "If an account with that email exists, a reset token has been generated.", "token": None}
+            return {"detail": "If an account with that email exists, a reset link has been sent.", "token": None}
         if token:
-            return {"detail": "Password reset token generated. Valid for 1 hour.", "token": token}
-        return {"detail": "If an account with that email exists, a reset token has been generated.", "token": None}
+            return {"detail": "Password reset link sent to your email. Valid for 1 hour.", "token": token}
+        return {"detail": "If an account with that email exists, a reset link has been sent.", "token": None}
 
     @app.post("/v1/auth/reset-password")
     async def reset_password(req: PasswordResetConfirm):
@@ -1008,6 +1013,58 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             logger.error("Password reset error: %s", e)
             raise HTTPException(status_code=500, detail="Password reset service unavailable")
         return {"detail": "Password has been reset successfully."}
+
+    @app.post("/v1/auth/verify-email")
+    async def verify_email_otp(request: Request):
+        """Verify email using 6-digit OTP code (authenticated user)."""
+        user_id = getattr(request.state, "user_id", None)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        body = await request.json()
+        otp_code = body.get("otp_code", "").strip()
+        if not otp_code or len(otp_code) != 6:
+            raise HTTPException(status_code=400, detail="Invalid verification code format")
+        try:
+            await user_service.verify_email_otp(user_id, otp_code)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error("Email verification error: %s", e)
+            raise HTTPException(status_code=500, detail="Verification service unavailable")
+        return {"detail": "Email verified successfully."}
+
+    @app.get("/v1/auth/verify-email")
+    async def verify_email_link(request: Request, token: str = Query("")):
+        """Verify email via magic link (public, redirects to dashboard)."""
+        if not token:
+            raise HTTPException(status_code=400, detail="Missing verification token")
+        try:
+            user_id = await user_service.verify_email_link(token)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error("Magic link verification error: %s", e)
+            raise HTTPException(status_code=500, detail="Verification service unavailable")
+        from starlette.responses import RedirectResponse
+        return RedirectResponse("/dashboard.html?verified=1")
+
+    @app.post("/v1/auth/resend-verification")
+    async def resend_verification(request: Request):
+        """Resend verification email for the current user."""
+        user_id = getattr(request.state, "user_id", None)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        base_url = str(request.base_url).rstrip("/")
+        if request.headers.get("x-forwarded-proto") == "https":
+            base_url = base_url.replace("http://", "https://", 1)
+        try:
+            await user_service.resend_verification(user_id, base_url=base_url)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error("Resend verification error: %s", e)
+            raise HTTPException(status_code=500, detail="Verification service unavailable")
+        return {"detail": "Verification email sent."}
 
     @app.post("/v1/auth/logout")
     async def logout_user():
@@ -1461,6 +1518,56 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         """Helper to enforce admin access on endpoints."""
         if not getattr(request.state, "is_admin", False):
             raise HTTPException(status_code=403, detail="Admin access required")
+
+    @app.patch("/admin/users/{user_id}")
+    async def admin_update_user(request: Request, user_id: str = Path(...)):
+        """Admin: update user fields (name, email, tier, is_admin)."""
+        _require_admin(request)
+        try:
+            body = await request.json()
+            fields = {}
+            if "name" in body:
+                fields["name"] = str(body["name"]).strip()
+            if "email" in body:
+                fields["email"] = str(body["email"]).strip().lower()
+            if "tier" in body:
+                if body["tier"] not in ("free", "pro", "business", "enterprise"):
+                    raise HTTPException(status_code=400, detail="Invalid tier")
+                fields["tier"] = body["tier"]
+            if "is_admin" in body:
+                fields["is_admin"] = bool(body["is_admin"])
+            if not fields:
+                raise HTTPException(status_code=400, detail="No fields to update")
+            updated = await user_service.store.update_user(user_id, fields)
+            if not updated:
+                raise HTTPException(status_code=404, detail="User not found")
+            return updated
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error("Admin user update error: %s", e)
+            raise HTTPException(status_code=500, detail="User update failed")
+
+    @app.delete("/admin/users/{user_id}")
+    async def admin_delete_user(request: Request, user_id: str = Path(...)):
+        """Admin: delete a user and all related data."""
+        _require_admin(request)
+        admin_id = getattr(request.state, "user_id", None)
+        if user_id == admin_id:
+            raise HTTPException(status_code=400, detail="Cannot delete your own account")
+        try:
+            target = await user_service.get_user(user_id)
+            if not target:
+                raise HTTPException(status_code=404, detail="User not found")
+            deleted = await user_service.store.delete_user(user_id)
+            if not deleted:
+                raise HTTPException(status_code=500, detail="Deletion failed")
+            return {"detail": "User deleted successfully."}
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error("Admin user delete error: %s", e)
+            raise HTTPException(status_code=500, detail="User deletion failed")
 
     @app.get("/admin/metrics/user/{user_id}")
     async def admin_user_detail(request: Request, user_id: str = Path(...)):

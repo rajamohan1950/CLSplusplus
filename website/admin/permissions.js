@@ -265,8 +265,27 @@
 
     var main = document.getElementById('perm-main');
     var user = _users.find(function (u) { return u.id === userId; });
-    var html = '<h2>' + esc(email) + '</h2>';
-    if (user) html += '<p style="color:var(--text-muted);">' + esc(user.name || '') + ' &middot; ' + user.tier + (user.is_admin ? ' &middot; <strong style="color:#eab308;">Admin</strong>' : '') + '</p>';
+    var html = '<h2>' + esc(email || (user && user.email) || '') + '</h2>';
+
+    // Editable user fields
+    html += '<div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:24px;">';
+    html += '<h3 style="margin-bottom:12px;font-size:0.95rem;">User Details</h3>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
+    html += '<div class="field-group"><label>Name</label><input id="edit-name" value="' + esc(user ? user.name : '') + '"></div>';
+    html += '<div class="field-group"><label>Email</label><input id="edit-email" value="' + esc(user ? user.email : email) + '"></div>';
+    html += '<div class="field-group"><label>Tier</label><select id="edit-tier" style="display:block;width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.9rem;font-family:inherit;">';
+    ['free','pro','business','enterprise'].forEach(function(t) {
+      html += '<option value="' + t + '"' + (user && user.tier === t ? ' selected' : '') + '>' + t.charAt(0).toUpperCase() + t.slice(1) + '</option>';
+    });
+    html += '</select></div>';
+    html += '<div class="field-group"><label>Admin</label><label style="display:flex;align-items:center;gap:8px;margin-top:6px;cursor:pointer;"><input type="checkbox" id="edit-admin" ' + (user && user.is_admin ? 'checked' : '') + ' style="accent-color:var(--accent);width:18px;height:18px;"> Admin access</label></div>';
+    html += '</div>';
+    html += '<div style="display:flex;gap:8px;margin-top:16px;">';
+    html += '<button class="perm-btn perm-btn-primary" onclick="saveUser(\'' + userId + '\')">Save Changes</button>';
+    html += '<button class="perm-btn perm-btn-danger" onclick="deleteUser(\'' + userId + '\',\'' + esc(user ? user.email : email) + '\')">Delete User</button>';
+    html += '</div></div>';
+
+    if (user) html += '<p style="color:var(--text-muted);margin-bottom:16px;">' + esc(user.name || '') + ' &middot; ' + user.tier + (user.is_admin ? ' &middot; <strong style="color:#eab308;">Admin</strong>' : '') + '</p>';
 
     // Effective Scopes — grouped
     html += '<h3 style="margin-top:24px;">Effective Permissions</h3>';
@@ -309,6 +328,34 @@
 
     main.innerHTML = html;
   }
+
+  window.saveUser = async function (uid) {
+    var fields = {
+      name: document.getElementById('edit-name').value.trim(),
+      email: document.getElementById('edit-email').value.trim(),
+      tier: document.getElementById('edit-tier').value,
+      is_admin: document.getElementById('edit-admin').checked,
+    };
+    var resp = await fetchJSON('/admin/users/' + uid, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    });
+    if (resp) {
+      alert('User updated successfully.');
+      await loadSidebar();
+      showUser(uid, '');
+    }
+  };
+
+  window.deleteUser = async function (uid, email) {
+    if (!confirm('Permanently delete user ' + email + '? This cannot be undone.')) return;
+    var resp = await del('/admin/users/' + uid);
+    if (resp) {
+      await loadSidebar();
+      document.getElementById('perm-main').innerHTML = '<div class="empty-state">User deleted.</div>';
+    }
+  };
 
   window.addUserRole = async function (uid) { await postJSON('/admin/rbac/users/' + uid + '/roles', { role_id: document.getElementById('add-user-role').value }); showUser(uid, ''); };
   window.removeUserRole = async function (uid, rid) { await del('/admin/rbac/users/' + uid + '/roles/' + rid); showUser(uid, ''); };

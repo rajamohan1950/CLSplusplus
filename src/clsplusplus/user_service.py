@@ -1,9 +1,10 @@
-"""User service — registration, login, Google OAuth, tier management, password reset."""
+"""User service — registration, login, Google OAuth, tier management, password reset, email verification."""
 
 from __future__ import annotations
 
 import hashlib
 import logging
+import random
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -13,6 +14,7 @@ import bcrypt
 import httpx
 
 from clsplusplus.config import Settings
+from clsplusplus.email_service import EmailService
 from clsplusplus.jwt_utils import create_token
 from clsplusplus.stores.user_store import UserStore
 
@@ -44,8 +46,11 @@ class UserService:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.store = UserStore(settings)
+        self.email = EmailService(settings)
 
-    async def register(self, email: str, password: str, name: str = "") -> tuple[dict, str]:
+    async def register(
+        self, email: str, password: str, name: str = "", base_url: str = ""
+    ) -> tuple[dict, str]:
         """Register a new user with email+password.
 
         Returns (user_dict, jwt_token).
@@ -73,6 +78,13 @@ class UserService:
             is_admin=user["is_admin"],
             secret=self.settings.jwt_secret,
         )
+
+        # Send verification email (non-blocking — registration succeeds even if email fails)
+        try:
+            await self._send_verification_email(user["id"], email, base_url)
+        except Exception as e:
+            logger.warning("Verification email failed for %s (non-fatal): %s", email, e)
+
         return _strip_password(user), token
 
     async def login(self, email: str, password: str) -> tuple[dict, str]:
@@ -142,14 +154,21 @@ class UserService:
                 await self.store.update_google_id(user["id"], google_id, avatar_url)
                 user["google_id"] = google_id
                 user["avatar_url"] = avatar_url
+                # Mark email verified (Google verified it)
+                if not user.get("email_verified"):
+                    await self.store.mark_email_verified(user["id"])
+                    user["email_verified"] = True
             else:
-                # Create new user via Google
+                # Create new user via Google (auto-verified)
                 user = await self.store.create_user(
                     email=email,
                     google_id=google_id,
                     name=name,
                     avatar_url=avatar_url,
                 )
+                # Auto-verify Google users
+                await self.store.mark_email_verified(user["id"])
+                user["email_verified"] = True
 
         token = create_token(
             user_id=user["id"],
@@ -263,10 +282,13 @@ class UserService:
     # Password reset
     # =========================================================================
 
-    async def request_password_reset(self, email: str) -> Optional[str]:
+    async def request_password_reset(
+        self, email: str, base_url: str = ""
+    ) -> Optional[str]:
         """Generate a password reset token for the given email.
 
-        Returns the raw token string, or None if email not found / Google-only.
+        Sends reset email via Resend. Returns the raw token string
+        (also sent via email), or None if email not found / Google-only.
         """
         email = email.strip().lower()
         user = await self.store.get_by_email(email)
@@ -275,6 +297,7 @@ class UserService:
         if not user.get("password_hash"):
             return None  # Google-only account
 
+        otp_code = self._generate_otp()
         raw_token = secrets.token_urlsafe(48)
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
         expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
@@ -284,6 +307,19 @@ class UserService:
             token_hash=token_hash,
             expires_at=expires_at,
         )
+
+        # Send email with OTP + reset link
+        base = base_url.rstrip("/") if base_url else self.settings.site_base_url
+        reset_link = f"{base}/login.html?reset_token={raw_token}"
+        try:
+            await self.email.send_password_reset_email(
+                to=email,
+                otp_code=otp_code,
+                reset_link=reset_link,
+            )
+        except Exception as e:
+            logger.warning("Reset email failed for %s (non-fatal): %s", email, e)
+
         return raw_token
 
     async def reset_password(self, token: str, new_password: str) -> dict:
@@ -350,3 +386,77 @@ class UserService:
                 logger.warning("Could not assign RBAC role to admin (non-fatal): %s", e)
         else:
             logger.debug("Admin user already exists: %s", admin_email)
+
+    # =========================================================================
+    # Email verification
+    # =========================================================================
+
+    def _generate_otp(self) -> str:
+        """Generate a 6-digit OTP code."""
+        return f"{random.randint(100000, 999999)}"
+
+    async def _send_verification_email(
+        self, user_id: str, email: str, base_url: str = ""
+    ) -> None:
+        """Generate OTP + magic link token, store, and send email."""
+        otp_code = self._generate_otp()
+        raw_token = secrets.token_urlsafe(48)
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+        await self.store.create_verification_token(
+            user_id=user_id,
+            otp_code=otp_code,
+            token_hash=token_hash,
+            expires_at=expires_at,
+        )
+
+        base = base_url.rstrip("/") if base_url else self.settings.site_base_url
+        verify_link = f"{base}/v1/auth/verify-email?token={raw_token}"
+
+        await self.email.send_verification_email(
+            to=email,
+            otp_code=otp_code,
+            verify_link=verify_link,
+        )
+
+    async def verify_email_otp(self, user_id: str, otp_code: str) -> bool:
+        """Verify email using 6-digit OTP code.
+
+        Returns True if verified.
+        Raises ValueError on invalid/expired OTP.
+        """
+        record = await self.store.get_verification_by_otp(user_id, otp_code)
+        if not record:
+            raise ValueError("Invalid or expired verification code")
+
+        await self.store.mark_verification_used(record["id"])
+        await self.store.mark_email_verified(user_id)
+        return True
+
+    async def verify_email_link(self, token: str) -> str:
+        """Verify email using magic link token.
+
+        Returns user_id if verified.
+        Raises ValueError on invalid/expired token.
+        """
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        record = await self.store.get_verification_by_token(token_hash)
+        if not record:
+            raise ValueError("Invalid or expired verification link")
+
+        await self.store.mark_verification_used(record["id"])
+        await self.store.mark_email_verified(record["user_id"])
+        return record["user_id"]
+
+    async def resend_verification(self, user_id: str, base_url: str = "") -> None:
+        """Resend verification email for an unverified user.
+
+        Raises ValueError if already verified.
+        """
+        user = await self.store.get_by_id(user_id)
+        if not user:
+            raise ValueError("User not found")
+        if user.get("email_verified"):
+            raise ValueError("Email already verified")
+        await self._send_verification_email(user_id, user["email"], base_url)

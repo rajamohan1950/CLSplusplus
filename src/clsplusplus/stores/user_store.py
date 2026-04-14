@@ -172,7 +172,7 @@ class UserStore:
         sets = []
         vals = []
         idx = 1
-        for key in ("name", "email", "password_hash"):
+        for key in ("name", "email", "password_hash", "tier", "is_admin", "email_verified"):
             if key in fields:
                 sets.append(f"{key} = ${idx}")
                 vals.append(fields[key])
@@ -323,13 +323,100 @@ class UserStore:
         async with pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                INSERT INTO users (email, password_hash, name, is_admin, tier)
-                VALUES ($1, $2, $3, TRUE, 'enterprise')
+                INSERT INTO users (email, password_hash, name, is_admin, tier, email_verified)
+                VALUES ($1, $2, $3, TRUE, 'enterprise', TRUE)
                 RETURNING *
                 """,
                 email, password_hash, name,
             )
             return _row_to_dict(row)
+
+    # =========================================================================
+    # Email verification tokens
+    # =========================================================================
+
+    async def create_verification_token(
+        self, user_id: str, otp_code: str, token_hash: str, expires_at: datetime
+    ) -> dict:
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO email_verification_tokens (user_id, otp_code, token_hash, expires_at)
+                VALUES ($1, $2, $3, $4)
+                RETURNING *
+                """,
+                user_id, otp_code, token_hash, expires_at,
+            )
+            return _row_to_dict(row)
+
+    async def get_verification_by_otp(self, user_id: str, otp_code: str) -> Optional[dict]:
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT * FROM email_verification_tokens
+                WHERE user_id = $1 AND otp_code = $2 AND used_at IS NULL AND expires_at > $3
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                user_id, otp_code, _now(),
+            )
+            if not row:
+                return None
+            d = dict(row)
+            for k, v in d.items():
+                if hasattr(v, "hex") and hasattr(v, "int"):
+                    d[k] = str(v)
+                elif isinstance(v, datetime):
+                    d[k] = v.isoformat()
+            return d
+
+    async def get_verification_by_token(self, token_hash: str) -> Optional[dict]:
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT * FROM email_verification_tokens
+                WHERE token_hash = $1 AND used_at IS NULL AND expires_at > $2
+                """,
+                token_hash, _now(),
+            )
+            if not row:
+                return None
+            d = dict(row)
+            for k, v in d.items():
+                if hasattr(v, "hex") and hasattr(v, "int"):
+                    d[k] = str(v)
+                elif isinstance(v, datetime):
+                    d[k] = v.isoformat()
+            return d
+
+    async def mark_verification_used(self, token_id: str) -> None:
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE email_verification_tokens SET used_at = $1 WHERE id = $2",
+                _now(), token_id,
+            )
+
+    async def mark_email_verified(self, user_id: str) -> None:
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE users SET email_verified = TRUE, updated_at = $1 WHERE id = $2",
+                _now(), user_id,
+            )
+
+    # =========================================================================
+    # User deletion
+    # =========================================================================
+
+    async def delete_user(self, user_id: str) -> bool:
+        """Delete a user and all related data (CASCADE handles RBAC, tokens)."""
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute("DELETE FROM users WHERE id = $1", user_id)
+            return result == "DELETE 1"
 
     async def get_revenue_events(self, limit: int = 100) -> list[dict]:
         pool = await self.get_pool()

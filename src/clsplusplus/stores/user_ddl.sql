@@ -25,6 +25,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'free';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Drop old CHECK constraint and add new one (safe if doesn't exist)
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_tier_check;
@@ -60,3 +61,22 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 
 CREATE INDEX IF NOT EXISTS idx_reset_tokens_hash ON password_reset_tokens(token_hash);
 CREATE INDEX IF NOT EXISTS idx_reset_tokens_user ON password_reset_tokens(user_id);
+
+-- Email verification tokens (OTP + magic link)
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    otp_code    TEXT NOT NULL,
+    token_hash  TEXT NOT NULL,
+    expires_at  TIMESTAMPTZ NOT NULL,
+    used_at     TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_verify_tokens_user ON email_verification_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_verify_tokens_hash ON email_verification_tokens(token_hash);
+
+-- Revenue events: add CASCADE for user deletion
+ALTER TABLE revenue_events DROP CONSTRAINT IF EXISTS revenue_events_user_id_fkey;
+ALTER TABLE revenue_events ADD CONSTRAINT revenue_events_user_id_fkey
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;

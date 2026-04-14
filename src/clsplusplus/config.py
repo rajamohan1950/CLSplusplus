@@ -119,6 +119,10 @@ class Settings(BaseSettings):
     stripe_success_url: str = "/profile.html?billing=success"
     stripe_cancel_url: str = "/profile.html?billing=cancel"
 
+    # Email (Resend)
+    resend_api_key: str = ""                  # CLS_RESEND_API_KEY
+    email_from: str = "CLS++ <noreply@clsplusplus.com>"  # CLS_EMAIL_FROM
+
     # Demo LLM keys (optional; demo uses these for real Claude/OpenAI/Gemini)
     anthropic_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None

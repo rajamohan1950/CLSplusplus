@@ -95,6 +95,21 @@
         Continue with Google — Coming Soon
       </div>
 
+      <!-- OTP verification for unverified users -->
+      <div id="login-verify-panel" style="display:none;">
+        <h1 style="font-size:1.3rem;margin-bottom:8px;">Verify your email</h1>
+        <p class="subtitle">Enter the 6-digit code sent to <strong id="login-verify-email"></strong></p>
+        <div id="login-verify-error" class="auth-error"></div>
+        <div id="login-verify-success" class="auth-error" style="background:rgba(22,163,74,0.1);border-color:rgba(22,163,74,0.3);color:#16a34a;"></div>
+        <div style="display:flex;gap:8px;justify-content:center;margin-bottom:20px;">
+          <input type="text" id="login-otp" class="auth-input" placeholder="000000" maxlength="6" style="text-align:center;font-size:1.5rem;font-weight:700;letter-spacing:6px;max-width:220px;" autocomplete="one-time-code">
+        </div>
+        <button class="auth-btn" id="login-verify-btn" disabled>Verify</button>
+        <div style="text-align:center;margin-top:12px;">
+          <a href="#" id="login-resend-link" style="color:var(--accent-light);font-size:0.85rem;text-decoration:none;">Resend code</a>
+        </div>
+      </div>
+
       <div class="auth-footer">
         Don't have an account? <a href="/signup.html">Sign up</a>
       </div>
@@ -128,6 +143,11 @@
           if (resp.ok) {
             if (window.CLSAnalytics) CLSAnalytics.track('login_succeeded', { method: 'email' });
             var user = await resp.json();
+            // If email not verified, show OTP verification
+            if (user.email_verified === false) {
+              showLoginVerify(user.email);
+              return;
+            }
             var params = new URLSearchParams(window.location.search);
             var next = params.get('next');
             if (next) {
@@ -151,6 +171,66 @@
         submitBtn.textContent = 'Log In';
       });
     })();
+
+    // Login OTP verification for unverified emails
+    function showLoginVerify(email) {
+      document.getElementById('login-form').style.display = 'none';
+      document.querySelector('.auth-divider').style.display = 'none';
+      document.querySelector('.google-btn').style.display = 'none';
+      document.getElementById('forgot-panel').style.display = 'none';
+      var panel = document.getElementById('login-verify-panel');
+      panel.style.display = 'block';
+      document.getElementById('login-verify-email').textContent = email;
+      var otpEl = document.getElementById('login-otp');
+      otpEl.focus();
+
+      // Resend verification email
+      fetch('/v1/auth/resend-verification', { method: 'POST', credentials: 'same-origin' }).catch(function(){});
+
+      otpEl.addEventListener('input', function() {
+        this.value = this.value.replace(/\D/g, '').slice(0, 6);
+        document.getElementById('login-verify-btn').disabled = this.value.length !== 6;
+        if (this.value.length === 6) doLoginVerify();
+      });
+
+      document.getElementById('login-verify-btn').addEventListener('click', doLoginVerify);
+
+      async function doLoginVerify() {
+        var code = otpEl.value.trim();
+        if (code.length !== 6) return;
+        var btn = document.getElementById('login-verify-btn');
+        var errEl = document.getElementById('login-verify-error');
+        var succEl = document.getElementById('login-verify-success');
+        btn.disabled = true; btn.textContent = 'Verifying...';
+        errEl.style.display = 'none'; succEl.style.display = 'none';
+        try {
+          var r = await fetch('/v1/auth/verify-email', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin', body: JSON.stringify({ otp_code: code }),
+          });
+          if (r.ok) {
+            succEl.textContent = 'Email verified! Redirecting...';
+            succEl.style.display = 'block';
+            setTimeout(function() { window.location.href = '/dashboard.html'; }, 1500);
+          } else {
+            var d = await r.json();
+            errEl.textContent = d.detail || 'Invalid code.';
+            errEl.style.display = 'block';
+            otpEl.value = ''; otpEl.focus();
+          }
+        } catch(e) { errEl.textContent = 'Network error.'; errEl.style.display = 'block'; }
+        btn.disabled = false; btn.textContent = 'Verify';
+      }
+
+      document.getElementById('login-resend-link').addEventListener('click', async function(e) {
+        e.preventDefault();
+        var succEl = document.getElementById('login-verify-success');
+        try {
+          await fetch('/v1/auth/resend-verification', { method: 'POST', credentials: 'same-origin' });
+          succEl.textContent = 'New code sent!'; succEl.style.display = 'block';
+        } catch(e) {}
+      });
+    }
 
     // Forgot password flow
     (function() {
