@@ -1564,8 +1564,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 exists = await conn.fetchval("SELECT 1 FROM users WHERE id = $1", uid)
                 if not exists:
                     raise HTTPException(status_code=404, detail="User not found")
-                # Clean up ALL FK tables
+                # Clean up ALL FK tables (including ones created outside DDL)
                 for tbl in (
+                    "discovery_runs",
                     "revenue_events", "password_reset_tokens",
                     "email_verification_tokens", "monthly_metrics",
                     "namespace_aliases", "prompt_log", "context_log",
