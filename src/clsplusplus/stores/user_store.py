@@ -419,14 +419,23 @@ class UserStore:
         """
         pool = await self.get_pool()
         async with pool.acquire() as conn:
-            # Clean up related records that may lack CASCADE FK
-            await conn.execute("DELETE FROM revenue_events WHERE user_id = $1", user_id)
-            await conn.execute("DELETE FROM password_reset_tokens WHERE user_id = $1", user_id)
-            await conn.execute("DELETE FROM email_verification_tokens WHERE user_id = $1", user_id)
-            # RBAC tables (should CASCADE but be safe)
-            await conn.execute("DELETE FROM user_permissions WHERE user_id = $1", user_id)
-            await conn.execute("DELETE FROM user_roles WHERE user_id = $1", user_id)
-            await conn.execute("DELETE FROM user_groups WHERE user_id = $1", user_id)
+            # Clean up ALL related records (some tables lack CASCADE FK)
+            for table in (
+                "revenue_events",
+                "password_reset_tokens",
+                "email_verification_tokens",
+                "monthly_metrics",
+                "namespace_aliases",
+                "prompt_log",
+                "context_log",
+                "user_permissions",
+                "user_roles",
+                "user_groups",
+            ):
+                try:
+                    await conn.execute(f"DELETE FROM {table} WHERE user_id = $1", user_id)
+                except Exception:
+                    pass  # Table may not exist yet
             # Now delete the user
             result = await conn.execute("DELETE FROM users WHERE id = $1", user_id)
             return result == "DELETE 1"
