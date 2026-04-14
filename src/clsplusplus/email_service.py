@@ -25,36 +25,32 @@ class EmailService:
         return bool(self.settings.resend_api_key)
 
     async def _send(self, to: str, subject: str, html: str) -> bool:
-        """Send an email via Resend API. Returns True on success."""
+        """Send an email via Resend API. Returns True on success, raises on failure."""
         if not self._enabled:
-            logger.warning("Email not sent (Resend not configured): to=%s subject=%s", to, subject)
-            return False
+            raise RuntimeError("Resend not configured (CLS_RESEND_API_KEY not set)")
 
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(
-                    RESEND_API_URL,
-                    headers={
-                        "Authorization": f"Bearer {self.settings.resend_api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "from": self.settings.email_from,
-                        "to": [to],
-                        "subject": subject,
-                        "html": html,
-                    },
-                    timeout=15.0,
-                )
-                if resp.status_code in (200, 201):
-                    logger.info("Email sent to %s: %s", to, subject)
-                    return True
-                else:
-                    logger.error("Resend API error %d: %s", resp.status_code, resp.text)
-                    return False
-        except Exception as e:
-            logger.error("Email send failed: %s: %s", type(e).__name__, e)
-            return False
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                RESEND_API_URL,
+                headers={
+                    "Authorization": f"Bearer {self.settings.resend_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "from": self.settings.email_from,
+                    "to": [to],
+                    "subject": subject,
+                    "html": html,
+                },
+                timeout=15.0,
+            )
+            if resp.status_code in (200, 201):
+                logger.info("Email sent to %s: %s", to, subject)
+                return True
+            else:
+                error_body = resp.text
+                logger.error("Resend API error %d: %s", resp.status_code, error_body)
+                raise RuntimeError(f"Resend API {resp.status_code}: {error_body}")
 
     async def send_verification_email(
         self, to: str, otp_code: str, verify_link: str
