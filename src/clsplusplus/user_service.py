@@ -84,14 +84,22 @@ class UserService:
         # Send verification email
         base = base_url.rstrip("/") if base_url else self.settings.site_base_url
         verify_link = f"{base}/v1/auth/verify-register?token={raw_token}"
+        email_sent = False
+        email_error = None
         try:
-            await self.email.send_verification_email(
+            email_sent = await self.email.send_verification_email(
                 to=email, otp_code=otp_code, verify_link=verify_link,
             )
         except Exception as e:
+            email_error = f"{type(e).__name__}: {e}"
             logger.warning("Verification email failed for %s: %s", email, e)
 
-        return {"pending": True, "email": email}
+        result = {"pending": True, "email": email, "email_sent": email_sent}
+        if not email_sent:
+            result["email_configured"] = self.email._enabled
+            if email_error:
+                result["email_error"] = email_error
+        return result
 
     async def complete_registration(self, email: str, otp_code: str) -> tuple[dict, str]:
         """Step 2: Verify OTP and create the actual user account.
