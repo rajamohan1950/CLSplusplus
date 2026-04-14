@@ -412,9 +412,22 @@ class UserStore:
     # =========================================================================
 
     async def delete_user(self, user_id: str) -> bool:
-        """Delete a user and all related data (CASCADE handles RBAC, tokens)."""
+        """Delete a user and all related data.
+
+        Manually cleans up tables that may not have CASCADE FK
+        (e.g. revenue_events created before CASCADE migration).
+        """
         pool = await self.get_pool()
         async with pool.acquire() as conn:
+            # Clean up related records that may lack CASCADE FK
+            await conn.execute("DELETE FROM revenue_events WHERE user_id = $1", user_id)
+            await conn.execute("DELETE FROM password_reset_tokens WHERE user_id = $1", user_id)
+            await conn.execute("DELETE FROM email_verification_tokens WHERE user_id = $1", user_id)
+            # RBAC tables (should CASCADE but be safe)
+            await conn.execute("DELETE FROM user_permissions WHERE user_id = $1", user_id)
+            await conn.execute("DELETE FROM user_roles WHERE user_id = $1", user_id)
+            await conn.execute("DELETE FROM user_groups WHERE user_id = $1", user_id)
+            # Now delete the user
             result = await conn.execute("DELETE FROM users WHERE id = $1", user_id)
             return result == "DELETE 1"
 
