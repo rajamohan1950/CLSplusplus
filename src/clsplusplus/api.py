@@ -1560,6 +1560,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             if not target:
                 raise HTTPException(status_code=404, detail="User not found")
             # Clean up ALL related records before deleting user
+            import uuid as _uuid
+            uid = _uuid.UUID(user_id) if not hasattr(user_id, 'hex') else user_id
             pool = await user_service.store.get_pool()
             async with pool.acquire() as conn:
                 for tbl in (
@@ -1569,10 +1571,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                     "user_permissions", "user_roles", "user_groups",
                 ):
                     try:
-                        await conn.execute(f"DELETE FROM {tbl} WHERE user_id = $1", user_id)
-                    except Exception:
-                        pass
-                result = await conn.execute("DELETE FROM users WHERE id = $1", user_id)
+                        await conn.execute(f"DELETE FROM {tbl} WHERE user_id = $1", uid)
+                    except Exception as ex:
+                        logger.debug("Cleanup %s for %s: %s", tbl, user_id, ex)
+                result = await conn.execute("DELETE FROM users WHERE id = $1", uid)
                 if result != "DELETE 1":
                     raise HTTPException(status_code=500, detail="Deletion failed")
             return {"detail": "User deleted successfully."}
