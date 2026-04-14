@@ -1559,14 +1559,27 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             target = await user_service.get_user(user_id)
             if not target:
                 raise HTTPException(status_code=404, detail="User not found")
-            deleted = await user_service.store.delete_user(user_id)
-            if not deleted:
-                raise HTTPException(status_code=500, detail="Deletion failed")
+            # Clean up ALL related records before deleting user
+            pool = await user_service.store.get_pool()
+            async with pool.acquire() as conn:
+                for tbl in (
+                    "revenue_events", "password_reset_tokens",
+                    "email_verification_tokens", "monthly_metrics",
+                    "namespace_aliases", "prompt_log", "context_log",
+                    "user_permissions", "user_roles", "user_groups",
+                ):
+                    try:
+                        await conn.execute(f"DELETE FROM {tbl} WHERE user_id = $1", user_id)
+                    except Exception:
+                        pass
+                result = await conn.execute("DELETE FROM users WHERE id = $1", user_id)
+                if result != "DELETE 1":
+                    raise HTTPException(status_code=500, detail="Deletion failed")
             return {"detail": "User deleted successfully."}
         except HTTPException:
             raise
         except Exception as e:
-            logger.error("Admin user delete error: %s", e)
+            logger.error("Admin user delete error: %s: %s", type(e).__name__, e)
             raise HTTPException(status_code=500, detail="User deletion failed")
 
     @app.get("/admin/metrics/user/{user_id}")
