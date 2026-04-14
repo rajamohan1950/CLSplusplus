@@ -3,6 +3,8 @@
    Change fonts/sizes HERE — every page reads from this one file.
    ══════════════════════════════════════════════════════════════════════════════ */
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 :root {
   --bg: #fafafa;
   --bg-elevated: rgba(255,255,255,0.9);
@@ -17,8 +19,7 @@
   --radius-lg: 20px;
 
   /* Typography scale */
-  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
-               'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'SF Mono', ui-monospace, 'Menlo', 'Consolas', monospace;
 }
 
@@ -267,6 +268,20 @@ code, pre, .code-card, .gs-code {
 
 .nav-admin-link:hover {
   background: rgba(234,179,8,0.1);
+}
+
+.nav-page-link {
+  color: rgba(255,255,255,0.7) !important;
+  text-decoration: none;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: color 0.2s, background 0.2s;
+}
+.nav-page-link:hover {
+  color: #fff !important;
+  background: rgba(255,255,255,0.08);
 }
 
 /* Hero */

@@ -57,8 +57,36 @@
       <form id="login-form" onsubmit="return false;">
         <input type="email" name="email" class="auth-input" placeholder="Email address" required autocomplete="email">
         <input type="password" name="password" class="auth-input" placeholder="Password" required autocomplete="current-password">
+        <div style="text-align:right;margin:-8px 0 12px;">
+          <a href="#" id="forgot-link" style="color:var(--accent-light);font-size:0.85rem;text-decoration:none;">Forgot password?</a>
+        </div>
         <button type="submit" class="auth-btn" id="submit-btn">Log In</button>
       </form>
+
+      <!-- Forgot Password Flow -->
+      <div id="forgot-panel" style="display:none;">
+        <h1 style="font-size:1.3rem;margin-bottom:8px;">Reset Password</h1>
+        <p class="subtitle">Enter your email to receive a reset token.</p>
+        <div id="forgot-error" class="auth-error"></div>
+        <div id="forgot-success" class="auth-error" style="background:rgba(22,163,74,0.1);border-color:rgba(22,163,74,0.3);color:#16a34a;"></div>
+
+        <!-- Step 1: Request token -->
+        <div id="forgot-step1">
+          <input type="email" id="forgot-email" class="auth-input" placeholder="Email address" required>
+          <button class="auth-btn" id="forgot-submit">Send Reset Token</button>
+        </div>
+
+        <!-- Step 2: Enter token + new password -->
+        <div id="forgot-step2" style="display:none;">
+          <input type="text" id="reset-token" class="auth-input" placeholder="Reset token" required>
+          <input type="password" id="reset-password" class="auth-input" placeholder="New password (min 8 characters)" required>
+          <button class="auth-btn" id="reset-submit">Reset Password</button>
+        </div>
+
+        <div style="text-align:center;margin-top:16px;">
+          <a href="#" id="back-to-login" style="color:var(--accent-light);font-size:0.9rem;text-decoration:none;">Back to login</a>
+        </div>
+      </div>
 
       <div class="auth-divider">or</div>
 
@@ -121,6 +149,109 @@
 
         submitBtn.disabled = false;
         submitBtn.textContent = 'Log In';
+      });
+    })();
+
+    // Forgot password flow
+    (function() {
+      var loginForm = document.getElementById('login-form');
+      var forgotPanel = document.getElementById('forgot-panel');
+      var forgotLink = document.getElementById('forgot-link');
+      var backLink = document.getElementById('back-to-login');
+      var forgotError = document.getElementById('forgot-error');
+      var forgotSuccess = document.getElementById('forgot-success');
+      var step1 = document.getElementById('forgot-step1');
+      var step2 = document.getElementById('forgot-step2');
+
+      forgotLink.addEventListener('click', function(e) {
+        e.preventDefault();
+        loginForm.style.display = 'none';
+        document.querySelector('.auth-divider').style.display = 'none';
+        document.querySelector('.google-btn').style.display = 'none';
+        forgotPanel.style.display = 'block';
+        forgotError.style.display = 'none';
+        forgotSuccess.style.display = 'none';
+      });
+
+      backLink.addEventListener('click', function(e) {
+        e.preventDefault();
+        forgotPanel.style.display = 'none';
+        loginForm.style.display = 'block';
+        document.querySelector('.auth-divider').style.display = '';
+        document.querySelector('.google-btn').style.display = '';
+        step1.style.display = 'block';
+        step2.style.display = 'none';
+        forgotError.style.display = 'none';
+        forgotSuccess.style.display = 'none';
+      });
+
+      document.getElementById('forgot-submit').addEventListener('click', async function() {
+        var email = document.getElementById('forgot-email').value.trim();
+        if (!email) return;
+        this.disabled = true;
+        this.textContent = 'Sending...';
+        forgotError.style.display = 'none';
+        forgotSuccess.style.display = 'none';
+        try {
+          var resp = await fetch('/v1/auth/forgot-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email }),
+          });
+          var data = await resp.json();
+          if (data.token) {
+            document.getElementById('reset-token').value = data.token;
+            forgotSuccess.textContent = 'Reset token generated. Enter your new password below.';
+            forgotSuccess.style.display = 'block';
+            step1.style.display = 'none';
+            step2.style.display = 'block';
+          } else {
+            forgotSuccess.textContent = data.detail || 'If an account with that email exists, a reset token has been generated.';
+            forgotSuccess.style.display = 'block';
+          }
+        } catch (err) {
+          forgotError.textContent = 'Network error. Please try again.';
+          forgotError.style.display = 'block';
+        }
+        this.disabled = false;
+        this.textContent = 'Send Reset Token';
+      });
+
+      document.getElementById('reset-submit').addEventListener('click', async function() {
+        var token = document.getElementById('reset-token').value.trim();
+        var password = document.getElementById('reset-password').value;
+        if (!token || !password) return;
+        if (password.length < 8) {
+          forgotError.textContent = 'Password must be at least 8 characters.';
+          forgotError.style.display = 'block';
+          return;
+        }
+        this.disabled = true;
+        this.textContent = 'Resetting...';
+        forgotError.style.display = 'none';
+        forgotSuccess.style.display = 'none';
+        try {
+          var resp = await fetch('/v1/auth/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: token, new_password: password }),
+          });
+          if (resp.ok) {
+            forgotSuccess.textContent = 'Password reset successfully! Redirecting to login...';
+            forgotSuccess.style.display = 'block';
+            step2.style.display = 'none';
+            setTimeout(function() { backLink.click(); }, 2000);
+          } else {
+            var data = await resp.json();
+            forgotError.textContent = data.detail || 'Reset failed. Token may be expired.';
+            forgotError.style.display = 'block';
+          }
+        } catch (err) {
+          forgotError.textContent = 'Network error. Please try again.';
+          forgotError.style.display = 'block';
+        }
+        this.disabled = false;
+        this.textContent = 'Reset Password';
       });
     })();
 

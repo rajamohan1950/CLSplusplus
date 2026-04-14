@@ -60,7 +60,11 @@
           ? '<img src="' + user.avatar_url + '" class="nav-avatar" alt="">'
           : '<span class="nav-avatar-placeholder">' + (user.name || user.email)[0].toUpperCase() + '</span>';
         var adminLink = user.is_admin
-          ? '<a href="/admin/dashboard.html" class="nav-admin-link">Admin</a>'
+          ? '<a href="/admin/dashboard.html" class="nav-admin-link">Admin</a>' +
+            '<a href="/dashboard.html" class="nav-page-link">Dashboard</a>' +
+            '<a href="/memory.html" class="nav-page-link">Memory</a>' +
+            '<a href="/profile.html" class="nav-page-link">Profile</a>' +
+            '<a href="/chat.html" class="nav-page-link">Chat</a>'
           : '';
         container.innerHTML =
           adminLink +
