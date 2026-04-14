@@ -76,6 +76,21 @@ CREATE TABLE IF NOT EXISTS email_verification_tokens (
 CREATE INDEX IF NOT EXISTS idx_verify_tokens_user ON email_verification_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_verify_tokens_hash ON email_verification_tokens(token_hash);
 
+-- Pending registrations (verify email BEFORE creating user)
+CREATE TABLE IF NOT EXISTS pending_registrations (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email           TEXT NOT NULL,
+    password_hash   TEXT NOT NULL,
+    name            TEXT NOT NULL DEFAULT '',
+    otp_code        TEXT NOT NULL,
+    token_hash      TEXT NOT NULL,
+    expires_at      TIMESTAMPTZ NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pending_reg_email ON pending_registrations(email);
+CREATE INDEX IF NOT EXISTS idx_pending_reg_token ON pending_registrations(token_hash);
+
 -- Revenue events: add CASCADE for user deletion
 ALTER TABLE revenue_events DROP CONSTRAINT IF EXISTS revenue_events_user_id_fkey;
 ALTER TABLE revenue_events ADD CONSTRAINT revenue_events_user_id_fkey

@@ -961,19 +961,52 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.post("/v1/auth/register")
     async def register_user(request: Request, req: UserRegisterRequest):
-        """Register a new user with email and password."""
+        """Step 1: Validate email/password, send OTP. Does NOT create user yet."""
         base_url = str(request.base_url).rstrip("/")
         if request.headers.get("x-forwarded-proto") == "https":
             base_url = base_url.replace("http://", "https://", 1)
         try:
-            user, token = await user_service.register(req.email, req.password, req.name, base_url=base_url)
+            result = await user_service.register(req.email, req.password, req.name, base_url=base_url)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             logger.error("Registration error: %s: %s", type(e).__name__, e)
             raise HTTPException(status_code=500, detail="Registration service unavailable")
+        return JSONResponse(content=result)
+
+    @app.post("/v1/auth/verify-register")
+    async def verify_register(request: Request):
+        """Step 2: Verify OTP and create the actual user account."""
+        body = await request.json()
+        email = body.get("email", "").strip()
+        otp_code = body.get("otp_code", "").strip()
+        if not email or not otp_code or len(otp_code) != 6:
+            raise HTTPException(status_code=400, detail="Email and 6-digit code required")
+        try:
+            user, token = await user_service.complete_registration(email, otp_code)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error("Verify-register error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="Verification failed")
         response = JSONResponse(content=user)
         return _set_session_cookie(response, token)
+
+    @app.get("/v1/auth/verify-register")
+    async def verify_register_link(request: Request, token: str = Query("")):
+        """Verify via magic link click and create user account."""
+        if not token:
+            raise HTTPException(status_code=400, detail="Missing token")
+        try:
+            user, jwt_token = await user_service.complete_registration_link(token)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error("Magic link register error: %s", e)
+            raise HTTPException(status_code=500, detail="Verification failed")
+        from starlette.responses import RedirectResponse
+        response = RedirectResponse("/dashboard.html?verified=1")
+        return _set_session_cookie(response, jwt_token)
 
     @app.post("/v1/auth/login")
     async def login_user(req: UserLoginRequest):

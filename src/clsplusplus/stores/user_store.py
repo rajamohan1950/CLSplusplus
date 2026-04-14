@@ -407,6 +407,74 @@ class UserStore:
             )
 
     # =========================================================================
+    # Pending registrations (verify-first flow)
+    # =========================================================================
+
+    async def create_pending_registration(
+        self, email: str, password_hash: str, name: str,
+        otp_code: str, token_hash: str, expires_at: datetime,
+    ) -> dict:
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            # Remove any previous pending for this email
+            await conn.execute("DELETE FROM pending_registrations WHERE email = $1", email)
+            row = await conn.fetchrow(
+                """
+                INSERT INTO pending_registrations (email, password_hash, name, otp_code, token_hash, expires_at)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                RETURNING *
+                """,
+                email, password_hash, name, otp_code, token_hash, expires_at,
+            )
+            return _row_to_dict(row)
+
+    async def get_pending_by_otp(self, email: str, otp_code: str) -> Optional[dict]:
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT * FROM pending_registrations
+                WHERE email = $1 AND otp_code = $2 AND expires_at > $3
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                email, otp_code, _now(),
+            )
+            if not row:
+                return None
+            d = dict(row)
+            for k, v in d.items():
+                if hasattr(v, "hex") and hasattr(v, "int"):
+                    d[k] = str(v)
+                elif isinstance(v, datetime):
+                    d[k] = v.isoformat()
+            return d
+
+    async def get_pending_by_token(self, token_hash: str) -> Optional[dict]:
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT * FROM pending_registrations
+                WHERE token_hash = $1 AND expires_at > $2
+                """,
+                token_hash, _now(),
+            )
+            if not row:
+                return None
+            d = dict(row)
+            for k, v in d.items():
+                if hasattr(v, "hex") and hasattr(v, "int"):
+                    d[k] = str(v)
+                elif isinstance(v, datetime):
+                    d[k] = v.isoformat()
+            return d
+
+    async def delete_pending(self, email: str) -> None:
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM pending_registrations WHERE email = $1", email)
+
+    # =========================================================================
     # User deletion
     # =========================================================================
 

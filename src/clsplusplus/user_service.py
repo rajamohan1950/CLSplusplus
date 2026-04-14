@@ -50,10 +50,10 @@ class UserService:
 
     async def register(
         self, email: str, password: str, name: str = "", base_url: str = ""
-    ) -> tuple[dict, str]:
-        """Register a new user with email+password.
+    ) -> dict:
+        """Step 1: Validate, send OTP, store pending registration.
 
-        Returns (user_dict, jwt_token).
+        Does NOT create the user. Returns {pending: true, email: ...}.
         Raises ValueError on validation failure or duplicate email.
         """
         email = email.strip().lower()
@@ -67,24 +67,101 @@ class UserService:
             raise ValueError("An account with this email already exists")
 
         password_hash = _hash_password(password)
-        user = await self.store.create_user(
+        otp_code = self._generate_otp()
+        raw_token = secrets.token_urlsafe(48)
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+        await self.store.create_pending_registration(
             email=email,
             password_hash=password_hash,
             name=name or email.split("@")[0],
+            otp_code=otp_code,
+            token_hash=token_hash,
+            expires_at=expires_at,
         )
+
+        # Send verification email
+        base = base_url.rstrip("/") if base_url else self.settings.site_base_url
+        verify_link = f"{base}/v1/auth/verify-register?token={raw_token}"
+        try:
+            await self.email.send_verification_email(
+                to=email, otp_code=otp_code, verify_link=verify_link,
+            )
+        except Exception as e:
+            logger.warning("Verification email failed for %s: %s", email, e)
+
+        return {"pending": True, "email": email}
+
+    async def complete_registration(self, email: str, otp_code: str) -> tuple[dict, str]:
+        """Step 2: Verify OTP and create the actual user account.
+
+        Returns (user_dict, jwt_token).
+        Raises ValueError on invalid/expired OTP.
+        """
+        email = email.strip().lower()
+        pending = await self.store.get_pending_by_otp(email, otp_code)
+        if not pending:
+            raise ValueError("Invalid or expired verification code")
+
+        # Check email not taken (race condition guard)
+        existing = await self.store.get_by_email(email)
+        if existing:
+            await self.store.delete_pending(email)
+            raise ValueError("An account with this email already exists")
+
+        # Create user
+        user = await self.store.create_user(
+            email=pending["email"],
+            password_hash=pending["password_hash"],
+            name=pending["name"],
+        )
+        # Mark as verified
+        await self.store.mark_email_verified(user["id"])
+        user["email_verified"] = True
+
+        # Clean up pending
+        await self.store.delete_pending(email)
+
         token = create_token(
             user_id=user["id"],
             email=user["email"],
             is_admin=user["is_admin"],
             secret=self.settings.jwt_secret,
         )
+        return _strip_password(user), token
 
-        # Send verification email (non-blocking — registration succeeds even if email fails)
-        try:
-            await self._send_verification_email(user["id"], email, base_url)
-        except Exception as e:
-            logger.warning("Verification email failed for %s (non-fatal): %s", email, e)
+    async def complete_registration_link(self, raw_token: str) -> tuple[dict, str]:
+        """Verify via magic link and create the actual user account.
 
+        Returns (user_dict, jwt_token).
+        Raises ValueError on invalid/expired token.
+        """
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        pending = await self.store.get_pending_by_token(token_hash)
+        if not pending:
+            raise ValueError("Invalid or expired verification link")
+
+        existing = await self.store.get_by_email(pending["email"])
+        if existing:
+            await self.store.delete_pending(pending["email"])
+            raise ValueError("An account with this email already exists")
+
+        user = await self.store.create_user(
+            email=pending["email"],
+            password_hash=pending["password_hash"],
+            name=pending["name"],
+        )
+        await self.store.mark_email_verified(user["id"])
+        user["email_verified"] = True
+        await self.store.delete_pending(pending["email"])
+
+        token = create_token(
+            user_id=user["id"],
+            email=user["email"],
+            is_admin=user["is_admin"],
+            secret=self.settings.jwt_secret,
+        )
         return _strip_password(user), token
 
     async def login(self, email: str, password: str) -> tuple[dict, str]:

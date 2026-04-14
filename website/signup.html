@@ -111,7 +111,7 @@
         errorEl.style.display = 'none';
         successEl.style.display = 'none';
         submitBtn.disabled = true;
-        submitBtn.textContent = 'Creating account...';
+        submitBtn.textContent = 'Sending verification code...';
         _userEmail = form.email.value.trim();
 
         try {
@@ -165,11 +165,11 @@
         verifyBtn.textContent = 'Verifying...';
         errorEl.style.display = 'none';
         try {
-          var resp = await fetch('/v1/auth/verify-email', {
+          var resp = await fetch('/v1/auth/verify-register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
-            body: JSON.stringify({ otp_code: code }),
+            body: JSON.stringify({ email: _userEmail, otp_code: code }),
           });
           if (resp.ok) {
             successEl.textContent = 'Email verified! Redirecting...';
@@ -195,10 +195,16 @@
       resendLink.addEventListener('click', async function(e) {
         e.preventDefault();
         errorEl.style.display = 'none';
+        successEl.style.display = 'none';
         try {
-          var resp = await fetch('/v1/auth/resend-verification', {
+          var resp = await fetch('/v1/auth/register', {
             method: 'POST',
-            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: form.name.value.trim(),
+              email: _userEmail,
+              password: form.password.value,
+            }),
           });
           if (resp.ok) {
             successEl.textContent = 'New verification code sent!';
