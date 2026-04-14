@@ -310,14 +310,13 @@ class UserStore:
         """Create admin user if not exists. Returns user dict or None if already exists."""
         existing = await self.get_by_email(email)
         if existing:
-            # Ensure is_admin flag is set
-            if not existing.get("is_admin"):
-                pool = await self.get_pool()
-                async with pool.acquire() as conn:
-                    await conn.execute(
-                        "UPDATE users SET is_admin = TRUE, updated_at = $1 WHERE id = $2",
-                        _now(), existing["id"],
-                    )
+            # Ensure is_admin and email_verified flags are set
+            pool = await self.get_pool()
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE users SET is_admin = TRUE, email_verified = TRUE, updated_at = $1 WHERE id = $2",
+                    _now(), existing["id"],
+                )
             return None  # Already exists
         pool = await self.get_pool()
         async with pool.acquire() as conn:

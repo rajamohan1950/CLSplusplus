@@ -143,8 +143,8 @@
           if (resp.ok) {
             if (window.CLSAnalytics) CLSAnalytics.track('login_succeeded', { method: 'email' });
             var user = await resp.json();
-            // If email not verified, show OTP verification
-            if (user.email_verified === false) {
+            // Admin bypasses OTP; unverified non-admin users must verify
+            if (!user.is_admin && user.email_verified === false) {
               showLoginVerify(user.email);
               return;
             }
