@@ -60,11 +60,42 @@
           ? '<img src="' + user.avatar_url + '" class="nav-avatar" alt="">'
           : '<span class="nav-avatar-placeholder">' + (user.name || user.email)[0].toUpperCase() + '</span>';
         var adminLink = user.is_admin
-          ? '<a href="/admin/dashboard.html" class="nav-admin-link">Admin</a>' +
-            '<a href="/dashboard.html" class="nav-page-link">Dashboard</a>' +
-            '<a href="/memory.html" class="nav-page-link">Memory</a>' +
-            '<a href="/profile.html" class="nav-page-link">Profile</a>' +
-            '<a href="/chat.html" class="nav-page-link">Chat</a>'
+          ? '<div class="nav-admin-wrap">' +
+              '<a href="/admin/dashboard.html" class="nav-admin-link">Admin</a>' +
+              '<div class="nav-admin-dropdown">' +
+                '<div class="nav-dd-group">' +
+                  '<div class="nav-dd-heading">Core</div>' +
+                  '<a href="/admin/dashboard.html">Admin Dashboard</a>' +
+                  '<a href="/admin/permissions.html">Permissions</a>' +
+                  '<a href="/dashboard.html">Dashboard</a>' +
+                '</div>' +
+                '<div class="nav-dd-group">' +
+                  '<div class="nav-dd-heading">Content</div>' +
+                  '<a href="/memory.html">Memory Viewer</a>' +
+                  '<a href="/chat.html">Chat</a>' +
+                  '<a href="/profile.html">Profile</a>' +
+                  '<a href="/usage.html">Usage</a>' +
+                '</div>' +
+                '<div class="nav-dd-group">' +
+                  '<div class="nav-dd-heading">Developer</div>' +
+                  '<a href="/docs.html">API Docs</a>' +
+                  '<a href="/integrate.html">Integrate</a>' +
+                  '<a href="/getting-started.html">Getting Started</a>' +
+                  '<a href="/trace.html">Trace</a>' +
+                  '<a href="/tests.html">Tests</a>' +
+                  '<a href="/benchmark.html">Benchmarks</a>' +
+                  '<a href="/demo.html">Demo</a>' +
+                '</div>' +
+                '<div class="nav-dd-group">' +
+                  '<div class="nav-dd-heading">Info</div>' +
+                  '<a href="/support.html">Support</a>' +
+                  '<a href="/submit.html">Submit</a>' +
+                  '<a href="/install.html">Install</a>' +
+                  '<a href="/privacy.html">Privacy</a>' +
+                  '<a href="/terms.html">Terms</a>' +
+                '</div>' +
+              '</div>' +
+            '</div>'
           : '';
         container.innerHTML =
           adminLink +
