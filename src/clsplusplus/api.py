@@ -33,6 +33,8 @@ from clsplusplus.models import (
     HealthResponse,
     IntegrationCreate,
     MemoryCycleRequest,
+    PasswordResetConfirm,
+    PasswordResetRequest,
     PromptIngestRequest,
     RazorpayVerifyRequest,
     ReadRequest,
@@ -981,6 +983,31 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(status_code=500, detail="Login service unavailable")
         response = JSONResponse(content=user)
         return _set_session_cookie(response, token)
+
+    @app.post("/v1/auth/forgot-password")
+    async def forgot_password(req: PasswordResetRequest):
+        """Request a password reset token."""
+        try:
+            token = await user_service.request_password_reset(req.email)
+        except Exception as e:
+            logger.error("Password reset request error: %s", e)
+            # Always return 200 to prevent user enumeration
+            return {"detail": "If an account with that email exists, a reset token has been generated.", "token": None}
+        if token:
+            return {"detail": "Password reset token generated. Valid for 1 hour.", "token": token}
+        return {"detail": "If an account with that email exists, a reset token has been generated.", "token": None}
+
+    @app.post("/v1/auth/reset-password")
+    async def reset_password(req: PasswordResetConfirm):
+        """Reset password using a valid token."""
+        try:
+            user = await user_service.reset_password(req.token, req.new_password)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error("Password reset error: %s", e)
+            raise HTTPException(status_code=500, detail="Password reset service unavailable")
+        return {"detail": "Password has been reset successfully."}
 
     @app.post("/v1/auth/logout")
     async def logout_user():
@@ -2153,6 +2180,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         2. Re-tune IVFFlat lists for the current row count (1M-ready).
         3. Start the periodic hippocampal replay loop (every 5 minutes).
         """
+        # ── 0. Seed default admin user ─────────────────────────────────────
+        try:
+            await user_service.ensure_admin()
+        except Exception as e:
+            _api_logger.warning("Admin seeding failed (non-fatal): %s", e)
+
         # ── 1. Warm up all persisted namespaces from L1 ────────────────────
         await memory_service.startup_preload()
 

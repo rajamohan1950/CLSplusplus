@@ -1,9 +1,12 @@
-"""User service — registration, login, Google OAuth, tier management."""
+"""User service — registration, login, Google OAuth, tier management, password reset."""
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import bcrypt
@@ -255,3 +258,95 @@ class UserService:
 
     async def list_users(self, limit: int = 100, offset: int = 0) -> list[dict]:
         return await self.store.list_users(limit, offset)
+
+    # =========================================================================
+    # Password reset
+    # =========================================================================
+
+    async def request_password_reset(self, email: str) -> Optional[str]:
+        """Generate a password reset token for the given email.
+
+        Returns the raw token string, or None if email not found / Google-only.
+        """
+        email = email.strip().lower()
+        user = await self.store.get_by_email(email)
+        if not user:
+            return None
+        if not user.get("password_hash"):
+            return None  # Google-only account
+
+        raw_token = secrets.token_urlsafe(48)
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+
+        await self.store.create_reset_token(
+            user_id=user["id"],
+            token_hash=token_hash,
+            expires_at=expires_at,
+        )
+        return raw_token
+
+    async def reset_password(self, token: str, new_password: str) -> dict:
+        """Reset a user's password using a valid reset token.
+
+        Returns updated user dict.
+        Raises ValueError on invalid/expired token or bad password.
+        """
+        if len(new_password) < 8:
+            raise ValueError("Password must be at least 8 characters")
+
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        token_record = await self.store.get_reset_token(token_hash)
+        if not token_record:
+            raise ValueError("Invalid or expired reset token")
+
+        user_id = token_record["user_id"]
+        new_hash = _hash_password(new_password)
+        updated = await self.store.update_user(user_id, {"password_hash": new_hash})
+        if not updated:
+            raise ValueError("User not found")
+
+        await self.store.mark_token_used(token_record["id"])
+        return _strip_password(updated)
+
+    # =========================================================================
+    # Admin seeding
+    # =========================================================================
+
+    async def ensure_admin(self) -> None:
+        """Create the default admin user if it doesn't exist."""
+        admin_email = "admin@clsplusplus.com"
+        admin_password = "admin123"
+        admin_hash = _hash_password(admin_password)
+
+        result = await self.store.ensure_admin_user(
+            email=admin_email,
+            password_hash=admin_hash,
+            name="admin",
+        )
+        if result:
+            logger.info("Default admin user created: %s", admin_email)
+            # Assign super_admin role via RBAC
+            try:
+                from clsplusplus.rbac_service import RBACService
+                from clsplusplus.stores.rbac_store import RBACStore
+                rbac_store = RBACStore(self.settings)
+                pool = await self.store.get_pool()
+                async with pool.acquire() as conn:
+                    role = await conn.fetchrow(
+                        "SELECT id FROM roles WHERE name = 'super_admin'"
+                    )
+                    if role:
+                        await conn.execute(
+                            """
+                            INSERT INTO user_roles (user_id, role_id)
+                            VALUES ($1, $2)
+                            ON CONFLICT DO NOTHING
+                            """,
+                            result["id"], str(role["id"]),
+                        )
+                        logger.info("Assigned super_admin role to admin user")
+            except Exception as e:
+                logger.warning("Could not assign RBAC role to admin (non-fatal): %s", e)
+        else:
+            logger.debug("Admin user already exists: %s", admin_email)

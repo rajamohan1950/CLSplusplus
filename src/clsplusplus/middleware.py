@@ -25,6 +25,8 @@ _PUBLIC_PATHS = frozenset({
     "/v1/demo/classify",
     "/v1/auth/register",
     "/v1/auth/login",
+    "/v1/auth/forgot-password",
+    "/v1/auth/reset-password",
     "/v1/auth/google",
     "/v1/auth/google/callback",
     "/v1/billing/webhook",

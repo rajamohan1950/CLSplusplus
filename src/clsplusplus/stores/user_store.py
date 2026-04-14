@@ -245,6 +245,92 @@ class UserStore:
             )
             return _row_to_dict(row)
 
+    # =========================================================================
+    # Password reset tokens
+    # =========================================================================
+
+    async def create_reset_token(
+        self, user_id: str, token_hash: str, expires_at: datetime
+    ) -> dict:
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+                VALUES ($1, $2, $3)
+                RETURNING *
+                """,
+                user_id, token_hash, expires_at,
+            )
+            return _row_to_dict(row)
+
+    async def get_reset_token(self, token_hash: str) -> Optional[dict]:
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT * FROM password_reset_tokens
+                WHERE token_hash = $1 AND used_at IS NULL AND expires_at > $2
+                """,
+                token_hash, _now(),
+            )
+            if not row:
+                return None
+            d = dict(row)
+            for k, v in d.items():
+                if hasattr(v, "hex") and hasattr(v, "int"):
+                    d[k] = str(v)
+                elif isinstance(v, datetime):
+                    d[k] = v.isoformat()
+            return d
+
+    async def mark_token_used(self, token_id: str) -> None:
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE password_reset_tokens SET used_at = $1 WHERE id = $2",
+                _now(), token_id,
+            )
+
+    async def cleanup_expired_tokens(self) -> int:
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(
+                "DELETE FROM password_reset_tokens WHERE expires_at < $1 OR used_at IS NOT NULL",
+                _now(),
+            )
+            # result is like "DELETE 5"
+            return int(result.split()[-1]) if result else 0
+
+    # =========================================================================
+    # Admin seeding
+    # =========================================================================
+
+    async def ensure_admin_user(self, email: str, password_hash: str, name: str) -> Optional[dict]:
+        """Create admin user if not exists. Returns user dict or None if already exists."""
+        existing = await self.get_by_email(email)
+        if existing:
+            # Ensure is_admin flag is set
+            if not existing.get("is_admin"):
+                pool = await self.get_pool()
+                async with pool.acquire() as conn:
+                    await conn.execute(
+                        "UPDATE users SET is_admin = TRUE, updated_at = $1 WHERE id = $2",
+                        _now(), existing["id"],
+                    )
+            return None  # Already exists
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO users (email, password_hash, name, is_admin, tier)
+                VALUES ($1, $2, $3, TRUE, 'enterprise')
+                RETURNING *
+                """,
+                email, password_hash, name,
+            )
+            return _row_to_dict(row)
+
     async def get_revenue_events(self, limit: int = 100) -> list[dict]:
         pool = await self.get_pool()
         async with pool.acquire() as conn:
