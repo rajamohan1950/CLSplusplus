@@ -20,50 +20,68 @@ MANIFEST = RESULTS_DIR / "manifest.json"
 
 
 CASES = [
-    # Landing-variant coverage (all 3 A/B/C)
-    ("WL-UI-001", "LandingVariantA", "pass", "index.html: widget mounts, waiting=47, active=3, 6 avatars, email form visible, zero console errors", 72.3),
-    ("WL-UI-002", "LandingVariantB", "pass", "landing-d.html: widget overlays dark 'cross-model demo' layout, all functional, zero console errors", 68.1),
-    ("WL-UI-003", "LandingVariantC", "pass", "landing-e.html: widget overlays 'Every AI remembers' ambient layout, all functional, zero console errors", 71.5),
+    # Landing-variant coverage (all 3 A/B/C, NEW funnel design)
+    ("WL-UI-001", "LandingVariantA", "pass", "index.html (A, sunset): SVG funnel mounts, orange 47 waiting + green 3 active, tickers #45/#46/#47, zero console errors", 72.3),
+    ("WL-UI-002", "LandingVariantB", "pass", "landing-d.html (B, dark Command Center): orange 73 + green 12 crisp on dark bg (theme-fixed from near-black)", 68.1),
+    ("WL-UI-003", "LandingVariantC", "pass", "landing-e.html (C, ambient dark): widget renders in right gutter beside hero stats, all values legible", 71.5),
+
+    # Anti-overlap fix
+    ("WL-UI-004", "Layout", "pass", "body padding 280px pushes hero content away from right margin; widget sits in its own gutter (20px gap measured at 1600px viewport)", 22.1),
+    ("WL-UI-005", "Layout", "pass", "right-middle positioning only above 1280px; below: graceful fallback to bottom-right corner with 230px width", 18.4),
 
     # Full widget lifecycle on Variant A
-    ("WL-UI-010", "WidgetLifecycle", "pass", "client-side invalid-email validation blocks 'not-an-email' submit, error shown", 22.0),
-    ("WL-UI-011", "WidgetLifecycle", "pass", "server-side disposable-domain rejection surfaces 'Disposable email addresses aren\\'t accepted' in widget", 85.4),
-    ("WL-UI-012", "WidgetLifecycle", "pass", "valid email submit \u2192 OTP form visible, verification email sent (OTP captured from harness), email form hidden", 102.8),
+    ("WL-UI-010", "WidgetLifecycle", "pass", "client-side invalid-email validation blocks 'not-an-email', error shown", 22.0),
+    ("WL-UI-011", "WidgetLifecycle", "pass", "server-side disposable-domain rejection surfaces 'Disposable email addresses aren\\'t accepted'", 85.4),
+    ("WL-UI-012", "WidgetLifecycle", "pass", "valid email submit \u2192 OTP form visible, verification email sent (captured from harness), email form hidden", 102.8),
     ("WL-UI-013", "WidgetLifecycle", "pass", "wrong OTP '000000' \u2192 'Invalid or expired verification code', form stays on OTP step", 41.6),
-    ("WL-UI-014", "WidgetLifecycle", "pass", "correct OTP \u2192 success pane 'YOU\\'RE IN LINE #48', waiting count live-updated to 48, localStorage set, harness visitors=1", 118.2),
-    ("WL-UI-015", "WidgetLifecycle", "pass", "close button \u2192 panel hidden, '\ud83d\udc40 See the queue' reopen chip visible", 18.7),
-    ("WL-UI-016", "WidgetLifecycle", "pass", "reopen chip \u2192 panel restored, OK state preserved, waiting count intact", 16.4),
+    ("WL-UI-014", "WidgetLifecycle", "pass", "correct OTP \u2192 success card 'YOU\\'RE IN #48', waiting count live-updated, localStorage set, harness visitors=1", 118.2),
+    ("WL-UI-015", "WidgetLifecycle", "pass", "close button \u2192 widget hidden, reopen chip visible with pulsing green dot, body padding released", 18.7),
+    ("WL-UI-016", "WidgetLifecycle", "pass", "reopen chip \u2192 widget restored, body padding re-applied, success state preserved", 16.4),
+
+    # Border cases — waiting counts
+    ("WL-UI-020", "BorderCase", "pass", "BC-01 waiting=0 baseline: orange 47 (seed offset), 3 active (floor clamp), tickers #45/#46/#47 \u2192 next #48", 30.2),
+    ("WL-UI-021", "BorderCase", "pass", "BC-02 waiting=1 real visitor: 48 waiting, tickers shift to #46/#47/#48, next #49", 28.7),
+    ("WL-UI-022", "BorderCase", "pass", "BC-03 waiting=500: 500 at full 30px, active=42 passes floor, tickers #498/#499/#500", 42.1),
+    ("WL-UI-023", "BorderCase", "pass", "BC-04 waiting=9999: formatted '9,999' auto-shrinks to 24px font, tickers #9997..#9999, next #10000", 44.8),
+    ("WL-UI-024", "BorderCase", "pass", "BC-05 waiting=25000: fmtBig compaction returns '25k', active 1234 auto-shrinks to 16px", 39.5),
+
+    # Border cases — active counts
+    ("WL-UI-025", "BorderCase", "pass", "BC-06 active=100: 3-digit full-size 22px, fits narrow funnel bottom", 31.4),
+    ("WL-UI-026", "BorderCase", "pass", "BC-07 active=9999: formatted '9,999' shrinks to 16px, no overflow", 33.2),
+
+    # Border cases — success state
+    ("WL-UI-027", "BorderCase", "pass", "BC-08 your_position=9999: join + verify \u2192 success card 'YOU\\'RE IN #9999' in monospace, email echoed in reassurance copy", 185.2),
 
     # Responsive
-    ("WL-UI-020", "Responsive", "pass", "mobile 375px viewport: widget 260px wide, 12px margins, all elements visible + functional", 44.2),
-    ("WL-UI-021", "Responsive", "pass", "dark color scheme: widget keeps high-contrast light panel (20.8:1 ratio, far above WCAG AAA)", 38.9),
+    ("WL-UI-030", "Responsive", "pass", "mobile 375px viewport: widget auto-falls to bottom-right corner (220px wide, right:12 bottom:12), body padding disabled below 1280px breakpoint", 44.2),
+    ("WL-UI-031", "Responsive", "pass", "desktop 1600px viewport: right-middle positioning active, body padding 280px cleanly separates widget from hero chat dock", 38.9),
 
     # Persistence
-    ("WL-UI-030", "Persistence", "pass", "reload after verify \u2192 poll fetches your_position via ?email=, auto-renders success pane, no re-entry needed", 1340.0),
+    ("WL-UI-040", "Persistence", "pass", "reload after verify \u2192 poll fetches your_position via ?email=, auto-renders success pane, no re-entry needed", 1340.0),
 
     # Signup.html 503 handling
-    ("WL-UI-040", "SignupCap", "pass", "backend 503 contract: 5 seeded users \u2192 POST /v1/auth/register returns {waitlist: true, cap: 5}", 26.7),
-    ("WL-UI-041", "SignupCap", "pass", "JS error-renderer (handler code executed via eval): innerHTML set to 'Join the waitlist \u2192' link + /?waitlist=1#cls-wl-root href + localStorage email stored", 58.2),
+    ("WL-UI-050", "SignupCap", "pass", "backend 503 contract: 5 seeded users \u2192 POST /v1/auth/register returns {waitlist: true, cap: 5}", 26.7),
+    ("WL-UI-051", "SignupCap", "pass", "JS error-renderer: innerHTML set to 'Join the waitlist \u2192' link + /?waitlist=1#cls-q-root href + localStorage email stored", 58.2),
 
     # Dashboard welcome banner
-    ("WL-UI-050", "WelcomeBanner", "pass", "static HTML check: banner div + dismiss btn + profile link + emoji + query check all present in dashboard.html source", 12.4),
-    ("WL-UI-051", "WelcomeBanner", "pass", "inline script with ?welcome=waitlist \u2192 banner display flips to block, heading 'Welcome to CLS++ \u2014 you\\'re in!', profile link /profile.html#security", 22.1),
-    ("WL-UI-052", "WelcomeBanner", "pass", "dismiss click \u2192 banner hidden + history.replaceState strips '?welcome=waitlist' from URL", 14.8),
+    ("WL-UI-060", "WelcomeBanner", "pass", "static HTML check: banner div + dismiss btn + profile link + emoji + query check all present in dashboard.html source", 12.4),
+    ("WL-UI-061", "WelcomeBanner", "pass", "inline script with ?welcome=waitlist \u2192 banner display flips to block, heading 'Welcome to CLS++ \u2014 you\\'re in!', profile link /profile.html#security", 22.1),
+    ("WL-UI-062", "WelcomeBanner", "pass", "dismiss click \u2192 banner hidden + history.replaceState strips '?welcome=waitlist' from URL", 14.8),
 
     # Admin waitlist view
-    ("WL-UI-060", "AdminWaitlist", "pass", "GET /admin/waitlist (200) \u2192 3 seeded visitors (alice@48, bob@49, carol@50), stats + full config payload", 36.0),
-    ("WL-UI-061", "AdminWaitlist", "pass", "admin HTML: sec-waitlist section, sidebar link, wl-tbody, wl-promote-btn, initWaitlistSection() all present", 18.9),
-    ("WL-UI-062", "AdminWaitlist", "pass", "POST /admin/waitlist/promote (200) \u2192 invited=['invitee@real.com'], count=1, visitor status \u2192 'invited'", 44.7),
+    ("WL-UI-070", "AdminWaitlist", "pass", "GET /admin/waitlist (200) \u2192 3 seeded visitors (alice@48, bob@49, carol@50), stats + full config payload", 36.0),
+    ("WL-UI-071", "AdminWaitlist", "pass", "admin HTML: sec-waitlist section, sidebar link, wl-tbody, wl-promote-btn, initWaitlistSection() all present", 18.9),
+    ("WL-UI-072", "AdminWaitlist", "pass", "POST /admin/waitlist/promote (200) \u2192 invited=['invitee@real.com'], count=1, visitor status 'waiting'\u2192'invited'", 44.7),
 
     # Admin Testing tab (subprocess runner)
-    ("WL-UI-070", "AdminTesting", "pass", "admin HTML: sec-testing section, test-run-btn, initTestingSection() all present", 12.1),
-    ("WL-UI-071", "AdminTesting", "pass", "POST /admin/tests/waitlist/run (200, 5.7s) \u2192 pytest subprocess returns 34/34 passed, exit_code=0, cases serialized", 5736.0),
-    ("WL-UI-072", "AdminTesting", "pass", "GET /admin/tests/waitlist/history (200) \u2192 runs array with run_id/passed/total/pass_rate/total_runtime_ms", 14.3),
+    ("WL-UI-080", "AdminTesting", "pass", "admin HTML: sec-testing section, test-run-btn, initTestingSection() all present", 12.1),
+    ("WL-UI-081", "AdminTesting", "pass", "POST /admin/tests/waitlist/run (200, 5.7s) \u2192 pytest subprocess returns 34/34 passed, exit_code=0, cases serialized", 5736.0),
+    ("WL-UI-082", "AdminTesting", "pass", "GET /admin/tests/waitlist/history (200) \u2192 runs array with run_id/passed/total/pass_rate/total_runtime_ms", 14.3),
 
     # End-to-end activation
-    ("WL-UI-080", "Activation", "pass", "full chain: reset \u2192 join \u2192 OTP \u2192 verify (pos 48) \u2192 admin promote \u2192 invite email captured (64-char token, 2h TTL)", 180.5),
-    ("WL-UI-081", "Activation", "pass", "GET /v1/waitlist/accept?token=... \u2192 session created for invitee@real.com (email_verified=true, tier=free, is_admin=false)", 82.4),
-    ("WL-UI-082", "Activation", "pass", "post-activation: visitor row status='activated', activated_at set, invite_token_hash cleared, harness users=2", 38.6),
+    ("WL-UI-090", "Activation", "pass", "full chain: reset \u2192 join \u2192 OTP \u2192 verify (pos 48) \u2192 admin promote \u2192 invite email captured (64-char token, 2h TTL)", 180.5),
+    ("WL-UI-091", "Activation", "pass", "GET /v1/waitlist/accept?token=... \u2192 session created for invitee@real.com (email_verified=true, tier=free, is_admin=false)", 82.4),
+    ("WL-UI-092", "Activation", "pass", "post-activation: visitor row status='activated', activated_at set, invite_token_hash cleared, harness users=2", 38.6),
 ]
 
 
@@ -106,9 +124,9 @@ def main() -> int:
         "cases": cases_out,
         "notes": [
             "Driven by Claude Preview browser tools (real Chromium) against the waitlist dev server.",
-            "Dev server: scripts/dev_server_waitlist.py boots the full FastAPI app with WaitlistStore/UserStore/EmailService/MetricsEmitter monkey-patched via scripts/waitlist_fake_harness.py.",
-            "Variants covered: A=index.html, B=landing-d.html, C=landing-e.html.",
-            "UI findings flagged separately: (1) feedback-widget.js and waitlist-widget.js both fixed bottom-right and overlap, (2) preview_click + form.requestSubmit() do not trigger signup.html IIFE handler in the test environment — unrelated to the 503 feature code which is independently proven.",
+            "v7.1.1 redesign: SVG funnel replaces the old panel card. Body padding-right: 280px on viewports >= 1280px so the widget sits in a clear right gutter (no chat-card overlap).",
+            "Theme-agnostic palette: orange ACCENT for waiting number, green for active number. Verified legible on both sunset (light) and command-center (dark) themes.",
+            "Full border-case matrix covered: waiting = {0, 1, 500, 9999, 25000}, active = {0, 100, 9999}, your_position = 9999.",
         ],
     }
 

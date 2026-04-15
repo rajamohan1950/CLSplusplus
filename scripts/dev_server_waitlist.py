@@ -184,6 +184,53 @@ async def _dev_seed_users(request: _Req):
     return {"count": len(HARNESS.users)}
 
 
+@app.post("/v1/dev/set-counts")
+async def _dev_set_counts(request: _Req):
+    """Force exact displayed counts for border-case stress testing.
+
+    Body: {waiting: int, active: int}. The `waiting` number is applied by
+    injecting synthetic visitor rows into the harness so stats() reports the
+    target (minus the seed offset). `active` goes straight into
+    HARNESS.active_now and the floor still applies.
+    """
+    body = await request.json()
+    target_waiting = int(body.get("waiting", 0))
+    target_active = int(body.get("active", 0))
+    seed = int(getattr(SETTINGS, "waitlist_queue_seed_offset", 0))
+    real_target = max(0, target_waiting - seed)
+
+    import uuid as _u
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+
+    HARNESS.visitors.clear()
+    HARNESS.by_email.clear()
+    now = _dt.now(_tz.utc)
+    for i in range(real_target):
+        vid = str(_u.uuid4())
+        email = f"synthetic{i:06d}@dev.local"
+        HARNESS.visitors[vid] = {
+            "id": vid,
+            "email": email,
+            "status": "waiting",
+            "source_variant": "dev",
+            "verified_at": (now + _td(microseconds=i)).isoformat(),
+            "created_at": (now + _td(microseconds=i)).isoformat(),
+            "invited_at": None,
+            "invite_token_hash": None,
+            "invite_expires_at": None,
+            "activated_at": None,
+        }
+        HARNESS.by_email[email] = vid
+
+    HARNESS.active_now = target_active
+    return {
+        "ok": True,
+        "real_waiting": real_target,
+        "displayed_waiting": real_target + seed,
+        "active_now": target_active,
+    }
+
+
 @app.get("/v1/dev/state")
 async def _dev_state():
     return {
