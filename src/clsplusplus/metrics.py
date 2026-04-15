@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time as _time_mod
 from datetime import datetime
 from typing import Optional
 
@@ -95,6 +96,53 @@ class MetricsEmitter:
         return totals
 
     # =========================================================================
+    # Unified "active users" — across extension, CLI, plugin, API
+    # =========================================================================
+    # `cls:active:global` is a Redis ZSET with score = epoch seconds, used as a
+    # 15-minute sliding window for the landing-page "active now" counter.
+    # `cls:dau:global:{YYYY-MM-DD}` is a Redis SET of unique actor identifiers
+    # counted as daily active users across every surface (extension/CLI/API).
+
+    async def record_active_user(self, identity: str) -> None:
+        """Mark an authenticated actor as 'active right now'. Fire-and-forget."""
+        if not identity:
+            return
+        try:
+            client = _redis_client(self.settings.redis_url)
+            now = int(_time_mod.time())
+            # Sliding-window set (trimmed on write to keep it cheap)
+            await client.zadd("cls:active:global", {identity: now})
+            await client.zremrangebyscore("cls:active:global", 0, now - 3600)
+            await client.expire("cls:active:global", 3600)
+            # DAU set
+            dau_key = f"cls:dau:global:{_today()}"
+            await client.sadd(dau_key, identity)
+            await client.expire(dau_key, 60 * 60 * 24 * 35)
+        except Exception:
+            pass
+
+    async def get_active_now(self, window_seconds: int = 900) -> int:
+        """Count distinct actors seen in the last `window_seconds` (default 15m)."""
+        try:
+            client = _redis_client(self.settings.redis_url)
+            now = int(_time_mod.time())
+            return int(
+                await client.zcount("cls:active:global", now - window_seconds, now)
+                or 0
+            )
+        except Exception:
+            return 0
+
+    async def get_dau(self, date_str: Optional[str] = None) -> int:
+        """Daily active users across all surfaces for the given date (default today)."""
+        date_str = date_str or _today()
+        try:
+            client = _redis_client(self.settings.redis_url)
+            return int(await client.scard(f"cls:dau:global:{date_str}") or 0)
+        except Exception:
+            return 0
+
+    # =========================================================================
     # Extension analytics — Redis SET/HASH operations
     # =========================================================================
 
@@ -134,6 +182,8 @@ class MetricsEmitter:
 
             # Also emit as a regular metric for the extension user
             await self.emit(f"ext:{uid}", f"ext_{event}", 1)
+            # Extension activity also contributes to the unified active/DAU counter
+            await self.record_active_user(f"ext:{uid}")
 
         except Exception:
             pass

@@ -82,6 +82,57 @@ class EmailService:
 </html>"""
         return await self._send(to, "Verify your CLS++ email", html)
 
+    async def send_waitlist_verification(self, to: str, otp_code: str) -> bool:
+        """Send a 6-digit verification code for the launch waitlist signup."""
+        html = f"""
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;background:#fafafa;padding:40px 20px;">
+  <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:48px 40px;box-shadow:0 2px 20px rgba(0,0,0,0.06);">
+    <div style="text-align:center;margin-bottom:32px;">
+      <span style="font-size:24px;font-weight:700;color:#1d1d1f;">CLS</span><span style="font-size:24px;font-weight:700;color:#ff6b35;">++</span>
+    </div>
+    <h1 style="font-size:22px;font-weight:600;color:#1d1d1f;text-align:center;margin-bottom:8px;">You're almost on the list</h1>
+    <p style="color:#86868b;text-align:center;font-size:15px;margin-bottom:32px;">Enter this code on the CLS++ landing page to confirm your spot.</p>
+    <div style="background:#f5f5f7;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px;">
+      <span style="font-size:36px;font-weight:700;letter-spacing:8px;color:#1d1d1f;">{otp_code}</span>
+    </div>
+    <p style="color:#86868b;text-align:center;font-size:13px;margin-bottom:24px;">This code expires in 15 minutes.</p>
+    <p style="color:#86868b;text-align:center;font-size:13px;">We're rolling out CLS++ in small waves to make sure every early user has a great experience. You'll get an invite email as soon as a seat opens up.</p>
+    <hr style="border:none;border-top:1px solid #f0f0f0;margin:32px 0 16px;">
+    <p style="color:#c0c0c0;text-align:center;font-size:11px;">If you didn't request this, you can safely ignore this email.</p>
+  </div>
+</body>
+</html>"""
+        return await self._send(to, "Your CLS++ waitlist code", html)
+
+    async def send_waitlist_invite(
+        self, to: str, accept_link: str, hours_valid: int = 2
+    ) -> bool:
+        """Send the 'your turn' invite with a one-click activation link."""
+        html = f"""
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;background:#fafafa;padding:40px 20px;">
+  <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:48px 40px;box-shadow:0 2px 20px rgba(0,0,0,0.06);">
+    <div style="text-align:center;margin-bottom:32px;">
+      <span style="font-size:24px;font-weight:700;color:#1d1d1f;">CLS</span><span style="font-size:24px;font-weight:700;color:#ff6b35;">++</span>
+    </div>
+    <h1 style="font-size:26px;font-weight:700;color:#1d1d1f;text-align:center;margin-bottom:8px;">🎉 You're in.</h1>
+    <p style="color:#86868b;text-align:center;font-size:15px;margin-bottom:32px;">A seat just opened up on CLS++. Click below to activate your account — one click, you're done.</p>
+    <div style="text-align:center;margin-bottom:24px;">
+      <a href="{accept_link}" style="display:inline-block;background:#ff6b35;color:#fff;padding:16px 40px;border-radius:980px;text-decoration:none;font-weight:700;font-size:16px;">Activate my account →</a>
+    </div>
+    <p style="color:#86868b;text-align:center;font-size:13px;margin-bottom:24px;">This link is valid for {hours_valid} hours. If it expires, you'll keep your place in line and we'll send a fresh one.</p>
+    <hr style="border:none;border-top:1px solid #f0f0f0;margin:32px 0 16px;">
+    <p style="color:#c0c0c0;text-align:center;font-size:11px;">If you didn't sign up for the CLS++ waitlist, you can ignore this email.</p>
+  </div>
+</body>
+</html>"""
+        return await self._send(to, "🎉 Your CLS++ invite is here", html)
+
     async def send_password_reset_email(
         self, to: str, otp_code: str, reset_link: str
     ) -> bool:

@@ -63,6 +63,14 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     user_service = UserService(settings)
     logger = logging.getLogger(__name__)
 
+    # Launch-mode waitlist service (rate-limited rollout + social-proof widget)
+    from clsplusplus.waitlist_service import WaitlistService, WaitlistError
+    waitlist_service = WaitlistService(
+        settings,
+        user_store=user_service.store,
+        email_service=user_service.email,
+    )
+
     # Context log for authenticated API reads (Claude Code hooks, etc.)
     from collections import defaultdict
     _api_context_log: dict[str, collections.deque] = defaultdict(lambda: collections.deque(maxlen=100))
@@ -1004,7 +1012,32 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.post("/v1/auth/register")
     async def register_user(request: Request, req: UserRegisterRequest):
-        """Step 1: Validate email/password, send OTP. Does NOT create user yet."""
+        """Step 1: Validate email/password, send OTP. Does NOT create user yet.
+
+        During the rate-limited launch, walk-in signups are blocked once the
+        user count hits `max_active_users`. The client is told to use the
+        waitlist widget instead. Waitlist-invited users bypass this via
+        /v1/waitlist/accept which creates users directly.
+        """
+        try:
+            exceeded, current, cap = await waitlist_service.is_launch_cap_exceeded()
+            if exceeded:
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "error": "launch_cap_reached",
+                        "message": (
+                            "We're releasing CLS++ in small waves. "
+                            "Join the waitlist and we'll email you the moment a seat opens up."
+                        ),
+                        "waitlist": True,
+                        "current_users": current,
+                        "cap": cap,
+                    },
+                )
+        except Exception as e:
+            logger.warning("Launch cap check failed (fail-open): %s", e)
+
         base_url = str(request.base_url).rstrip("/")
         if request.headers.get("x-forwarded-proto") == "https":
             base_url = base_url.replace("http://", "https://", 1)
@@ -1016,6 +1049,81 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             logger.error("Registration error: %s: %s", type(e).__name__, e)
             raise HTTPException(status_code=500, detail="Registration service unavailable")
         return JSONResponse(content=result)
+
+    # =========================================================================
+    # Launch waitlist — rate-limited rollout + social proof widget
+    # =========================================================================
+
+    @app.post("/v1/waitlist/join")
+    async def waitlist_join(request: Request):
+        """Public. Email → sends 6-digit OTP. Rate-limited per email internally."""
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        email = (body or {}).get("email", "")
+        source = request.cookies.get("cls_variant", "")
+        try:
+            result = await waitlist_service.join(email, source_variant=source)
+        except WaitlistError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error("Waitlist join error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="Waitlist service unavailable")
+        return JSONResponse(content=result)
+
+    @app.post("/v1/waitlist/verify")
+    async def waitlist_verify(request: Request):
+        """Public. Email + OTP → enters the waiting queue, returns position."""
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        email = (body or {}).get("email", "")
+        otp = (body or {}).get("otp_code", "")
+        try:
+            result = await waitlist_service.verify(email, otp)
+        except WaitlistError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error("Waitlist verify error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="Waitlist service unavailable")
+        return JSONResponse(content=result)
+
+    @app.get("/v1/waitlist/stats")
+    async def waitlist_stats(email: Optional[str] = Query(None)):
+        """Public. Live counters for the landing widget. Polled every 20s."""
+        try:
+            return JSONResponse(content=await waitlist_service.stats(email=email))
+        except Exception as e:
+            logger.warning("Waitlist stats error: %s", e)
+            return JSONResponse(content={
+                "waiting_count": getattr(settings, "waitlist_queue_seed_offset", 47),
+                "active_now": getattr(settings, "waitlist_active_floor", 3),
+            })
+
+    @app.get("/v1/waitlist/accept")
+    async def waitlist_accept(request: Request, token: str = Query("")):
+        """Public. One-click activation: token → real user + JWT cookie → dashboard.
+
+        This is the "2-hour onboarding window" landing point. Clicking the
+        invite email link lands here; we create a real account with a random
+        password, sign the user in, and redirect to the dashboard. They can set
+        a real password from /profile.html afterwards.
+        """
+        if not token:
+            raise HTTPException(status_code=400, detail="Missing invite token")
+        try:
+            user, jwt_token = await waitlist_service.activate_by_token(token)
+        except WaitlistError as e:
+            from starlette.responses import RedirectResponse
+            return RedirectResponse(f"/?waitlist_error={str(e).replace(' ', '+')}")
+        except Exception as e:
+            logger.error("Waitlist activate error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="Activation failed")
+        from starlette.responses import RedirectResponse
+        response = RedirectResponse("/dashboard.html?welcome=waitlist")
+        return _set_session_cookie(response, jwt_token)
 
     @app.post("/v1/auth/verify-register")
     async def verify_register(request: Request):
@@ -1749,6 +1857,133 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(status_code=500, detail="Storage metrics unavailable")
 
     # =========================================================================
+    # Admin — Launch waitlist view + lifecycle test runner
+    # =========================================================================
+
+    _WAITLIST_RESULTS_DIR = FilePath(__file__).resolve().parent.parent.parent / "website" / "tests" / "waitlist"
+    _WAITLIST_RUNNER = FilePath(__file__).resolve().parent.parent.parent / "scripts" / "run_waitlist_tests.py"
+
+    @app.get("/admin/waitlist")
+    async def admin_waitlist_list(request: Request):
+        """List waitlist visitors with status + computed display position."""
+        _require_admin(request)
+        try:
+            rows = await waitlist_service.store.list_all(limit=500)
+            offset = int(getattr(settings, "waitlist_queue_seed_offset", 0))
+            # Compute display position per waiting row (offset-aware)
+            waiting_sorted = sorted(
+                [r for r in rows if r["status"] in ("waiting", "invited")],
+                key=lambda r: r["created_at"],
+            )
+            pos_map = {r["id"]: i + 1 + offset for i, r in enumerate(waiting_sorted)}
+            for r in rows:
+                r["display_position"] = pos_map.get(r["id"])
+            stats = await waitlist_service.stats()
+            return {
+                "visitors": rows,
+                "stats": stats,
+                "config": {
+                    "max_active_users": int(getattr(settings, "max_active_users", 0)),
+                    "seed_offset": offset,
+                    "active_floor": int(getattr(settings, "waitlist_active_floor", 0)),
+                    "dau_healthy_threshold": int(
+                        getattr(settings, "waitlist_dau_healthy_threshold", 0)
+                    ),
+                    "promote_batch": int(getattr(settings, "waitlist_promote_batch", 1)),
+                },
+            }
+        except Exception as e:
+            logger.error("Admin waitlist list error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="Waitlist data unavailable")
+
+    @app.post("/admin/waitlist/promote")
+    async def admin_waitlist_promote(request: Request):
+        """Manual-promote the oldest N waiting visitors (admin override)."""
+        _require_admin(request)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        batch = int((body or {}).get("batch", 1))
+        try:
+            invited = await waitlist_service.promote(
+                batch=batch, base_url=settings.site_base_url
+            )
+            return {"invited": invited, "count": len(invited)}
+        except Exception as e:
+            logger.error("Admin waitlist promote error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="Promote failed")
+
+    @app.post("/admin/tests/waitlist/run")
+    async def admin_run_waitlist_tests(request: Request):
+        """Subprocess the waitlist test runner, return the freshly-written result."""
+        _require_admin(request)
+        if not _WAITLIST_RUNNER.exists():
+            raise HTTPException(status_code=500, detail="Test runner script missing")
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "python3",
+                str(_WAITLIST_RUNNER),
+                "--quiet",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(_WAITLIST_RUNNER.parent.parent),
+            )
+            stdout, stderr = await proc.communicate()
+        except Exception as e:
+            logger.error("Waitlist test runner spawn error: %s", e)
+            raise HTTPException(status_code=500, detail="Failed to launch test runner")
+
+        # Grab the latest result file (the one the runner just wrote)
+        manifest_path = _WAITLIST_RESULTS_DIR / "manifest.json"
+        if not manifest_path.exists():
+            raise HTTPException(
+                status_code=500,
+                detail=f"No manifest produced (exit={proc.returncode}): {stderr.decode()[:200]}",
+            )
+        import json as _json
+        try:
+            manifest = _json.loads(manifest_path.read_text())
+        except Exception:
+            manifest = []
+        if not manifest:
+            raise HTTPException(status_code=500, detail="Manifest is empty")
+        latest = manifest[0]
+        result_file = _WAITLIST_RESULTS_DIR / latest["file"]
+        payload = _json.loads(result_file.read_text()) if result_file.exists() else latest
+        payload["stdout_tail"] = stdout.decode()[-400:]
+        payload["stderr_tail"] = stderr.decode()[-400:]
+        payload["exit_code"] = proc.returncode
+        return payload
+
+    @app.get("/admin/tests/waitlist/history")
+    async def admin_waitlist_test_history(request: Request):
+        """Rolling manifest of recent waitlist test runs (newest first)."""
+        _require_admin(request)
+        manifest_path = _WAITLIST_RESULTS_DIR / "manifest.json"
+        if not manifest_path.exists():
+            return {"runs": []}
+        import json as _json
+        try:
+            return {"runs": _json.loads(manifest_path.read_text())}
+        except Exception:
+            return {"runs": []}
+
+    @app.get("/admin/tests/waitlist/results/{run_id}")
+    async def admin_waitlist_test_result(request: Request, run_id: str = Path(...)):
+        """Full JSON for a single waitlist test run."""
+        _require_admin(request)
+        # Defensive: run_id must match our strftime format, no path traversal
+        import re as _re
+        if not _re.match(r"^[0-9]{8}T[0-9]{6}$", run_id):
+            raise HTTPException(status_code=400, detail="Invalid run_id")
+        result_file = _WAITLIST_RESULTS_DIR / f"{run_id}.json"
+        if not result_file.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+        import json as _json
+        return _json.loads(result_file.read_text())
+
+    # =========================================================================
     # RBAC Admin API — Roles, Groups, Users, Permissions
     # =========================================================================
 
@@ -2415,6 +2650,26 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                         pass
 
         asyncio.create_task(_periodic_replay())
+
+        # ── 3. Waitlist daily promoter ─────────────────────────────────────
+        # Once per configured interval, promote the oldest waiting visitor(s)
+        # iff DAU is below the healthy threshold, and sweep expired invites.
+        async def _waitlist_promoter_loop():
+            interval = int(getattr(settings, "waitlist_promote_interval_seconds", 86400))
+            # Small startup delay so the pool is warm before the first tick.
+            await asyncio.sleep(30)
+            while True:
+                try:
+                    result = await waitlist_service.daily_promote_tick(
+                        base_url=settings.site_base_url
+                    )
+                    if result.get("invited") or result.get("stale_invites_reset"):
+                        _api_logger.info("Waitlist promote tick: %s", result)
+                except Exception as e:
+                    _api_logger.warning("Waitlist promote tick failed: %s", e)
+                await asyncio.sleep(interval)
+
+        asyncio.create_task(_waitlist_promoter_loop())
 
     @app.on_event("shutdown")
     async def shutdown():

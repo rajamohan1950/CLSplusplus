@@ -36,6 +36,10 @@ _PUBLIC_PATHS = frozenset({
     "/v1/billing/razorpay-webhook",
     "/v1/config/analytics",
     "/v1/config/analytics-dashboard",
+    "/v1/waitlist/join",
+    "/v1/waitlist/verify",
+    "/v1/waitlist/stats",
+    "/v1/waitlist/accept",
     "/docs",
     "/redoc",
     "/openapi.json",
@@ -200,6 +204,22 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         try:
             if self._metrics:
                 asyncio.create_task(self._metrics.emit("system", "total_api_requests"))
+        except Exception:
+            pass
+
+        # Unified "active now" + DAU across extension/CLI/plugin/API.
+        # Prefer JWT user_id, fall back to a hash of the API key (namespace
+        # prefix is shared across a user's multiple keys so we don't use it).
+        try:
+            if self._metrics:
+                ident = getattr(request.state, "user_id", None)
+                if not ident:
+                    ak = getattr(request.state, "api_key", None)
+                    if ak:
+                        import hashlib
+                        ident = "k:" + hashlib.sha256(ak.encode()).hexdigest()[:16]
+                if ident:
+                    asyncio.create_task(self._metrics.record_active_user(ident))
         except Exception:
             pass
 

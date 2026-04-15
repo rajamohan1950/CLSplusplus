@@ -123,6 +123,23 @@ class Settings(BaseSettings):
     resend_api_key: str = ""                  # CLS_RESEND_API_KEY
     email_from: str = "CLS++ <noreply@clsplusplus.com>"  # CLS_EMAIL_FROM
 
+    # ── Launch waitlist / rate-limited rollout ────────────────────────────
+    # Hard cap on organic /v1/auth/register. Walk-in signups above this are
+    # redirected to the waitlist widget. Waitlist-invited users bypass the cap.
+    # Set to 0 to disable the cap entirely.
+    max_active_users: int = 5
+    # Fake baseline added to the displayed "waiting" count and every reported
+    # position so day-1 visitors see social proof instead of "#1".
+    waitlist_queue_seed_offset: int = 47
+    # Floor for the live "active now" counter shown in the widget so the
+    # number never reads 0 during dead hours.
+    waitlist_active_floor: int = 3
+    # Daily promotion loop: promote the oldest N waiting visitors iff DAU is
+    # below the healthy threshold.
+    waitlist_promote_batch: int = 1
+    waitlist_dau_healthy_threshold: int = 5
+    waitlist_promote_interval_seconds: int = 86400  # 24h
+
     # Demo LLM keys (optional; demo uses these for real Claude/OpenAI/Gemini)
     anthropic_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None

@@ -69,6 +69,8 @@
           <a href="#" class="sidebar-item" data-section="sec-infra-cost">Infrastructure Cost</a>
           <a href="#" class="sidebar-item" data-section="sec-posthog">PostHog Analytics</a>
           <a href="#" class="sidebar-item" data-section="sec-users">Per-User Breakdown</a>
+          <a href="#" class="sidebar-item" data-section="sec-waitlist">Launch Waitlist</a>
+          <a href="#" class="sidebar-item" data-section="sec-testing">Testing</a>
         </nav>
       </aside>
 
@@ -269,6 +271,71 @@
             </div>
           </div>
         </div>
+
+        <!-- SECTION: LAUNCH WAITLIST -->
+        <div class="admin-section" id="sec-waitlist">
+          <div class="section-card">
+            <h2>Launch Waitlist</h2>
+            <p class="section-sub">Rate-limited rollout state. Walk-in signups are blocked once the active-user cap is hit; waitlist-invited users bypass the cap.</p>
+            <div class="kpi-bar" style="margin-bottom:16px;">
+              <div class="kpi-card"><div class="kpi-label">Active-user cap</div><div class="kpi-value" id="wl-stat-cap">—</div><div class="kpi-sub">CLS_MAX_ACTIVE_USERS</div></div>
+              <div class="kpi-card"><div class="kpi-label">Displayed waiting</div><div class="kpi-value" id="wl-stat-waiting">—</div><div class="kpi-sub">Real + seed offset</div></div>
+              <div class="kpi-card"><div class="kpi-label">Active right now</div><div class="kpi-value kpi-green" id="wl-stat-active">—</div><div class="kpi-sub">15-min sliding window</div></div>
+              <div class="kpi-card"><div class="kpi-label">Seed offset</div><div class="kpi-value" id="wl-stat-offset">—</div><div class="kpi-sub">Baseline queue padding</div></div>
+              <div class="kpi-card"><div class="kpi-label">DAU healthy threshold</div><div class="kpi-value" id="wl-stat-dau-threshold">—</div><div class="kpi-sub">Below → auto-promote</div></div>
+            </div>
+            <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
+              <button id="wl-refresh-btn" class="btn" style="padding:8px 16px;background:#1d1d1f;color:#fff;border:none;border-radius:10px;font-weight:600;cursor:pointer;">Refresh</button>
+              <button id="wl-promote-btn" class="btn" style="padding:8px 16px;background:#ff6b35;color:#fff;border:none;border-radius:10px;font-weight:600;cursor:pointer;">Promote oldest</button>
+              <span id="wl-status" style="color:var(--text-muted);font-size:12px;"></span>
+              <span style="margin-left:auto;display:flex;gap:16px;font-size:13px;">
+                <span><strong id="wl-count-waiting">0</strong> waiting</span>
+                <span><strong id="wl-count-invited">0</strong> invited</span>
+                <span><strong id="wl-count-activated">0</strong> activated</span>
+              </span>
+            </div>
+            <div class="table-wrap" style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;">
+              <table class="admin-table" style="width:100%;border-collapse:collapse;">
+                <thead>
+                  <tr style="text-align:left;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.02);">
+                    <th style="padding:10px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.5px;">Position</th>
+                    <th style="padding:10px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.5px;">Email</th>
+                    <th style="padding:10px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.5px;">Status</th>
+                    <th style="padding:10px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.5px;">Source</th>
+                    <th style="padding:10px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.5px;">Joined</th>
+                    <th style="padding:10px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.5px;">Invited</th>
+                  </tr>
+                </thead>
+                <tbody id="wl-tbody">
+                  <tr><td colspan="6" style="padding:20px;text-align:center;color:var(--text-muted);">Click Refresh to load visitors.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION: TESTING -->
+        <div class="admin-section" id="sec-testing">
+          <div class="section-card">
+            <h2>Testing</h2>
+            <p class="section-sub">End-to-end lifecycle tests for the waitlist (join → OTP → verify → cap → promote → accept). Published results persist under <code style="font-size:12px;">website/tests/waitlist/</code>.</p>
+            <div style="display:flex;gap:12px;align-items:center;margin-bottom:20px;flex-wrap:wrap;">
+              <button id="test-run-btn" class="btn" style="padding:10px 20px;background:#ff6b35;color:#fff;border:none;border-radius:10px;font-weight:600;cursor:pointer;font-size:14px;">Run All Tests</button>
+              <span id="test-status" style="color:var(--text-muted);font-size:13px;"></span>
+            </div>
+            <div id="test-summary" style="margin-bottom:20px;"></div>
+            <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;">
+              <div>
+                <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin:0 0 10px;">Cases</h3>
+                <div id="test-cases" style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;max-height:500px;overflow-y:auto;"><p style="padding:16px;color:var(--text-muted);font-size:13px;margin:0;">No run loaded.</p></div>
+              </div>
+              <div>
+                <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin:0 0 10px;">History</h3>
+                <div id="test-history" style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;max-height:500px;overflow-y:auto;padding:12px;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -317,6 +384,10 @@
       .then(function(cfg) {
         var container = document.getElementById('posthog-container');
         var loading = document.getElementById('posthog-loading');
+        // ── WAITLIST + TESTING wiring (inlined below) ──
+        initWaitlistSection();
+        initTestingSection();
+
         var iframe = document.getElementById('posthog-iframe');
         if (cfg.dashboard_url) {
           iframe.src = cfg.dashboard_url;
@@ -329,6 +400,229 @@
       .catch(function() {
         document.getElementById('posthog-loading').textContent = 'Could not load PostHog dashboard configuration.';
       });
+
+    // =========================================================================
+    // Launch Waitlist — section logic
+    // =========================================================================
+    function initWaitlistSection() {
+      var section = document.getElementById('sec-waitlist');
+      if (!section) return;
+      var refreshBtn = document.getElementById('wl-refresh-btn');
+      var promoteBtn = document.getElementById('wl-promote-btn');
+      var statusEl = document.getElementById('wl-status');
+
+      async function load() {
+        statusEl.textContent = 'Loading…';
+        try {
+          var r = await fetch('/admin/waitlist', { credentials: 'same-origin' });
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          var data = await r.json();
+          renderWaitlist(data);
+          statusEl.textContent = 'Updated ' + new Date().toLocaleTimeString();
+        } catch (e) {
+          statusEl.textContent = 'Error: ' + e.message;
+        }
+      }
+
+      function renderWaitlist(d) {
+        var cfg = d.config || {};
+        var stats = d.stats || {};
+        document.getElementById('wl-stat-cap').textContent = cfg.max_active_users || '—';
+        document.getElementById('wl-stat-waiting').textContent = stats.waiting_count || 0;
+        document.getElementById('wl-stat-active').textContent = stats.active_now || 0;
+        document.getElementById('wl-stat-offset').textContent = cfg.seed_offset || 0;
+        document.getElementById('wl-stat-dau-threshold').textContent = cfg.dau_healthy_threshold || 0;
+
+        var tbody = document.getElementById('wl-tbody');
+        tbody.innerHTML = '';
+        var waiting = 0, invited = 0, activated = 0;
+        (d.visitors || []).forEach(function (v) {
+          if (v.status === 'waiting') waiting++;
+          else if (v.status === 'invited') invited++;
+          else if (v.status === 'activated') activated++;
+          var tr = document.createElement('tr');
+          var statusColor = {
+            waiting: '#f59e0b', invited: '#3b82f6',
+            activated: '#10b981', expired: '#86868b', cancelled: '#86868b'
+          }[v.status] || '#86868b';
+          tr.innerHTML =
+            '<td style="padding:10px 12px;font-family:monospace;font-size:12px;">' +
+            (v.display_position ? '#' + v.display_position : '—') + '</td>' +
+            '<td style="padding:10px 12px;">' + escapeHtml(v.email) + '</td>' +
+            '<td style="padding:10px 12px;"><span style="padding:3px 10px;border-radius:999px;background:' + statusColor + '22;color:' + statusColor + ';font-size:11px;font-weight:600;text-transform:uppercase;">' + v.status + '</span></td>' +
+            '<td style="padding:10px 12px;font-size:12px;color:#86868b;">' + (v.source_variant || '—') + '</td>' +
+            '<td style="padding:10px 12px;font-size:12px;color:#86868b;">' + formatDate(v.created_at) + '</td>' +
+            '<td style="padding:10px 12px;font-size:12px;color:#86868b;">' + (v.invited_at ? formatDate(v.invited_at) : '—') + '</td>';
+          tbody.appendChild(tr);
+        });
+        document.getElementById('wl-count-waiting').textContent = waiting;
+        document.getElementById('wl-count-invited').textContent = invited;
+        document.getElementById('wl-count-activated').textContent = activated;
+      }
+
+      async function promoteNext() {
+        if (!confirm('Promote the oldest waiter? This sends an invite email immediately.')) return;
+        promoteBtn.disabled = true;
+        promoteBtn.textContent = 'Promoting…';
+        try {
+          var r = await fetch('/admin/waitlist/promote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ batch: 1 })
+          });
+          var data = await r.json();
+          if (!r.ok) throw new Error(data.detail || data.message || 'Promote failed');
+          statusEl.textContent = 'Invited: ' + (data.invited || []).join(', ') || 'No-op (no waiters)';
+          load();
+        } catch (e) {
+          statusEl.textContent = 'Error: ' + e.message;
+        }
+        promoteBtn.disabled = false;
+        promoteBtn.textContent = 'Promote oldest';
+      }
+
+      refreshBtn.addEventListener('click', load);
+      promoteBtn.addEventListener('click', promoteNext);
+
+      // Load when tab becomes visible
+      document.querySelectorAll('.sidebar-item').forEach(function (el) {
+        el.addEventListener('click', function () {
+          if (el.dataset.section === 'sec-waitlist') setTimeout(load, 50);
+        });
+      });
+    }
+
+    // =========================================================================
+    // Testing tab — waitlist lifecycle suite
+    // =========================================================================
+    function initTestingSection() {
+      var section = document.getElementById('sec-testing');
+      if (!section) return;
+      var runBtn = document.getElementById('test-run-btn');
+      var statusEl = document.getElementById('test-status');
+      var summaryEl = document.getElementById('test-summary');
+      var casesEl = document.getElementById('test-cases');
+      var historyEl = document.getElementById('test-history');
+
+      async function loadHistory() {
+        try {
+          var r = await fetch('/admin/tests/waitlist/history', { credentials: 'same-origin' });
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          var data = await r.json();
+          renderHistory(data.runs || []);
+          if (data.runs && data.runs.length) loadRun(data.runs[0].run_id);
+        } catch (e) {
+          statusEl.textContent = 'History error: ' + e.message;
+        }
+      }
+
+      function renderHistory(runs) {
+        if (!runs.length) {
+          historyEl.innerHTML = '<p style="color:#86868b;font-size:13px;">No runs yet. Click "Run All Tests" to record the first one.</p>';
+          return;
+        }
+        historyEl.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="text-align:left;border-bottom:1px solid rgba(0,0,0,0.08);"><th style="padding:8px 10px;">Run</th><th style="padding:8px 10px;">Result</th><th style="padding:8px 10px;">Pass Rate</th><th style="padding:8px 10px;">Runtime</th></tr></thead><tbody id="test-history-body"></tbody></table>';
+        var tbody = document.getElementById('test-history-body');
+        runs.forEach(function (r) {
+          var pct = Math.round((r.pass_rate || 0) * 100);
+          var color = r.failed ? '#dc2626' : '#10b981';
+          var tr = document.createElement('tr');
+          tr.style.cursor = 'pointer';
+          tr.style.borderBottom = '1px solid rgba(0,0,0,0.04)';
+          tr.innerHTML =
+            '<td style="padding:8px 10px;font-family:monospace;font-size:12px;">' + r.run_id + '</td>' +
+            '<td style="padding:8px 10px;"><span style="color:' + color + ';font-weight:600;">' + r.passed + '/' + r.total + '</span></td>' +
+            '<td style="padding:8px 10px;">' + pct + '%</td>' +
+            '<td style="padding:8px 10px;color:#86868b;">' + Math.round(r.total_runtime_ms) + ' ms</td>';
+          tr.addEventListener('click', function () { loadRun(r.run_id); });
+          tbody.appendChild(tr);
+        });
+      }
+
+      async function loadRun(runId) {
+        try {
+          var r = await fetch('/admin/tests/waitlist/results/' + runId, { credentials: 'same-origin' });
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          var data = await r.json();
+          renderRun(data);
+        } catch (e) {
+          statusEl.textContent = 'Run load error: ' + e.message;
+        }
+      }
+
+      function renderRun(d) {
+        var pct = Math.round((d.pass_rate || 0) * 100);
+        var pass = d.failed === 0;
+        summaryEl.innerHTML =
+          '<div style="display:flex;align-items:center;gap:16px;padding:16px 20px;background:' + (pass ? '#f0fdf4' : '#fef2f2') + ';border:1px solid ' + (pass ? '#bbf7d0' : '#fecaca') + ';border-radius:12px;">' +
+          '<div style="font-size:32px;">' + (pass ? '✅' : '❌') + '</div>' +
+          '<div style="flex:1;">' +
+          '<div style="font-size:18px;font-weight:700;color:' + (pass ? '#166534' : '#991b1b') + ';">' + d.passed + ' / ' + d.total + ' passing (' + pct + '%)</div>' +
+          '<div style="font-size:12px;color:#86868b;margin-top:2px;">Run ' + d.run_id + ' · ' + Math.round(d.total_runtime_ms) + ' ms · suite: ' + d.suite + '</div>' +
+          '</div></div>';
+
+        var rows = '';
+        (d.cases || []).forEach(function (c) {
+          var icon = c.status === 'pass' ? '✓' : (c.status === 'skip' ? '○' : '✗');
+          var color = c.status === 'pass' ? '#10b981' : (c.status === 'skip' ? '#86868b' : '#dc2626');
+          rows +=
+            '<tr style="border-bottom:1px solid rgba(0,0,0,0.04);">' +
+            '<td style="padding:8px 10px;color:' + color + ';font-weight:600;width:30px;">' + icon + '</td>' +
+            '<td style="padding:8px 10px;font-family:monospace;font-size:11px;color:#86868b;width:80px;">' + (c.id || '') + '</td>' +
+            '<td style="padding:8px 10px;font-size:12px;">' + escapeHtml(c.name || '') + '</td>' +
+            '<td style="padding:8px 10px;font-size:11px;color:#86868b;width:80px;text-align:right;">' + (c.runtime_ms ? c.runtime_ms.toFixed(1) + ' ms' : '') + '</td>' +
+            '</tr>';
+          if (c.status === 'fail' && c.error) {
+            rows += '<tr><td colspan="4" style="padding:0 10px 8px 48px;font-family:monospace;font-size:11px;color:#dc2626;white-space:pre-wrap;">' + escapeHtml(c.error) + '</td></tr>';
+          }
+        });
+        casesEl.innerHTML = '<table style="width:100%;border-collapse:collapse;">' + rows + '</table>';
+      }
+
+      async function runAll() {
+        runBtn.disabled = true;
+        runBtn.textContent = 'Running…';
+        statusEl.textContent = 'Running waitlist lifecycle suite…';
+        try {
+          var r = await fetch('/admin/tests/waitlist/run', {
+            method: 'POST',
+            credentials: 'same-origin'
+          });
+          if (!r.ok) {
+            var err = await r.json().catch(function(){return{};});
+            throw new Error(err.detail || err.message || 'HTTP ' + r.status);
+          }
+          var data = await r.json();
+          renderRun(data);
+          statusEl.textContent = 'Completed at ' + new Date().toLocaleTimeString();
+          loadHistory();
+        } catch (e) {
+          statusEl.textContent = 'Run failed: ' + e.message;
+        }
+        runBtn.disabled = false;
+        runBtn.textContent = 'Run All Tests';
+      }
+
+      runBtn.addEventListener('click', runAll);
+
+      // Load history when the tab becomes visible
+      document.querySelectorAll('.sidebar-item').forEach(function (el) {
+        el.addEventListener('click', function () {
+          if (el.dataset.section === 'sec-testing') setTimeout(loadHistory, 50);
+        });
+      });
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function formatDate(iso) {
+      if (!iso) return '—';
+      try { return new Date(iso).toLocaleString(); } catch (e) { return iso; }
+    }
   </script>
 </body>
 </html>

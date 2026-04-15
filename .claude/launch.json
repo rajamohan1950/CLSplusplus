@@ -22,6 +22,17 @@
       "runtimeExecutable": "/usr/bin/python3",
       "runtimeArgs": ["-m", "http.server", "8282", "--directory", "website"],
       "port": 8282
+    },
+    {
+      "name": "waitlist-ui",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["scripts/dev_server_waitlist.py"],
+      "port": 8090,
+      "env": {
+        "KMP_DUPLICATE_LIB_OK": "TRUE",
+        "PYTHONPATH": "src",
+        "CLS_DEV_PORT": "8090"
+      }
     }
   ]
 }

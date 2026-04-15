@@ -59,7 +59,7 @@
 
       <!-- Step 1: Registration form -->
       <div id="signup-step">
-        <form id="signup-form" onsubmit="return false;">
+        <form id="signup-form">
           <input type="text" name="name" class="auth-input" placeholder="Full name" autocomplete="name">
           <input type="email" name="email" class="auth-input" placeholder="Email address" required autocomplete="email">
           <input type="password" name="password" class="auth-input" placeholder="Password (8+ characters)" required minlength="8" autocomplete="new-password">
@@ -137,6 +137,24 @@
             verifyStep.style.display = 'block';
             emailDisplay.textContent = _userEmail;
             otpInput.focus();
+          } else if (resp.status === 503) {
+            // Launch rate-limit cap reached — bounce to waitlist widget
+            var data = {};
+            try { data = await resp.json(); } catch (e) {}
+            if (data.waitlist) {
+              if (window.CLSAnalytics) CLSAnalytics.track('signup_blocked_waitlist');
+              errorEl.innerHTML =
+                'We\'re releasing CLS++ in small waves. ' +
+                '<a href="/?waitlist=1#cls-wl-root" style="color:#ff6b35;font-weight:600;">' +
+                'Join the waitlist →</a>';
+              errorEl.style.display = 'block';
+              // Prefill the waitlist email in localStorage so the landing
+              // widget can auto-open on the pre-filled state.
+              try { localStorage.setItem('cls_waitlist_email', _userEmail); } catch (e) {}
+            } else {
+              errorEl.textContent = data.message || data.detail || 'Registration unavailable';
+              errorEl.style.display = 'block';
+            }
           } else {
             var data = await resp.json();
             errorEl.textContent = data.message || data.detail || 'Registration failed';

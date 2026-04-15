@@ -61,6 +61,34 @@
   </nav>
 
   <div class="container" style="margin-top:100px;">
+    <!-- Waitlist welcome banner (shown once when arriving from /v1/waitlist/accept) -->
+    <div id="waitlist-welcome" style="display:none;margin-bottom:24px;padding:20px 24px;background:linear-gradient(135deg,#fff7f0 0%,#ffe8d6 100%);border:1px solid #ffc9a3;border-radius:16px;box-shadow:0 4px 20px rgba(255,107,53,0.08);">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+        <div style="font-size:32px;line-height:1;">🎉</div>
+        <div style="flex:1;min-width:200px;">
+          <div style="font-size:16px;font-weight:700;color:#1d1d1f;margin-bottom:4px;">Welcome to CLS++ — you're in!</div>
+          <div style="font-size:13px;color:#86868b;line-height:1.5;">Your account was created from the waitlist with a temporary password. Head to <a href="/profile.html#security" style="color:#ff6b35;font-weight:600;">Profile → Security</a> to set a real one so you can log in from other devices.</div>
+        </div>
+        <button id="waitlist-welcome-dismiss" style="background:none;border:none;color:#86868b;font-size:20px;cursor:pointer;padding:4px 8px;line-height:1;" aria-label="Dismiss">×</button>
+      </div>
+    </div>
+    <script>
+      (function () {
+        try {
+          var params = new URLSearchParams(window.location.search);
+          if (params.get('welcome') === 'waitlist') {
+            var banner = document.getElementById('waitlist-welcome');
+            if (banner) banner.style.display = 'block';
+            document.getElementById('waitlist-welcome-dismiss').addEventListener('click', function () {
+              banner.style.display = 'none';
+              // Clean up URL so a reload doesn't re-show the banner
+              history.replaceState({}, '', window.location.pathname);
+            });
+          }
+        } catch (e) {}
+      })();
+    </script>
+
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;flex-wrap:wrap;gap:12px;">
       <h1 style="font-size:1.6rem;">Dashboard</h1>
       <span class="tier-badge" id="tier-badge">Loading...</span>
