@@ -1,0 +1,330 @@
+/* ══════════════════════════════════════════════════════════════════════════════
+   THEME C — "Ambient Focus"
+   Premium dark with floating gradient blobs, minimal, editorial.
+   Overrides styles.css for ALL pages when variant C is active.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --bg: #0a0a0c;
+  --bg-elevated: rgba(17, 17, 20, 0.9);
+  --text: #f0f0f2;
+  --text-muted: #9898a0;
+  --accent: #ff6b35;
+  --accent-light: #ff8c5a;
+  --accent-dark: #e55a2b;
+  --success: #34d399;
+  --border: rgba(255, 255, 255, 0.05);
+  --radius: 12px;
+  --radius-lg: 20px;
+}
+
+/* ── Replace video bg with ambient gradient blobs ── */
+.video-bg { display: none !important; }
+.video-overlay {
+  background: var(--bg) !important;
+  position: fixed !important;
+  inset: 0 !important;
+}
+
+/* Inject ambient blobs via pseudo-elements on body */
+body {
+  background: var(--bg) !important;
+  color: var(--text) !important;
+  position: relative;
+}
+
+body.variant-c::before {
+  content: '';
+  position: fixed;
+  top: -100px;
+  right: 5%;
+  width: 500px;
+  height: 500px;
+  background: rgba(255, 107, 53, 0.08);
+  border-radius: 50%;
+  filter: blur(120px);
+  pointer-events: none;
+  z-index: -1;
+  animation: amb-c-1 25s ease-in-out infinite;
+}
+
+body.variant-c::after {
+  content: '';
+  position: fixed;
+  bottom: -80px;
+  left: 3%;
+  width: 400px;
+  height: 400px;
+  background: rgba(167, 139, 250, 0.06);
+  border-radius: 50%;
+  filter: blur(120px);
+  pointer-events: none;
+  z-index: -1;
+  animation: amb-c-2 30s ease-in-out infinite;
+}
+
+@keyframes amb-c-1 {
+  0%, 100% { transform: translate(0, 0); }
+  33% { transform: translate(-40px, 30px); }
+  66% { transform: translate(30px, -40px); }
+}
+
+@keyframes amb-c-2 {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(40px, -50px); }
+}
+
+/* ── Navigation — subtle glass ── */
+.nav {
+  background: rgba(10, 10, 12, 0.6) !important;
+  border-bottom: 1px solid var(--border) !important;
+  backdrop-filter: blur(20px) !important;
+}
+
+.nav-links a { color: var(--text-muted) !important; }
+.nav-links a:hover { color: #fff !important; }
+.logo { color: #fff !important; }
+.nav-cta { background: var(--accent) !important; color: #fff !important; }
+
+/* ── Container ── */
+.container {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* ── Cards — softer, more rounded, subtle glow on hover ── */
+.dash-card, .usage-card, .plan-card, .quick-link, .chart-section,
+.profile-section, .auth-card, .gs-card, .bf-card {
+  background: rgba(17, 17, 20, 0.7) !important;
+  backdrop-filter: blur(16px) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 16px !important;
+  color: var(--text) !important;
+  transition: all 0.2s !important;
+}
+
+.dash-card:hover, .quick-link:hover, .gs-card:hover {
+  border-color: rgba(255, 107, 53, 0.2) !important;
+  box-shadow: 0 4px 24px rgba(255, 107, 53, 0.04) !important;
+  transform: translateY(-2px) !important;
+}
+
+.dash-card h3, .usage-card h3 { color: var(--text-muted) !important; }
+.dash-card .value, .usage-value { color: var(--text) !important; }
+.dash-card .sub, .usage-sub { color: var(--text-muted) !important; }
+
+.quick-link .ql-icon { background: rgba(255, 107, 53, 0.08) !important; }
+.quick-link .ql-text h4 { color: var(--text) !important; }
+.quick-link .ql-text p { color: var(--text-muted) !important; }
+
+/* ── Progress bars ── */
+.progress-bar, .usage-progress { background: rgba(255, 255, 255, 0.04) !important; }
+
+/* ── Tables ── */
+.int-table th { color: var(--text-muted) !important; border-bottom-color: var(--border) !important; }
+.int-table td { border-bottom-color: var(--border) !important; color: var(--text) !important; }
+
+/* ── Inputs — rounder, softer ── */
+input[type="text"], input[type="email"], input[type="password"], textarea, select {
+  background: rgba(17, 17, 20, 0.6) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  border-radius: 12px !important;
+}
+
+input::placeholder, textarea::placeholder { color: #55555e !important; }
+input:focus, textarea:focus, select:focus {
+  border-color: rgba(255, 107, 53, 0.25) !important;
+  box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.08) !important;
+}
+
+/* ── Buttons ── */
+.btn, .btn-outline {
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  border-radius: 12px !important;
+}
+.btn:hover, .btn-outline:hover {
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+.btn-primary { background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important; border-radius: 980px !important; }
+
+/* ── Auth pages (login/signup) — premium feel ── */
+.auth-page { background: var(--bg) !important; }
+.auth-card {
+  background: rgba(17, 17, 20, 0.8) !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 20px !important;
+  color: var(--text) !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5) !important;
+}
+.auth-card h1 { color: var(--text) !important; }
+.auth-card .subtitle { color: var(--text-muted) !important; }
+.auth-input {
+  background: rgba(10, 10, 12, 0.6) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  border-radius: 12px !important;
+}
+.auth-input:focus { border-color: rgba(255, 107, 53, 0.25) !important; box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.08) !important; }
+.auth-btn { background: var(--accent) !important; border-radius: 980px !important; }
+.auth-btn:hover { background: var(--accent-light) !important; }
+.google-btn {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  border-radius: 12px !important;
+}
+.google-btn:hover { background: rgba(255, 255, 255, 0.08) !important; }
+.auth-divider { color: var(--text-muted) !important; }
+.auth-divider::before, .auth-divider::after { background: var(--border) !important; }
+.auth-footer { color: var(--text-muted) !important; }
+.auth-footer a { color: var(--accent) !important; }
+
+/* ── Tier badges ── */
+.tier-badge { border: 1px solid var(--border) !important; }
+.tier-free { background: rgba(161, 161, 170, 0.08) !important; color: var(--text-muted) !important; }
+.tier-pro { background: rgba(99, 102, 241, 0.12) !important; }
+.tier-business { background: rgba(234, 179, 8, 0.12) !important; }
+.tier-enterprise { background: rgba(236, 72, 153, 0.12) !important; }
+
+/* ── Chat page ── */
+.chat-body { background: var(--bg) !important; }
+.chat-layout { background: var(--bg) !important; }
+.chat-sidebar { background: rgba(17, 17, 20, 0.9) !important; border-right-color: var(--border) !important; }
+.chat-sidebar-header { border-bottom-color: var(--border) !important; }
+.chat-main { background: var(--bg) !important; }
+.chat-header { border-bottom-color: var(--border) !important; }
+.chat-input-area { border-top-color: var(--border) !important; }
+.chat-input-wrap {
+  background: rgba(17, 17, 20, 0.8) !important;
+  border-color: var(--border) !important;
+  border-radius: 20px !important;
+}
+.chat-input { color: var(--text) !important; }
+.chat-msg-assistant .chat-msg-bubble {
+  background: rgba(17, 17, 20, 0.8) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+  border-radius: 18px !important;
+}
+.chat-msg-user .chat-msg-bubble { border-radius: 18px !important; border-bottom-right-radius: 6px !important; }
+.chat-session-item.active { background: rgba(255, 107, 53, 0.08) !important; }
+.chat-welcome h2 { color: var(--text) !important; }
+.chat-send-btn { border-radius: 12px !important; }
+
+/* ── Memory viewer ── */
+.layout { background: var(--bg) !important; }
+
+/* ── Docs page ── */
+.docs-hero { color: var(--text) !important; }
+.docs-hero h1 { color: var(--text) !important; text-shadow: none !important; }
+.docs-hero p { color: var(--text-muted) !important; }
+.docs-nav {
+  background: rgba(10, 10, 12, 0.7) !important;
+  backdrop-filter: blur(20px) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+.docs-nav a { color: var(--text-muted) !important; }
+.docs-nav a:hover { color: var(--accent) !important; }
+.docs-sidebar {
+  background: rgba(17, 17, 20, 0.6) !important;
+  border-right: 1px solid var(--border) !important;
+}
+.docs-sidebar a { color: var(--text-muted) !important; }
+.docs-sidebar a:hover { color: var(--accent) !important; }
+.docs-section { color: var(--text) !important; }
+.docs-section h2, .docs-section h3 { color: var(--text) !important; }
+.code-block {
+  background: rgba(10, 10, 12, 0.8) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 14px !important;
+  color: var(--text) !important;
+}
+.endpoint {
+  background: rgba(17, 17, 20, 0.7) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 14px !important;
+}
+.param-table th { color: var(--text-muted) !important; border-bottom-color: var(--border) !important; }
+.param-table td { color: var(--text) !important; border-bottom-color: var(--border) !important; }
+
+/* ── Getting started ── */
+.gs-hero h1 { color: var(--text) !important; }
+.gs-hero p { color: var(--text-muted) !important; }
+.gs-search {
+  background: rgba(17, 17, 20, 0.6) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  border-radius: 14px !important;
+}
+.gs-section { background: transparent !important; }
+.gs-section-dark { background: rgba(17, 17, 20, 0.6) !important; }
+.gs-card {
+  background: rgba(17, 17, 20, 0.6) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  border-radius: 16px !important;
+}
+.gs-card:hover { border-color: rgba(255, 107, 53, 0.2) !important; }
+.gs-card.active { border-color: var(--accent) !important; }
+
+/* ── Admin dashboard ── */
+.admin-container { background: var(--bg) !important; color: var(--text) !important; }
+.kpi-card {
+  background: rgba(17, 17, 20, 0.7) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 14px !important;
+}
+.kpi-label { color: var(--text-muted) !important; }
+.kpi-value { color: var(--text) !important; }
+.admin-sidebar {
+  background: rgba(17, 17, 20, 0.6) !important;
+  border-right: 1px solid var(--border) !important;
+}
+.sidebar-item { color: var(--text-muted) !important; }
+.sidebar-item.active { color: var(--accent) !important; background: rgba(255, 107, 53, 0.06) !important; }
+
+/* ── Pricing cards ── */
+.plan-card {
+  background: rgba(17, 17, 20, 0.7) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  border-radius: 16px !important;
+}
+.plan-card.featured { border-color: rgba(255, 107, 53, 0.25) !important; box-shadow: 0 0 30px rgba(255, 107, 53, 0.05) !important; }
+
+/* ── Debug panel ── */
+.debug-panel { background: #0a0a10 !important; }
+
+/* ── Profile section ── */
+.profile-section {
+  background: rgba(17, 17, 20, 0.7) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 16px !important;
+  color: var(--text) !important;
+}
+.profile-section h2, .profile-section h3 { color: var(--text) !important; }
+.profile-label { color: var(--text-muted) !important; }
+.profile-value { color: var(--text) !important; }
+
+/* ── Footer ── */
+footer, .footer-wrap {
+  background: rgba(14, 14, 16, 0.95) !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  border-radius: 20px !important;
+}
+
+/* ── Headings ── */
+h1, h2, h3, h4, h5, h6 { color: var(--text); }
+
+/* ── Links ── */
+a { color: var(--accent); }
+
+/* ── Scrollbars ── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: #1e1e22; border-radius: 3px; }

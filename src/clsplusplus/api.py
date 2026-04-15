@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Optional, List
 
 import os
+import random
 from pathlib import Path as FilePath
 
 from fastapi import FastAPI, HTTPException, Path, Query, Request, Body
@@ -186,19 +187,61 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         if _candidate.is_dir():
             _website_dir = str(_candidate)
 
+    # A/B/C landing page variant mapping
+    _LANDING_VARIANTS = {
+        "A": "index.html",        # Current design
+        "B": "landing-d.html",    # Command Center (3-column app)
+        "C": "landing-e.html",    # Ambient Focus (minimal, ambient)
+    }
+    _VARIANT_KEYS = list(_LANDING_VARIANTS.keys())
+
     @app.get("/")
-    async def root():
-        """Serve index.html if website is bundled, otherwise API info JSON."""
-        if _website_dir:
-            index = FilePath(_website_dir) / "index.html"
-            if index.exists():
-                return FileResponse(str(index), media_type="text/html")
-        return {
-            "name": "CLS++ API",
-            "version": "0.1.0",
-            "docs": "/docs",
-            "health": "/v1/memory/health",
-        }
+    async def root(request: Request, variant: Optional[str] = Query(None)):
+        """Serve landing page with A/B/C variant assignment."""
+        if not _website_dir:
+            return {
+                "name": "CLS++ API",
+                "version": "0.1.0",
+                "docs": "/docs",
+                "health": "/v1/memory/health",
+            }
+
+        # 1. Admin override via ?variant=B
+        chosen = None
+        if variant and variant.upper() in _LANDING_VARIANTS:
+            chosen = variant.upper()
+
+        # 2. Check existing cookie
+        if not chosen:
+            chosen = request.cookies.get("cls_variant")
+            if chosen not in _LANDING_VARIANTS:
+                chosen = None
+
+        # 3. Random assignment for new visitors
+        if not chosen:
+            chosen = random.choice(_VARIANT_KEYS)
+
+        # Serve the variant file
+        page_file = FilePath(_website_dir) / _LANDING_VARIANTS[chosen]
+        if not page_file.exists():
+            # Fallback to index.html if variant file missing
+            page_file = FilePath(_website_dir) / "index.html"
+            chosen = "A"
+
+        from starlette.responses import Response
+        with open(str(page_file), "r") as f:
+            html_content = f.read()
+        response = Response(content=html_content, media_type="text/html")
+
+        # Set variant cookie (30 days)
+        response.set_cookie(
+            key="cls_variant",
+            value=chosen,
+            max_age=30 * 24 * 60 * 60,
+            path="/",
+            samesite="lax",
+        )
+        return response
 
     @app.get("/health")
     async def health_check():
