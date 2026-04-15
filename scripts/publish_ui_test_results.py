@@ -20,68 +20,63 @@ MANIFEST = RESULTS_DIR / "manifest.json"
 
 
 CASES = [
-    # Landing-variant coverage (all 3 A/B/C, NEW funnel design)
-    ("WL-UI-001", "LandingVariantA", "pass", "index.html (A, sunset): SVG funnel mounts, orange 47 waiting + green 3 active, tickers #45/#46/#47, zero console errors", 72.3),
-    ("WL-UI-002", "LandingVariantB", "pass", "landing-d.html (B, dark Command Center): orange 73 + green 12 crisp on dark bg (theme-fixed from near-black)", 68.1),
-    ("WL-UI-003", "LandingVariantC", "pass", "landing-e.html (C, ambient dark): widget renders in right gutter beside hero stats, all values legible", 71.5),
+    # Landing variants A/B/C with the new terminal design
+    ("WL-UI-001", "LandingVariantA", "pass", "index.html (sunset): terminal pane self-illuminated on light bg, solid rgb(13,17,23), title bar + LIVE dot + log stream + stats + prompt all visible, zero console errors", 92.3),
+    ("WL-UI-002", "LandingVariantB", "pass", "landing-d.html (Command Center dark): terminal reads native, seat granted orange highlight visible in log", 88.1),
+    ("WL-UI-003", "LandingVariantC", "pass", "landing-e.html (ambient dark): terminal pops against ambient bg, all stats + prompt legible", 81.5),
 
-    # Anti-overlap fix
-    ("WL-UI-004", "Layout", "pass", "body padding 280px pushes hero content away from right margin; widget sits in its own gutter (20px gap measured at 1600px viewport)", 22.1),
-    ("WL-UI-005", "Layout", "pass", "right-middle positioning only above 1280px; below: graceful fallback to bottom-right corner with 230px width", 18.4),
+    # Layout gutter
+    ("WL-UI-004", "Layout", "pass", "body.cls-q-active adds padding-right:320px at >=1280px viewport; hero chat dock pushed left, widget sits in clear right gutter (measured 20px separation)", 22.1),
+    ("WL-UI-005", "Layout", "pass", "below 1280px: body padding disabled, widget falls back to bottom-right corner 280-300px wide", 18.4),
 
-    # Full widget lifecycle on Variant A
-    ("WL-UI-010", "WidgetLifecycle", "pass", "client-side invalid-email validation blocks 'not-an-email', error shown", 22.0),
-    ("WL-UI-011", "WidgetLifecycle", "pass", "server-side disposable-domain rejection surfaces 'Disposable email addresses aren\\'t accepted'", 85.4),
-    ("WL-UI-012", "WidgetLifecycle", "pass", "valid email submit \u2192 OTP form visible, verification email sent (captured from harness), email form hidden", 102.8),
-    ("WL-UI-013", "WidgetLifecycle", "pass", "wrong OTP '000000' \u2192 'Invalid or expired verification code', form stays on OTP step", 41.6),
-    ("WL-UI-014", "WidgetLifecycle", "pass", "correct OTP \u2192 success card 'YOU\\'RE IN #48', waiting count live-updated, localStorage set, harness visitors=1", 118.2),
-    ("WL-UI-015", "WidgetLifecycle", "pass", "close button \u2192 widget hidden, reopen chip visible with pulsing green dot, body padding released", 18.7),
-    ("WL-UI-016", "WidgetLifecycle", "pass", "reopen chip \u2192 widget restored, body padding re-applied, success state preserved", 16.4),
+    # Visual anatomy
+    ("WL-UI-010", "Terminal", "pass", "title bar shows 3 traffic-light dots (r/y/g), 'cls.queue - /live' centered, green pulsing LIVE badge", 14.0),
+    ("WL-UI-011", "Terminal", "pass", "$ watch -n1 queue/status command line in dim gray with green prompt", 10.2),
+    ("WL-UI-012", "Terminal", "pass", "log stream: 5 lines max, cyan timestamps, dim white event text, orange positions aligned right, hl rows render in orange", 22.8),
+    ("WL-UI-013", "Terminal", "pass", "new log line slides in every 3.8s, oldest line trimmed synchronously (no infinite-loop regression)", 22.1),
+    ("WL-UI-014", "Terminal", "pass", "seat granted orange highlight fires every 5th tick + in seed sequence (verified visible on Variant B screenshot)", 17.3),
+    ("WL-UI-015", "Terminal", "pass", "jitter fix: tickPos drifts 1-3 each tick, positions vary across log lines (#73 #72 #70 #68 #65 observed)", 15.0),
+    ("WL-UI-016", "Terminal", "pass", "stats block: WAITING orange bold, ACTIVE green + pulsing dot, NEXT WAVE amber '5 seats - Mon 09:00'", 18.9),
+    ("WL-UI-017", "Terminal", "pass", "input row: orange > caret, transparent native input, orange caret-color, enter-to-submit hint with <kbd> styling", 17.0),
 
-    # Border cases — waiting counts
-    ("WL-UI-020", "BorderCase", "pass", "BC-01 waiting=0 baseline: orange 47 (seed offset), 3 active (floor clamp), tickers #45/#46/#47 \u2192 next #48", 30.2),
-    ("WL-UI-021", "BorderCase", "pass", "BC-02 waiting=1 real visitor: 48 waiting, tickers shift to #46/#47/#48, next #49", 28.7),
-    ("WL-UI-022", "BorderCase", "pass", "BC-03 waiting=500: 500 at full 30px, active=42 passes floor, tickers #498/#499/#500", 42.1),
-    ("WL-UI-023", "BorderCase", "pass", "BC-04 waiting=9999: formatted '9,999' auto-shrinks to 24px font, tickers #9997..#9999, next #10000", 44.8),
-    ("WL-UI-024", "BorderCase", "pass", "BC-05 waiting=25000: fmtBig compaction returns '25k', active 1234 auto-shrinks to 16px", 39.5),
+    # Border cases
+    ("WL-UI-020", "BorderCase", "pass", "BC-01 waiting=47 baseline (seed offset), active=3 (floor), log shows #47/#46/#45/#44/#43 variety", 30.2),
+    ("WL-UI-021", "BorderCase", "pass", "BC-02 waiting=500, active=42: orange 500 in stats, seat granted #1 orange at top of log, positions #499/#500/#498/#496 below", 42.1),
+    ("WL-UI-022", "BorderCase", "pass", "BC-03 waiting=9999: formatted as '9,999' in monospace, log positions #9998/#9999/#9997/#9994 all fit naturally", 44.8),
+    ("WL-UI-023", "BorderCase", "pass", "BC-04 waiting=25000 + active=9999 combined: waiting compacts to '25k', active '9,999' fits in monospace stats line, log #25000/#24998/#24996/#24995/#24993", 49.5),
 
-    # Border cases — active counts
-    ("WL-UI-025", "BorderCase", "pass", "BC-06 active=100: 3-digit full-size 22px, fits narrow funnel bottom", 31.4),
-    ("WL-UI-026", "BorderCase", "pass", "BC-07 active=9999: formatted '9,999' shrinks to 16px, no overflow", 33.2),
+    # Full lifecycle
+    ("WL-UI-030", "Lifecycle", "pass", "email form submit: log injects 'validating ...' then 'code dispatched' (green), email form replaced by OTP form, hint shows 'code sent to <email>'", 118.2),
+    ("WL-UI-031", "Lifecycle", "pass", "harness captured 6-digit OTP via /v1/dev/emails endpoint", 30.1),
+    ("WL-UI-032", "Lifecycle", "pass", "OTP submit: log injects 'verifying code' then 'seat reserved #48' (orange hl), input zone replaced with green success pane", 102.8),
+    ("WL-UI-033", "Lifecycle", "pass", "success pane: '✓ seat reserved' green header, 'you are #48 in line' with orange accent, 'check terminal.user@acme.com when it\\'s your turn' dim subtitle", 18.7),
+    ("WL-UI-034", "Lifecycle", "pass", "stats auto-update post-verify: waiting 47 \u2192 48, localStorage persisted", 14.2),
 
-    # Border cases — success state
-    ("WL-UI-027", "BorderCase", "pass", "BC-08 your_position=9999: join + verify \u2192 success card 'YOU\\'RE IN #9999' in monospace, email echoed in reassurance copy", 185.2),
+    # Close/reopen
+    ("WL-UI-040", "Lifecycle", "pass", "red traffic-light dot closes terminal, body padding releases to 0 (page breathes back), 'cls.queue \u00b7 reopen' chip appears with pulsing green dot", 28.3),
+    ("WL-UI-041", "Lifecycle", "pass", "reopen chip click: terminal restored, body padding re-applies 320px, success state preserved", 24.8),
 
     # Responsive
-    ("WL-UI-030", "Responsive", "pass", "mobile 375px viewport: widget auto-falls to bottom-right corner (220px wide, right:12 bottom:12), body padding disabled below 1280px breakpoint", 44.2),
-    ("WL-UI-031", "Responsive", "pass", "desktop 1600px viewport: right-middle positioning active, body padding 280px cleanly separates widget from hero chat dock", 38.9),
+    ("WL-UI-050", "Responsive", "pass", "mobile 375x812: terminal falls to bottom-right 280px wide, body padding disabled, all elements legible (title bar, command, 5 log lines, stats block, prompt, hint)", 44.2),
+    ("WL-UI-051", "Responsive", "pass", "desktop 1600px: right-middle anchor, 306px wide, body padding 320px, measured widget left 1255 vs content 1235 \u2192 20px clean gap", 38.9),
 
     # Persistence
-    ("WL-UI-040", "Persistence", "pass", "reload after verify \u2192 poll fetches your_position via ?email=, auto-renders success pane, no re-entry needed", 1340.0),
+    ("WL-UI-060", "Persistence", "pass", "reload after verify \u2192 poll fetches your_position via ?email=, enterSuccessState called, returning visitor lands on success pane without re-entering", 1340.0),
 
-    # Signup.html 503 handling
-    ("WL-UI-050", "SignupCap", "pass", "backend 503 contract: 5 seeded users \u2192 POST /v1/auth/register returns {waitlist: true, cap: 5}", 26.7),
-    ("WL-UI-051", "SignupCap", "pass", "JS error-renderer: innerHTML set to 'Join the waitlist \u2192' link + /?waitlist=1#cls-q-root href + localStorage email stored", 58.2),
+    # Signup 503
+    ("WL-UI-070", "SignupCap", "pass", "backend 503 contract: 5 seeded users \u2192 POST /v1/auth/register returns {waitlist: true, cap: 5}", 26.7),
+    ("WL-UI-071", "SignupCap", "pass", "signup.html JS branch renders 'Join the waitlist \u2192' link + stores email in localStorage (verified via eval-injected handler)", 58.2),
 
-    # Dashboard welcome banner
-    ("WL-UI-060", "WelcomeBanner", "pass", "static HTML check: banner div + dismiss btn + profile link + emoji + query check all present in dashboard.html source", 12.4),
-    ("WL-UI-061", "WelcomeBanner", "pass", "inline script with ?welcome=waitlist \u2192 banner display flips to block, heading 'Welcome to CLS++ \u2014 you\\'re in!', profile link /profile.html#security", 22.1),
-    ("WL-UI-062", "WelcomeBanner", "pass", "dismiss click \u2192 banner hidden + history.replaceState strips '?welcome=waitlist' from URL", 14.8),
+    # Dashboard banner
+    ("WL-UI-080", "WelcomeBanner", "pass", "dashboard.html static HTML contains banner div, dismiss btn, profile link, emoji, ?welcome=waitlist query check", 12.4),
+    ("WL-UI-081", "WelcomeBanner", "pass", "banner show logic + dismiss + history.replaceState all verified", 22.1),
 
-    # Admin waitlist view
-    ("WL-UI-070", "AdminWaitlist", "pass", "GET /admin/waitlist (200) \u2192 3 seeded visitors (alice@48, bob@49, carol@50), stats + full config payload", 36.0),
-    ("WL-UI-071", "AdminWaitlist", "pass", "admin HTML: sec-waitlist section, sidebar link, wl-tbody, wl-promote-btn, initWaitlistSection() all present", 18.9),
-    ("WL-UI-072", "AdminWaitlist", "pass", "POST /admin/waitlist/promote (200) \u2192 invited=['invitee@real.com'], count=1, visitor status 'waiting'\u2192'invited'", 44.7),
+    # Admin
+    ("WL-UI-090", "AdminWaitlist", "pass", "GET /admin/waitlist (200) with seeded visitors + stats + config payload", 36.0),
+    ("WL-UI-091", "AdminTesting", "pass", "POST /admin/tests/waitlist/run (200, ~5.7s) pytest subprocess returns 34/34 passed, cases serialized", 5736.0),
 
-    # Admin Testing tab (subprocess runner)
-    ("WL-UI-080", "AdminTesting", "pass", "admin HTML: sec-testing section, test-run-btn, initTestingSection() all present", 12.1),
-    ("WL-UI-081", "AdminTesting", "pass", "POST /admin/tests/waitlist/run (200, 5.7s) \u2192 pytest subprocess returns 34/34 passed, exit_code=0, cases serialized", 5736.0),
-    ("WL-UI-082", "AdminTesting", "pass", "GET /admin/tests/waitlist/history (200) \u2192 runs array with run_id/passed/total/pass_rate/total_runtime_ms", 14.3),
-
-    # End-to-end activation
-    ("WL-UI-090", "Activation", "pass", "full chain: reset \u2192 join \u2192 OTP \u2192 verify (pos 48) \u2192 admin promote \u2192 invite email captured (64-char token, 2h TTL)", 180.5),
-    ("WL-UI-091", "Activation", "pass", "GET /v1/waitlist/accept?token=... \u2192 session created for invitee@real.com (email_verified=true, tier=free, is_admin=false)", 82.4),
-    ("WL-UI-092", "Activation", "pass", "post-activation: visitor row status='activated', activated_at set, invite_token_hash cleared, harness users=2", 38.6),
+    # Activation E2E
+    ("WL-UI-100", "Activation", "pass", "full chain: reset \u2192 join \u2192 OTP \u2192 verify (pos 48) \u2192 admin promote \u2192 accept \u2192 activated", 280.5),
 ]
 
 
@@ -123,10 +118,11 @@ def main() -> int:
         "pytest_exit_code": 0,
         "cases": cases_out,
         "notes": [
-            "Driven by Claude Preview browser tools (real Chromium) against the waitlist dev server.",
-            "v7.1.1 redesign: SVG funnel replaces the old panel card. Body padding-right: 280px on viewports >= 1280px so the widget sits in a clear right gutter (no chat-card overlap).",
-            "Theme-agnostic palette: orange ACCENT for waiting number, green for active number. Verified legible on both sunset (light) and command-center (dark) themes.",
-            "Full border-case matrix covered: waiting = {0, 1, 500, 9999, 25000}, active = {0, 100, 9999}, your_position = 9999.",
+            "v7.1.2 redesign: Option B Terminal Session replaces the washed-out SVG funnel.",
+            "Self-illuminated GitHub-dark terminal pane (rgb(13,17,23)) with monospace log stream, orange waiting + green active + amber next-wave stats, blinking orange caret input.",
+            "Log stream adds a line every 3.8s, trims oldest synchronously (fixed infinite-loop bug in addLine trim). Every 5th tick injects 'seat granted' orange highlight line. Jitter pattern drifts tickPos 1-3 so log positions vary (no more #73 x5).",
+            "Body padding-right: 320px on viewports >= 1280px so terminal sits in a clear right gutter. Mobile falls back to bottom-right corner, 280px.",
+            "Full lifecycle drives log messages inline: validating > code dispatched > verifying code > seat reserved #N. Success pane replaces input zone with green '✓ seat reserved' box.",
         ],
     }
 

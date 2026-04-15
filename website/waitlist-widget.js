@@ -1,15 +1,28 @@
-/* CLS++ Waitlist — "The Queue"
+/* CLS++ Waitlist — "Terminal Session"
  *
- * Renders a live funnel graphic on the right side of the page. Not a panel,
- * not a card — a bona-fide queue shape that blends with the page background.
- * Visitors land at the wide top ("47 waiting"), flow down the tapering body
- * past real-time position tickers, and emerge at the narrow bottom
- * ("3 active") with a pulsing green dot. Underneath: a one-line email form
- * that reveals the visitor's own position when they verify.
+ * A running Unix-style terminal pane that streams live queue events:
  *
- * Zero dep. Fixed right-side anchor. Polls /v1/waitlist/stats every 20s.
- * Persists verified email in localStorage so returning visitors see
- * their slot without re-entering anything.
+ *   ┌─ cls.queue ────────────── ● ─┐
+ *   │ $ watch -n1 queue/status      │
+ *   │                               │
+ *   │ [12:47:03] user joined  #73   │
+ *   │ [12:46:51] user joined  #72   │
+ *   │ [12:46:32] ─ seat granted ✓   │
+ *   │ [12:46:12] user joined  #71   │
+ *   │ [12:45:58] user joined  #70   │
+ *   │                               │
+ *   │ WAITING    73                 │
+ *   │ ACTIVE     12  ●              │
+ *   │ NEXT WAVE  5 seats · Mon 09   │
+ *   │                               │
+ *   │ > email@company.com_          │
+ *   │ [enter] to claim seat         │
+ *   └───────────────────────────────┘
+ *
+ * Self-illuminated — solid background, never depends on what's behind it.
+ * Monospace throughout so border-case numbers fit naturally without font
+ * gymnastics. Body gutter (via body.cls-q-active) still applies on viewports
+ * >= 1280px so the widget doesn't overlap the hero chat dock.
  *
  * Drop-in: <script src="waitlist-widget.js"></script>
  */
@@ -20,129 +33,109 @@
   window.__clsWaitlistMounted = true;
 
   var STATS_POLL_MS = 20000;
+  var STREAM_TICK_MS = 3800;
   var STORAGE_KEY = 'cls_waitlist_email';
-  var ACCENT = '#ff6b35';
-  var INK = '#1d1d1f';
-  var DIM = '#86868b';
-  var GREEN = '#10b981';
 
-  // ── Styles ───────────────────────────────────────────────────────────────
-  // Intentional: no card, no box-shadow, no background. The funnel IS the UI.
-  //
-  // Challenge: the hero chat dock on the landing pages stretches to ~95% of
-  // viewport width, so there's no free right margin for a fixed right-middle
-  // widget. Solution: when the widget mounts, we add a body class that pads
-  // the <body> on the right, physically pushing hero content away. Because
-  // the widget itself is position:fixed, it sits OUTSIDE the padded body and
-  // lands in the cleared gap. On narrower viewports we fall back to the
-  // bottom-right corner and skip the body padding entirely.
-  var GUTTER = 280;
-  var css =
-    'body.cls-q-active{transition:padding-right .25s ease}' +
-    '@media (min-width:1280px){body.cls-q-active{padding-right:' + GUTTER + 'px}}' +
-    '.cls-q-root{position:fixed;right:20px;top:50%;transform:translateY(-50%);z-index:9999;font-family:-apple-system,BlinkMacSystemFont,"Inter","Helvetica Neue",Arial,sans-serif;color:' + INK + ';width:240px;pointer-events:none}' +
-    '.cls-q-root *{pointer-events:auto}' +
-    '.cls-q-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;padding:0 6px}' +
-    // Label uses currentColor-like mix-blend so it reads on both themes.
-    '.cls-q-label{font-size:10px;font-weight:700;letter-spacing:2.4px;text-transform:uppercase;color:' + DIM + ';opacity:0.9;mix-blend-mode:difference;color:#999}' +
-    '.cls-q-close{background:none;border:none;color:' + DIM + ';font-size:14px;cursor:pointer;padding:2px 6px;line-height:1;border-radius:10px;opacity:0.6;transition:opacity .15s;mix-blend-mode:difference}' +
-    '.cls-q-close:hover{opacity:1}' +
-    '.cls-q-svg{display:block;width:100%;height:auto;filter:drop-shadow(0 4px 16px rgba(255,107,53,0.08))}' +
-    '.cls-q-foot{margin-top:10px;padding:0 6px}' +
-    // Teaser uses difference-blend so it's readable on any background
-    '.cls-q-teaser{font-size:12px;text-align:center;margin-bottom:8px;line-height:1.4;color:#999;mix-blend-mode:difference}' +
-    '.cls-q-teaser strong{color:' + ACCENT + ';font-weight:800;mix-blend-mode:normal}' +
-    '.cls-q-row{display:flex;gap:6px;align-items:stretch}' +
-    '.cls-q-input{flex:1;min-width:0;padding:9px 12px;border:1px solid rgba(29,29,31,0.15);border-radius:12px;font-size:12px;font-family:inherit;outline:none;background:rgba(255,255,255,0.7);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:border-color .15s;color:' + INK + '}' +
-    '.cls-q-input::placeholder{color:' + DIM + ';opacity:0.8}' +
-    '.cls-q-input:focus{border-color:' + ACCENT + '}' +
-    '.cls-q-btn{padding:9px 14px;border:none;border-radius:12px;background:' + INK + ';color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s,transform .1s;white-space:nowrap}' +
-    '.cls-q-btn:hover{background:#000}' +
-    '.cls-q-btn:active{transform:scale(0.97)}' +
-    '.cls-q-btn:disabled{background:#c0c0c0;cursor:not-allowed}' +
-    '.cls-q-err{color:#dc2626;font-size:10.5px;text-align:center;margin-top:6px;min-height:13px;font-weight:500}' +
-    '.cls-q-ok{margin-top:6px;padding:10px 12px;background:rgba(255,107,53,0.08);border:1px dashed rgba(255,107,53,0.35);border-radius:12px;text-align:center}' +
-    '.cls-q-ok-badge{display:inline-block;padding:2px 10px;background:' + ACCENT + ';color:#fff;border-radius:999px;font-size:9px;font-weight:700;letter-spacing:1px;margin-bottom:4px}' +
-    '.cls-q-ok-pos{font-family:"JetBrains Mono","SF Mono",Menlo,monospace;font-size:22px;font-weight:800;color:' + INK + ';line-height:1}' +
-    '.cls-q-ok-sub{font-size:10px;color:' + DIM + ';margin-top:4px}' +
-    '.cls-q-reopen{pointer-events:auto;padding:8px 14px;background:' + INK + ';color:#fff;border:none;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:0.5px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,0.15);font-family:inherit;text-transform:uppercase}' +
-    '.cls-q-reopen:hover{background:#000}' +
-    '.cls-q-reopen::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:' + GREEN + ';margin-right:8px;vertical-align:1px;box-shadow:0 0 0 0 rgba(16,185,129,0.6);animation:cls-q-pulse 1.8s ease-out infinite}' +
-    '@keyframes cls-q-pulse{0%{box-shadow:0 0 0 0 rgba(16,185,129,0.6)}70%{box-shadow:0 0 0 6px rgba(16,185,129,0)}100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}}' +
-    '@keyframes cls-q-flow{0%{transform:translateY(-6px);opacity:0}15%{opacity:0.7}85%{opacity:0.7}100%{transform:translateY(14px);opacity:0}}' +
-    '@keyframes cls-q-blink{0%,45%,100%{opacity:1}50%,95%{opacity:0.25}}' +
-    '.cls-q-ticker-row{animation:cls-q-flow 4.5s ease-in-out infinite}' +
-    '.cls-q-ticker-row:nth-child(2){animation-delay:1.5s}' +
-    '.cls-q-ticker-row:nth-child(3){animation-delay:3s}' +
-    '.cls-q-dot-live{animation:cls-q-pulse 1.8s ease-out infinite}' +
-    '.cls-q-waiting-num.big{font-size:30px}' +
-    '.cls-q-waiting-num.mid{font-size:26px}' +
-    '.cls-q-waiting-num.small{font-size:22px}' +
-    // Below 1280: fall back to bottom-right corner to avoid the hero column.
-    '@media (max-width:1280px){.cls-q-root{right:16px;top:auto;bottom:16px;transform:none;width:230px}}' +
-    '@media (max-width:640px){.cls-q-root{width:220px;right:12px;bottom:12px}}';
+  // Palette — mirrors GitHub dark; deliberate high contrast.
+  var BG = '#0d1117';
+  var BG_ALT = '#161b22';
+  var BORDER = '#30363d';
+  var MUTED = '#6e7681';
+  var TEXT = '#c9d1d9';
+  var DIM_CYAN = '#58a6ff';
+  var ACCENT = '#ff6b35';
+  var GREEN = '#10b981';
+  var AMBER = '#f59e0b';
+  var RED = '#f87171';
+
+  // ── CSS ──────────────────────────────────────────────────────────────────
+  var GUTTER = 320;
+  var css = [
+    // Body gutter so the fixed widget sits in a clear right channel.
+    'body.cls-q-active{transition:padding-right .25s ease}',
+    '@media (min-width:1280px){body.cls-q-active{padding-right:' + GUTTER + 'px}}',
+
+    // Widget shell — right-middle on desktop, bottom-right on narrow.
+    '.cls-q-root{position:fixed;right:24px;top:50%;transform:translateY(-50%);z-index:9999;width:306px;font-family:"JetBrains Mono","SF Mono",Menlo,Consolas,monospace;color:' + TEXT + ';pointer-events:none}',
+    '.cls-q-root *{pointer-events:auto}',
+
+    // The terminal frame
+    '.cls-q-term{background:' + BG + ';border:1px solid ' + BORDER + ';border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,0.45),0 0 0 1px rgba(255,107,53,0.08),0 0 40px rgba(255,107,53,0.06);overflow:hidden}',
+
+    // Title bar
+    '.cls-q-tbar{display:flex;align-items:center;gap:8px;padding:10px 14px;background:' + BG_ALT + ';border-bottom:1px solid ' + BORDER + ';font-size:11px}',
+    '.cls-q-tbar-dots{display:flex;gap:6px}',
+    '.cls-q-tdot{width:9px;height:9px;border-radius:50%}',
+    '.cls-q-tdot.r{background:#ff5f56}',
+    '.cls-q-tdot.y{background:#ffbd2e}',
+    '.cls-q-tdot.g{background:#27c93f}',
+    '.cls-q-ttitle{flex:1;text-align:center;color:' + MUTED + ';font-weight:500;letter-spacing:0.3px}',
+    '.cls-q-ttitle b{color:' + TEXT + ';font-weight:600}',
+    '.cls-q-tlive{display:flex;align-items:center;gap:5px;font-size:9px;color:' + GREEN + ';text-transform:uppercase;letter-spacing:1.2px;font-weight:700}',
+    '.cls-q-tlive::before{content:"";width:6px;height:6px;border-radius:50%;background:' + GREEN + ';box-shadow:0 0 0 0 rgba(16,185,129,0.6);animation:cls-q-pulse 1.8s ease-out infinite}',
+
+    // Body
+    '.cls-q-body{padding:12px 14px 14px;font-size:11.5px;line-height:1.55}',
+    '.cls-q-cmd{color:' + MUTED + ';margin-bottom:8px}',
+    '.cls-q-cmd .p{color:' + GREEN + '}',
+    '.cls-q-cmd .x{color:' + TEXT + '}',
+
+    // Log stream
+    '.cls-q-log{height:112px;overflow:hidden;position:relative;margin-bottom:10px}',
+    '.cls-q-log-line{display:flex;gap:8px;white-space:nowrap;opacity:0;animation:cls-q-slidein .4s ease-out forwards}',
+    '.cls-q-log-line.fading{animation:cls-q-slideout .4s ease-in forwards}',
+    '.cls-q-log-time{color:' + DIM_CYAN + ';opacity:0.7;flex-shrink:0}',
+    '.cls-q-log-txt{color:' + MUTED + '}',
+    '.cls-q-log-pos{color:' + TEXT + ';margin-left:auto;font-weight:600}',
+    '.cls-q-log-line.hl .cls-q-log-txt{color:' + ACCENT + '}',
+    '.cls-q-log-line.hl .cls-q-log-pos{color:' + ACCENT + '}',
+    '.cls-q-log-line.sys .cls-q-log-txt{color:' + AMBER + '}',
+    '.cls-q-log-line.ok .cls-q-log-txt{color:' + GREEN + '}',
+
+    // Divider rule
+    '.cls-q-rule{border:none;border-top:1px dashed ' + BORDER + ';margin:4px 0 10px}',
+
+    // Stats block
+    '.cls-q-stats{display:grid;grid-template-columns:auto 1fr;column-gap:14px;row-gap:4px;margin-bottom:10px}',
+    '.cls-q-k{color:' + MUTED + ';font-size:11px;letter-spacing:0.5px}',
+    '.cls-q-v{color:' + TEXT + ';font-size:11.5px;display:flex;align-items:center;gap:6px}',
+    '.cls-q-v.waiting{color:' + ACCENT + ';font-weight:700;font-size:13px}',
+    '.cls-q-v.active{color:' + GREEN + ';font-weight:700;font-size:13px}',
+    '.cls-q-v.amber{color:' + AMBER + ';font-size:11px}',
+    '.cls-q-dot{width:7px;height:7px;border-radius:50%;background:' + GREEN + ';box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:cls-q-pulse 1.8s ease-out infinite}',
+
+    // Input line
+    '.cls-q-input-row{display:flex;align-items:center;gap:6px;padding:8px 10px;background:' + BG_ALT + ';border:1px solid ' + BORDER + ';border-radius:6px;transition:border-color .15s}',
+    '.cls-q-input-row:focus-within{border-color:' + ACCENT + '}',
+    '.cls-q-caret{color:' + ACCENT + ';font-weight:700;flex-shrink:0}',
+    '.cls-q-input{flex:1;background:transparent;border:none;outline:none;color:' + TEXT + ';font:inherit;font-size:11.5px;padding:0;caret-color:' + ACCENT + ';min-width:0}',
+    '.cls-q-input::placeholder{color:' + MUTED + ';opacity:0.6}',
+    '.cls-q-hint{color:' + MUTED + ';font-size:10px;margin-top:6px;text-align:left}',
+    '.cls-q-hint kbd{background:' + BG_ALT + ';border:1px solid ' + BORDER + ';border-radius:3px;padding:1px 5px;font-size:9px;font-family:inherit;color:' + TEXT + '}',
+
+    // Error line
+    '.cls-q-err{color:' + RED + ';font-size:10.5px;margin-top:6px;min-height:12px;display:flex;align-items:flex-start;gap:6px}',
+    '.cls-q-err:not(:empty)::before{content:"!";color:' + RED + ';font-weight:700}',
+
+    // Reopen chip
+    '.cls-q-reopen{position:fixed;right:20px;bottom:20px;z-index:9998;background:' + BG + ';color:' + TEXT + ';border:1px solid ' + BORDER + ';border-radius:999px;padding:9px 16px;font-family:"JetBrains Mono","SF Mono",Menlo,monospace;font-size:11px;font-weight:600;cursor:pointer;box-shadow:0 10px 30px rgba(0,0,0,0.4);display:none;align-items:center;gap:8px;pointer-events:auto}',
+    '.cls-q-reopen:hover{border-color:' + ACCENT + ';color:' + ACCENT + '}',
+    '.cls-q-reopen::before{content:"";width:7px;height:7px;border-radius:50%;background:' + GREEN + ';box-shadow:0 0 0 0 rgba(16,185,129,0.6);animation:cls-q-pulse 1.8s ease-out infinite}',
+
+    // Animations
+    '@keyframes cls-q-pulse{0%{box-shadow:0 0 0 0 rgba(16,185,129,0.65)}70%{box-shadow:0 0 0 7px rgba(16,185,129,0)}100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}}',
+    '@keyframes cls-q-slidein{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:translateY(0)}}',
+    '@keyframes cls-q-slideout{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-8px)}}',
+    '@keyframes cls-q-blink{0%,45%{opacity:1}50%,95%{opacity:0}100%{opacity:1}}',
+
+    // Responsive: bottom-right on narrower viewports
+    '@media (max-width:1279px){.cls-q-root{right:16px;top:auto;bottom:16px;transform:none;width:300px}}',
+    '@media (max-width:640px){.cls-q-root{width:280px;right:12px;bottom:12px}.cls-q-log{height:88px}}'
+  ].join('');
 
   var style = document.createElement('style');
   style.textContent = css;
   document.head.appendChild(style);
-
-  // ── Funnel SVG (viewBox is fixed; content scales) ────────────────────────
-  // Width 300, the funnel path is a trapezoid: wide top (280) tapering to
-  // narrow bottom (100). Height 340 to give room for two data zones + flow.
-  var svgMarkup =
-    '<svg class="cls-q-svg" viewBox="0 0 300 340" xmlns="http://www.w3.org/2000/svg" aria-label="CLS++ waitlist">' +
-      '<defs>' +
-        '<linearGradient id="clsQGrad" x1="0" y1="0" x2="0" y2="1">' +
-          '<stop offset="0" stop-color="' + ACCENT + '" stop-opacity="0.06"/>' +
-          '<stop offset="0.5" stop-color="' + ACCENT + '" stop-opacity="0.14"/>' +
-          '<stop offset="1" stop-color="' + ACCENT + '" stop-opacity="0.22"/>' +
-        '</linearGradient>' +
-        '<linearGradient id="clsQStroke" x1="0" y1="0" x2="0" y2="1">' +
-          '<stop offset="0" stop-color="' + ACCENT + '" stop-opacity="0.55"/>' +
-          '<stop offset="1" stop-color="' + ACCENT + '" stop-opacity="0.9"/>' +
-        '</linearGradient>' +
-      '</defs>' +
-
-      // The funnel itself
-      '<path d="M 10 18 L 290 18 L 200 322 L 100 322 Z" fill="url(#clsQGrad)" stroke="url(#clsQStroke)" stroke-width="1.5" stroke-dasharray="3 4" stroke-linejoin="round"/>' +
-
-      // Top waiting section — orange brand color so it pops on light AND dark themes
-      '<text id="clsQWaitingNum" class="cls-q-waiting-num big" x="150" y="66" text-anchor="middle" font-weight="800" fill="' + ACCENT + '" font-family="-apple-system,BlinkMacSystemFont,Inter,sans-serif">—</text>' +
-      '<text x="150" y="86" text-anchor="middle" font-size="10" font-weight="700" letter-spacing="2.4" fill="' + ACCENT + '" fill-opacity="0.8" font-family="-apple-system,BlinkMacSystemFont,Inter,sans-serif">IN THE QUEUE</text>' +
-
-      // Divider
-      '<line x1="55" y1="100" x2="245" y2="100" stroke="' + ACCENT + '" stroke-width="0.6" stroke-dasharray="2 3" opacity="0.4"/>' +
-
-      // Position ticker rows (monospace, animated flow). All orange so visible
-      // on any page theme. Varying opacity builds depth.
-      '<g transform="translate(0,120)" font-family="JetBrains Mono,SF Mono,Menlo,monospace" font-size="11">' +
-        '<g class="cls-q-ticker-row">' +
-          '<text id="clsQPosA" x="90" y="0" fill="' + ACCENT + '" fill-opacity="0.55">#45</text>' +
-          '<text x="210" y="0" text-anchor="end" fill="' + ACCENT + '" fill-opacity="0.55">◂ in</text>' +
-        '</g>' +
-        '<g class="cls-q-ticker-row">' +
-          '<text id="clsQPosB" x="95" y="22" fill="' + ACCENT + '" fill-opacity="0.75">#46</text>' +
-          '<text x="205" y="22" text-anchor="end" fill="' + ACCENT + '" fill-opacity="0.75">◂ in</text>' +
-        '</g>' +
-        '<g class="cls-q-ticker-row">' +
-          '<text id="clsQPosC" x="100" y="44" fill="' + ACCENT + '" font-weight="700">#47</text>' +
-          '<text x="200" y="44" text-anchor="end" fill="' + ACCENT + '" font-weight="700">◂ next</text>' +
-        '</g>' +
-      '</g>' +
-
-      // Flow arrow
-      '<g opacity="0.55">' +
-        '<line x1="150" y1="198" x2="150" y2="232" stroke="' + ACCENT + '" stroke-width="1.3" stroke-dasharray="2 3"/>' +
-        '<polygon points="144,228 156,228 150,238" fill="' + ACCENT + '"/>' +
-      '</g>' +
-
-      // Active section (narrow end)
-      '<line x1="110" y1="252" x2="190" y2="252" stroke="' + ACCENT + '" stroke-width="0.6" stroke-dasharray="2 3" opacity="0.4"/>' +
-      '<circle id="clsQDot" cx="115" cy="282" r="4" fill="' + GREEN + '" class="cls-q-dot-live"/>' +
-      // Green brand color so it reads on light AND dark themes alike
-      '<text id="clsQActiveNum" x="150" y="290" text-anchor="middle" font-size="22" font-weight="800" fill="' + GREEN + '" font-family="-apple-system,BlinkMacSystemFont,Inter,sans-serif">—</text>' +
-      '<text x="150" y="308" text-anchor="middle" font-size="9" font-weight="700" letter-spacing="1.8" fill="' + GREEN + '" font-family="-apple-system,BlinkMacSystemFont,Inter,sans-serif">ACTIVE RIGHT NOW</text>' +
-    '</svg>';
 
   // ── Mount ────────────────────────────────────────────────────────────────
   document.body.classList.add('cls-q-active');
@@ -150,130 +143,182 @@
   var root = document.createElement('div');
   root.className = 'cls-q-root';
   root.innerHTML =
-    '<div class="cls-q-header">' +
-    '  <span class="cls-q-label">Launching slowly</span>' +
-    '  <button class="cls-q-close" id="clsQClose" aria-label="Minimize">×</button>' +
-    '</div>' +
-    svgMarkup +
-    '<div class="cls-q-foot" id="clsQFoot">' +
-    '  <div class="cls-q-teaser" id="clsQTeaser">You could be <strong id="clsQNextPos">#48</strong></div>' +
-    '  <form class="cls-q-row" id="clsQFormEmail" novalidate>' +
-    '    <input type="email" class="cls-q-input" id="clsQEmail" placeholder="your@email" required autocomplete="email">' +
-    '    <button type="submit" class="cls-q-btn" id="clsQBtnEmail">Join →</button>' +
-    '  </form>' +
-    '  <form class="cls-q-row" id="clsQFormOtp" novalidate style="display:none">' +
-    '    <input type="text" class="cls-q-input" id="clsQOtp" placeholder="6-digit code" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" required>' +
-    '    <button type="submit" class="cls-q-btn" id="clsQBtnOtp">Verify</button>' +
-    '  </form>' +
-    '  <div class="cls-q-err" id="clsQErr"></div>' +
-    '  <div class="cls-q-ok" id="clsQOk" style="display:none">' +
-    '    <div class="cls-q-ok-badge">YOU\'RE IN</div>' +
-    '    <div class="cls-q-ok-pos">#<span id="clsQOkPos">—</span></div>' +
-    '    <div class="cls-q-ok-sub" id="clsQOkSub">We\'ll email you the moment it\'s your turn.</div>' +
+    '<div class="cls-q-term">' +
+    '  <div class="cls-q-tbar">' +
+    '    <div class="cls-q-tbar-dots"><div class="cls-q-tdot r"></div><div class="cls-q-tdot y"></div><div class="cls-q-tdot g"></div></div>' +
+    '    <div class="cls-q-ttitle"><b>cls.queue</b> — /live</div>' +
+    '    <div class="cls-q-tlive">live</div>' +
+    '  </div>' +
+    '  <div class="cls-q-body">' +
+    '    <div class="cls-q-cmd"><span class="p">$</span> <span class="x">watch -n1 queue/status</span></div>' +
+    '    <div class="cls-q-log" id="clsQLog"></div>' +
+    '    <hr class="cls-q-rule"/>' +
+    '    <div class="cls-q-stats">' +
+    '      <div class="cls-q-k">WAITING</div><div class="cls-q-v waiting" id="clsQWaiting">—</div>' +
+    '      <div class="cls-q-k">ACTIVE</div><div class="cls-q-v active"><span id="clsQActive">—</span> <span class="cls-q-dot"></span></div>' +
+    '      <div class="cls-q-k">NEXT WAVE</div><div class="cls-q-v amber" id="clsQNext">5 seats · Mon 09:00</div>' +
+    '    </div>' +
+    '    <hr class="cls-q-rule"/>' +
+    '    <div id="clsQInputZone">' +
+    '      <form class="cls-q-input-row" id="clsQFormEmail" autocomplete="off">' +
+    '        <span class="cls-q-caret">&gt;</span>' +
+    '        <input type="email" class="cls-q-input" id="clsQEmail" placeholder="you@company.com" required autocomplete="email">' +
+    '      </form>' +
+    '      <div class="cls-q-hint" id="clsQHint"><kbd>enter</kbd> to claim seat</div>' +
+    '      <div class="cls-q-err" id="clsQErr"></div>' +
+    '    </div>' +
     '  </div>' +
     '</div>';
   document.body.appendChild(root);
 
-  // Reopen chip — hidden until closed
+  // Reopen chip
   var reopen = document.createElement('button');
   reopen.className = 'cls-q-reopen';
-  reopen.textContent = 'The Queue';
-  reopen.style.display = 'none';
-  reopen.style.position = 'fixed';
-  reopen.style.right = '20px';
-  reopen.style.bottom = '20px';
-  reopen.style.zIndex = '9998';
+  reopen.textContent = 'cls.queue · reopen';
   document.body.appendChild(reopen);
 
   // Element refs
-  var waitingNum = document.getElementById('clsQWaitingNum');
-  var activeNum = document.getElementById('clsQActiveNum');
-  var posA = document.getElementById('clsQPosA');
-  var posB = document.getElementById('clsQPosB');
-  var posC = document.getElementById('clsQPosC');
-  var nextPos = document.getElementById('clsQNextPos');
-  var teaser = document.getElementById('clsQTeaser');
+  var termEl = root.querySelector('.cls-q-term');
+  var logEl = document.getElementById('clsQLog');
+  var waitEl = document.getElementById('clsQWaiting');
+  var activeEl = document.getElementById('clsQActive');
+  var nextEl = document.getElementById('clsQNext');
+  var inputZone = document.getElementById('clsQInputZone');
   var formEmail = document.getElementById('clsQFormEmail');
-  var formOtp = document.getElementById('clsQFormOtp');
   var emailInput = document.getElementById('clsQEmail');
-  var otpInput = document.getElementById('clsQOtp');
-  var btnEmail = document.getElementById('clsQBtnEmail');
-  var btnOtp = document.getElementById('clsQBtnOtp');
-  var err = document.getElementById('clsQErr');
-  var ok = document.getElementById('clsQOk');
-  var okPos = document.getElementById('clsQOkPos');
-  var okSub = document.getElementById('clsQOkSub');
-  var foot = document.getElementById('clsQFoot');
-  var closeBtn = document.getElementById('clsQClose');
+  var hintEl = document.getElementById('clsQHint');
+  var errEl = document.getElementById('clsQErr');
 
-  var pendingEmail = '';
+  // Close button in title bar (r dot = close)
+  root.querySelector('.cls-q-tdot.r').style.cursor = 'pointer';
+  root.querySelector('.cls-q-tdot.r').addEventListener('click', function () {
+    root.style.display = 'none';
+    reopen.style.display = 'inline-flex';
+    document.body.classList.remove('cls-q-active');
+  });
+  reopen.addEventListener('click', function () {
+    root.style.display = '';
+    reopen.style.display = 'none';
+    document.body.classList.add('cls-q-active');
+  });
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
-  function fmtBig(n) {
+  // ── Format helpers ───────────────────────────────────────────────────────
+  function fmt(n) {
     if (n == null || isNaN(n)) return '—';
     n = Math.max(0, Math.floor(n));
-    if (n >= 10000) return (Math.floor(n / 100) / 10).toFixed(1).replace(/\.0$/, '') + 'k';
+    if (n >= 100000) return (n / 1000).toFixed(0) + 'k';
+    if (n >= 10000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
     return n.toLocaleString();
   }
 
-  function fitWaitingFont(text) {
-    // Shrink-to-fit when the number gets wide
-    waitingNum.classList.remove('big', 'mid', 'small');
-    var len = String(text).length;
-    if (len <= 3) waitingNum.classList.add('big');
-    else if (len <= 5) waitingNum.classList.add('mid');
-    else waitingNum.classList.add('small');
-    waitingNum.setAttribute('font-size', len <= 3 ? '30' : len <= 5 ? '24' : '20');
+  function timeNow() {
+    var d = new Date();
+    return (
+      String(d.getHours()).padStart(2, '0') + ':' +
+      String(d.getMinutes()).padStart(2, '0') + ':' +
+      String(d.getSeconds()).padStart(2, '0')
+    );
   }
 
-  function setWaiting(n) {
-    var s = fmtBig(n);
-    waitingNum.textContent = s;
-    fitWaitingFont(s);
-    // Also update the three ticker positions at the top of the queue.
-    // Show the 3 most recent slots (n-2, n-1, n), which is where "your next"
-    // slot would slot in. If fewer than 3 real positions exist, fall back
-    // to whatever makes sense.
-    var safe = Math.max(1, Math.floor(n));
-    posA.textContent = '#' + Math.max(1, safe - 2);
-    posB.textContent = '#' + Math.max(1, safe - 1);
-    posC.textContent = '#' + safe;
-    nextPos.textContent = '#' + (safe + 1);
+  function timeAgo(sec) {
+    var d = new Date(Date.now() - sec * 1000);
+    return (
+      String(d.getHours()).padStart(2, '0') + ':' +
+      String(d.getMinutes()).padStart(2, '0') + ':' +
+      String(d.getSeconds()).padStart(2, '0')
+    );
   }
 
-  function setActive(n) {
-    var s = fmtBig(n);
-    activeNum.textContent = s;
-    // Shrink active number when >= 4 digits
-    activeNum.setAttribute('font-size', String(s).length >= 4 ? '16' : '22');
+  // ── Log stream ───────────────────────────────────────────────────────────
+  var MAX_LINES = 5;
+  var currentWaiting = 0;
+  var streamOffset = 0; // decrements to show different recent positions
+
+  function addLine(opts) {
+    var line = document.createElement('div');
+    line.className = 'cls-q-log-line' + (opts.cls ? ' ' + opts.cls : '');
+    var posHtml = opts.pos ? '<span class="cls-q-log-pos">' + opts.pos + '</span>' : '';
+    line.innerHTML =
+      '<span class="cls-q-log-time">[' + opts.time + ']</span>' +
+      '<span class="cls-q-log-txt">' + opts.txt + '</span>' +
+      posHtml;
+    logEl.appendChild(line);
+
+    // Trim old lines synchronously so the loop can never run away
+    while (logEl.children.length > MAX_LINES) {
+      logEl.removeChild(logEl.firstChild);
+    }
   }
 
-  function showOk(email, position) {
-    foot.querySelectorAll('form').forEach(function (f) { f.style.display = 'none'; });
-    teaser.style.display = 'none';
-    err.textContent = '';
-    ok.style.display = 'block';
-    okPos.textContent = position;
-    okSub.textContent = 'We\'ll email ' + email + ' the moment it\'s your turn.';
-    try { localStorage.setItem(STORAGE_KEY, email); } catch (e) {}
+  function seedLog() {
+    logEl.innerHTML = '';
+    var base = Math.max(1, currentWaiting);
+    // Seed 5 historical entries with descending positions and staggered times
+    var seeds = [
+      { age: 58, txt: 'user joined', pos: '#' + (base - 4), cls: '' },
+      { age: 41, txt: 'user joined', pos: '#' + (base - 3), cls: '' },
+      { age: 29, txt: '─ seat granted ✓', pos: '#' + (Math.floor(Math.random() * 8) + 1), cls: 'hl' },
+      { age: 14, txt: 'user joined', pos: '#' + (base - 1), cls: '' },
+      { age: 2, txt: 'user joined', pos: '#' + base, cls: '' }
+    ];
+    seeds.forEach(function (s) {
+      addLine({ time: timeAgo(s.age), txt: s.txt, pos: s.pos, cls: s.cls });
+    });
   }
 
-  function showEmailForm() {
-    ok.style.display = 'none';
-    teaser.style.display = '';
-    formEmail.style.display = 'flex';
-    formOtp.style.display = 'none';
-    err.textContent = '';
+  var tickCount = 0;
+  var tickPos = 0;
+  function tick() {
+    tickCount++;
+    // Every 5th tick: seat granted (orange highlight)
+    if (tickCount % 5 === 0) {
+      addLine({
+        time: timeNow(),
+        txt: '─ seat granted ✓',
+        pos: '#' + (Math.floor(Math.random() * 8) + 1),
+        cls: 'hl'
+      });
+      return;
+    }
+    // Regular join: drift the position by 1-3 each tick so numbers move
+    // visibly. Stay within a plausible neighborhood of the real count.
+    tickPos = (tickPos + 1 + Math.floor(Math.random() * 3)) % 12;
+    var pos = Math.max(1, currentWaiting - tickPos);
+    addLine({ time: timeNow(), txt: 'user joined', pos: '#' + pos, cls: '' });
   }
 
-  function showOtpForm() {
-    formEmail.style.display = 'none';
-    formOtp.style.display = 'flex';
-    err.textContent = '';
-    setTimeout(function () { otpInput.focus(); }, 40);
+  // ── Stats ────────────────────────────────────────────────────────────────
+  function setStats(data) {
+    if (typeof data.waiting_count === 'number') {
+      currentWaiting = data.waiting_count;
+      waitEl.textContent = fmt(data.waiting_count);
+    }
+    if (typeof data.active_now === 'number') {
+      activeEl.textContent = fmt(data.active_now);
+    }
+    if (data.your_position && data.your_status !== 'activated') {
+      enterSuccessState(data.your_email || getStoredEmail() || '', data.your_position);
+    }
   }
 
-  async function fetchJson(url, opts) {
+  function getStoredEmail() {
+    try { return localStorage.getItem(STORAGE_KEY); } catch (e) { return ''; }
+  }
+
+  // ── Fetch stats ──────────────────────────────────────────────────────────
+  async function refreshStats() {
+    var saved = getStoredEmail();
+    var url = '/v1/waitlist/stats' + (saved ? '?email=' + encodeURIComponent(saved) : '');
+    try {
+      var r = await fetch(url, { credentials: 'same-origin' });
+      if (!r.ok) return;
+      var data = await r.json();
+      data.your_email = saved;
+      setStats(data);
+    } catch (e) {}
+  }
+
+  async function apiJson(url, opts) {
     var r = await fetch(url, Object.assign({
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin'
@@ -283,92 +328,124 @@
     return { ok: r.ok, status: r.status, data: data || {} };
   }
 
-  async function refreshStats() {
-    var saved;
-    try { saved = localStorage.getItem(STORAGE_KEY); } catch (e) {}
-    var url = '/v1/waitlist/stats' + (saved ? '?email=' + encodeURIComponent(saved) : '');
-    var res = await fetchJson(url);
-    if (!res.ok) return;
-    var d = res.data;
-    if (typeof d.waiting_count === 'number') setWaiting(d.waiting_count);
-    if (typeof d.active_now === 'number') setActive(d.active_now);
-    if (d.your_position && d.your_status !== 'activated') {
-      showOk(saved || '', d.your_position);
-    }
+  // ── Input state machine ──────────────────────────────────────────────────
+  var pendingEmail = '';
+
+  function showEmailInput() {
+    inputZone.innerHTML =
+      '<form class="cls-q-input-row" id="clsQFormEmail" autocomplete="off">' +
+      '  <span class="cls-q-caret">&gt;</span>' +
+      '  <input type="email" class="cls-q-input" id="clsQEmail" placeholder="you@company.com" required autocomplete="email">' +
+      '</form>' +
+      '<div class="cls-q-hint"><kbd>enter</kbd> to claim seat</div>' +
+      '<div class="cls-q-err" id="clsQErr"></div>';
+    bindEmailForm();
   }
 
-  // ── Event handlers ───────────────────────────────────────────────────────
-  closeBtn.addEventListener('click', function () {
-    root.style.display = 'none';
-    reopen.style.display = 'inline-flex';
-    // Release the body padding when the widget is minimized so the page
-    // breathes out to full width.
-    document.body.classList.remove('cls-q-active');
-  });
+  function showOtpInput(email) {
+    inputZone.innerHTML =
+      '<form class="cls-q-input-row" id="clsQFormOtp" autocomplete="off">' +
+      '  <span class="cls-q-caret">&gt;</span>' +
+      '  <input type="text" class="cls-q-input" id="clsQOtp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="6-digit code" required>' +
+      '</form>' +
+      '<div class="cls-q-hint">code sent to <strong style="color:' + TEXT + '">' + email + '</strong></div>' +
+      '<div class="cls-q-err" id="clsQErr"></div>';
+    bindOtpForm();
+    setTimeout(function () { document.getElementById('clsQOtp').focus(); }, 50);
+  }
 
-  reopen.addEventListener('click', function () {
-    root.style.display = '';
-    reopen.style.display = 'none';
-    document.body.classList.add('cls-q-active');
-  });
+  function enterSuccessState(email, position) {
+    inputZone.innerHTML =
+      '<div style="padding:10px 12px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:6px;font-size:11.5px;">' +
+      '<div style="color:' + GREEN + ';font-weight:700;margin-bottom:4px;">✓ seat reserved</div>' +
+      '<div style="color:' + TEXT + ';">you are <strong style="color:' + ACCENT + '">#' + position + '</strong> in line</div>' +
+      '<div style="color:' + MUTED + ';font-size:10px;margin-top:4px;">check <span style="color:' + TEXT + '">' + (email || 'your inbox') + '</span> when it\'s your turn</div>' +
+      '</div>';
+    try { if (email) localStorage.setItem(STORAGE_KEY, email); } catch (e) {}
+  }
 
-  formEmail.addEventListener('submit', async function (e) {
-    e.preventDefault();
-    err.textContent = '';
-    var email = (emailInput.value || '').trim();
-    if (!email || email.indexOf('@') < 0) {
-      err.textContent = 'Please enter a valid email';
-      return;
-    }
-    btnEmail.disabled = true;
-    btnEmail.textContent = '…';
-    var res = await fetchJson('/v1/waitlist/join', {
-      method: 'POST',
-      body: JSON.stringify({ email: email })
+  function flashLog(txt, cls) {
+    addLine({ time: timeNow(), txt: txt, pos: '', cls: cls || 'sys' });
+  }
+
+  function bindEmailForm() {
+    var form = document.getElementById('clsQFormEmail');
+    var input = document.getElementById('clsQEmail');
+    var err = document.getElementById('clsQErr');
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      err.textContent = '';
+      var email = (input.value || '').trim();
+      if (!email || email.indexOf('@') < 0) {
+        err.textContent = 'invalid email format';
+        return;
+      }
+      input.disabled = true;
+      flashLog('→ validating ' + email);
+      var res = await apiJson('/v1/waitlist/join', {
+        method: 'POST',
+        body: JSON.stringify({ email: email })
+      });
+      input.disabled = false;
+      if (!res.ok) {
+        var msg = (res.data && (res.data.message || res.data.detail)) || 'request failed';
+        err.textContent = msg.toLowerCase().slice(0, 64);
+        flashLog('✗ ' + msg.toLowerCase().slice(0, 48), 'sys');
+        return;
+      }
+      if (res.data.status === 'already_member') {
+        err.textContent = 'account exists — try logging in';
+        return;
+      }
+      if (res.data.status === 'waiting' || res.data.status === 'invited') {
+        flashLog('✓ already in queue', 'ok');
+        enterSuccessState(email, res.data.position || '?');
+        return;
+      }
+      flashLog('✓ code dispatched', 'ok');
+      pendingEmail = email;
+      showOtpInput(email);
     });
-    btnEmail.disabled = false;
-    btnEmail.textContent = 'Join →';
-    if (!res.ok) {
-      err.textContent = (res.data && (res.data.message || res.data.detail)) || 'Something went wrong';
-      return;
-    }
-    if (res.data.status === 'already_member') {
-      err.textContent = 'You already have an account';
-      return;
-    }
-    if (res.data.status === 'waiting' || res.data.status === 'invited') {
-      showOk(email, res.data.position || '?');
-      return;
-    }
-    pendingEmail = email;
-    showOtpForm();
-  });
+  }
 
-  formOtp.addEventListener('submit', async function (e) {
-    e.preventDefault();
-    err.textContent = '';
-    var code = (otpInput.value || '').trim();
-    if (!/^[0-9]{6}$/.test(code)) {
-      err.textContent = 'Enter the 6-digit code';
-      return;
-    }
-    btnOtp.disabled = true;
-    btnOtp.textContent = '…';
-    var res = await fetchJson('/v1/waitlist/verify', {
-      method: 'POST',
-      body: JSON.stringify({ email: pendingEmail, otp_code: code })
+  function bindOtpForm() {
+    var form = document.getElementById('clsQFormOtp');
+    var input = document.getElementById('clsQOtp');
+    var err = document.getElementById('clsQErr');
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      err.textContent = '';
+      var code = (input.value || '').trim();
+      if (!/^[0-9]{6}$/.test(code)) {
+        err.textContent = 'need 6 digits';
+        return;
+      }
+      input.disabled = true;
+      flashLog('→ verifying code');
+      var res = await apiJson('/v1/waitlist/verify', {
+        method: 'POST',
+        body: JSON.stringify({ email: pendingEmail, otp_code: code })
+      });
+      input.disabled = false;
+      if (!res.ok) {
+        var msg = (res.data && (res.data.message || res.data.detail)) || 'invalid code';
+        err.textContent = msg.toLowerCase().slice(0, 64);
+        return;
+      }
+      if (typeof res.data.waiting_count === 'number') {
+        currentWaiting = res.data.waiting_count;
+        waitEl.textContent = fmt(res.data.waiting_count);
+      }
+      flashLog('✓ seat reserved · #' + (res.data.position || '?'), 'hl');
+      enterSuccessState(pendingEmail, res.data.position || '?');
     });
-    btnOtp.disabled = false;
-    btnOtp.textContent = 'Verify';
-    if (!res.ok) {
-      err.textContent = (res.data && (res.data.message || res.data.detail)) || 'Invalid code';
-      return;
-    }
-    showOk(pendingEmail, res.data.position || '?');
-    if (typeof res.data.waiting_count === 'number') setWaiting(res.data.waiting_count);
-  });
+  }
 
-  // Init
-  refreshStats();
+  // ── Init ─────────────────────────────────────────────────────────────────
+  bindEmailForm();
+  refreshStats().then(function () {
+    seedLog();
+    setInterval(tick, STREAM_TICK_MS);
+  });
   setInterval(refreshStats, STATS_POLL_MS);
 })();

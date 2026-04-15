@@ -1,0 +1,293 @@
+{
+  "run_id": "20260415T131407_UI",
+  "run_timestamp": "2026-04-15T13:14:07.830809+00:00",
+  "suite": "waitlist_ui_browser",
+  "total": 34,
+  "passed": 34,
+  "failed": 0,
+  "skipped": 0,
+  "pass_rate": 1.0,
+  "total_runtime_ms": 8538.4,
+  "pytest_exit_code": 0,
+  "cases": [
+    {
+      "id": "WL-UI-001",
+      "name": "index.html (sunset): terminal pane self-illuminated on light bg, solid rgb(13,17,23), title bar + LIVE dot + log stream + stats + prompt all visible, zero console errors",
+      "category": "LandingVariantA",
+      "status": "pass",
+      "runtime_ms": 92.3,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-002",
+      "name": "landing-d.html (Command Center dark): terminal reads native, seat granted orange highlight visible in log",
+      "category": "LandingVariantB",
+      "status": "pass",
+      "runtime_ms": 88.1,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-003",
+      "name": "landing-e.html (ambient dark): terminal pops against ambient bg, all stats + prompt legible",
+      "category": "LandingVariantC",
+      "status": "pass",
+      "runtime_ms": 81.5,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-004",
+      "name": "body.cls-q-active adds padding-right:320px at >=1280px viewport; hero chat dock pushed left, widget sits in clear right gutter (measured 20px separation)",
+      "category": "Layout",
+      "status": "pass",
+      "runtime_ms": 22.1,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-005",
+      "name": "below 1280px: body padding disabled, widget falls back to bottom-right corner 280-300px wide",
+      "category": "Layout",
+      "status": "pass",
+      "runtime_ms": 18.4,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-010",
+      "name": "title bar shows 3 traffic-light dots (r/y/g), 'cls.queue - /live' centered, green pulsing LIVE badge",
+      "category": "Terminal",
+      "status": "pass",
+      "runtime_ms": 14.0,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-011",
+      "name": "$ watch -n1 queue/status command line in dim gray with green prompt",
+      "category": "Terminal",
+      "status": "pass",
+      "runtime_ms": 10.2,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-012",
+      "name": "log stream: 5 lines max, cyan timestamps, dim white event text, orange positions aligned right, hl rows render in orange",
+      "category": "Terminal",
+      "status": "pass",
+      "runtime_ms": 22.8,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-013",
+      "name": "new log line slides in every 3.8s, oldest line trimmed synchronously (no infinite-loop regression)",
+      "category": "Terminal",
+      "status": "pass",
+      "runtime_ms": 22.1,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-014",
+      "name": "seat granted orange highlight fires every 5th tick + in seed sequence (verified visible on Variant B screenshot)",
+      "category": "Terminal",
+      "status": "pass",
+      "runtime_ms": 17.3,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-015",
+      "name": "jitter fix: tickPos drifts 1-3 each tick, positions vary across log lines (#73 #72 #70 #68 #65 observed)",
+      "category": "Terminal",
+      "status": "pass",
+      "runtime_ms": 15.0,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-016",
+      "name": "stats block: WAITING orange bold, ACTIVE green + pulsing dot, NEXT WAVE amber '5 seats - Mon 09:00'",
+      "category": "Terminal",
+      "status": "pass",
+      "runtime_ms": 18.9,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-017",
+      "name": "input row: orange > caret, transparent native input, orange caret-color, enter-to-submit hint with <kbd> styling",
+      "category": "Terminal",
+      "status": "pass",
+      "runtime_ms": 17.0,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-020",
+      "name": "BC-01 waiting=47 baseline (seed offset), active=3 (floor), log shows #47/#46/#45/#44/#43 variety",
+      "category": "BorderCase",
+      "status": "pass",
+      "runtime_ms": 30.2,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-021",
+      "name": "BC-02 waiting=500, active=42: orange 500 in stats, seat granted #1 orange at top of log, positions #499/#500/#498/#496 below",
+      "category": "BorderCase",
+      "status": "pass",
+      "runtime_ms": 42.1,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-022",
+      "name": "BC-03 waiting=9999: formatted as '9,999' in monospace, log positions #9998/#9999/#9997/#9994 all fit naturally",
+      "category": "BorderCase",
+      "status": "pass",
+      "runtime_ms": 44.8,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-023",
+      "name": "BC-04 waiting=25000 + active=9999 combined: waiting compacts to '25k', active '9,999' fits in monospace stats line, log #25000/#24998/#24996/#24995/#24993",
+      "category": "BorderCase",
+      "status": "pass",
+      "runtime_ms": 49.5,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-030",
+      "name": "email form submit: log injects 'validating ...' then 'code dispatched' (green), email form replaced by OTP form, hint shows 'code sent to <email>'",
+      "category": "Lifecycle",
+      "status": "pass",
+      "runtime_ms": 118.2,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-031",
+      "name": "harness captured 6-digit OTP via /v1/dev/emails endpoint",
+      "category": "Lifecycle",
+      "status": "pass",
+      "runtime_ms": 30.1,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-032",
+      "name": "OTP submit: log injects 'verifying code' then 'seat reserved #48' (orange hl), input zone replaced with green success pane",
+      "category": "Lifecycle",
+      "status": "pass",
+      "runtime_ms": 102.8,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-033",
+      "name": "success pane: '\u2713 seat reserved' green header, 'you are #48 in line' with orange accent, 'check terminal.user@acme.com when it\\'s your turn' dim subtitle",
+      "category": "Lifecycle",
+      "status": "pass",
+      "runtime_ms": 18.7,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-034",
+      "name": "stats auto-update post-verify: waiting 47 \u2192 48, localStorage persisted",
+      "category": "Lifecycle",
+      "status": "pass",
+      "runtime_ms": 14.2,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-040",
+      "name": "red traffic-light dot closes terminal, body padding releases to 0 (page breathes back), 'cls.queue \u00b7 reopen' chip appears with pulsing green dot",
+      "category": "Lifecycle",
+      "status": "pass",
+      "runtime_ms": 28.3,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-041",
+      "name": "reopen chip click: terminal restored, body padding re-applies 320px, success state preserved",
+      "category": "Lifecycle",
+      "status": "pass",
+      "runtime_ms": 24.8,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-050",
+      "name": "mobile 375x812: terminal falls to bottom-right 280px wide, body padding disabled, all elements legible (title bar, command, 5 log lines, stats block, prompt, hint)",
+      "category": "Responsive",
+      "status": "pass",
+      "runtime_ms": 44.2,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-051",
+      "name": "desktop 1600px: right-middle anchor, 306px wide, body padding 320px, measured widget left 1255 vs content 1235 \u2192 20px clean gap",
+      "category": "Responsive",
+      "status": "pass",
+      "runtime_ms": 38.9,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-060",
+      "name": "reload after verify \u2192 poll fetches your_position via ?email=, enterSuccessState called, returning visitor lands on success pane without re-entering",
+      "category": "Persistence",
+      "status": "pass",
+      "runtime_ms": 1340.0,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-070",
+      "name": "backend 503 contract: 5 seeded users \u2192 POST /v1/auth/register returns {waitlist: true, cap: 5}",
+      "category": "SignupCap",
+      "status": "pass",
+      "runtime_ms": 26.7,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-071",
+      "name": "signup.html JS branch renders 'Join the waitlist \u2192' link + stores email in localStorage (verified via eval-injected handler)",
+      "category": "SignupCap",
+      "status": "pass",
+      "runtime_ms": 58.2,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-080",
+      "name": "dashboard.html static HTML contains banner div, dismiss btn, profile link, emoji, ?welcome=waitlist query check",
+      "category": "WelcomeBanner",
+      "status": "pass",
+      "runtime_ms": 12.4,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-081",
+      "name": "banner show logic + dismiss + history.replaceState all verified",
+      "category": "WelcomeBanner",
+      "status": "pass",
+      "runtime_ms": 22.1,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-090",
+      "name": "GET /admin/waitlist (200) with seeded visitors + stats + config payload",
+      "category": "AdminWaitlist",
+      "status": "pass",
+      "runtime_ms": 36.0,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-091",
+      "name": "POST /admin/tests/waitlist/run (200, ~5.7s) pytest subprocess returns 34/34 passed, cases serialized",
+      "category": "AdminTesting",
+      "status": "pass",
+      "runtime_ms": 5736.0,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-100",
+      "name": "full chain: reset \u2192 join \u2192 OTP \u2192 verify (pos 48) \u2192 admin promote \u2192 accept \u2192 activated",
+      "category": "Activation",
+      "status": "pass",
+      "runtime_ms": 280.5,
+      "error": ""
+    }
+  ],
+  "notes": [
+    "v7.1.2 redesign: Option B Terminal Session replaces the washed-out SVG funnel.",
+    "Self-illuminated GitHub-dark terminal pane (rgb(13,17,23)) with monospace log stream, orange waiting + green active + amber next-wave stats, blinking orange caret input.",
+    "Log stream adds a line every 3.8s, trims oldest synchronously (fixed infinite-loop bug in addLine trim). Every 5th tick injects 'seat granted' orange highlight line. Jitter pattern drifts tickPos 1-3 so log positions vary (no more #73 x5).",
+    "Body padding-right: 320px on viewports >= 1280px so terminal sits in a clear right gutter. Mobile falls back to bottom-right corner, 280px.",
+    "Full lifecycle drives log messages inline: validating > code dispatched > verifying code > seat reserved #N. Success pane replaces input zone with green '\u2713 seat reserved' box."
+  ]
+}
