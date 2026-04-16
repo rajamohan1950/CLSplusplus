@@ -10,7 +10,6 @@ from datetime import datetime
 from typing import Optional, List
 
 import os
-import random
 from pathlib import Path as FilePath
 
 from fastapi import FastAPI, HTTPException, Path, Query, Request, Body
@@ -18,7 +17,6 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 from clsplusplus.config import Settings
 from clsplusplus.integration_service import IntegrationService
@@ -127,7 +125,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     _default_origins = "https://www.clsplusplus.com,https://clsplusplus.com"
     _cors_env = os.environ.get("CLS_CORS_ORIGINS", _default_origins)
     cors_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
-    cors_regex = r"^chrome-extension://[a-z]{32}$"  # any Chrome extension
+    # Regex allows any Chrome extension AND any Vercel preview/prod URL for the UI repo
+    cors_regex = r"^(chrome-extension://[a-z]{32}|https://[a-z0-9-]+\.vercel\.app)$"
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
@@ -188,68 +187,16 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             if ns:
                 req.namespace = ns
 
-    # Detect website directory (in Docker: /app/website, local dev: ../website relative to src)
-    _website_dir = os.environ.get("CLS_WEBSITE_DIR")
-    if not _website_dir:
-        _candidate = FilePath(__file__).resolve().parent.parent.parent / "website"
-        if _candidate.is_dir():
-            _website_dir = str(_candidate)
-
-    # A/B/C landing page variant mapping
-    _LANDING_VARIANTS = {
-        "A": "index.html",        # Current design
-        "B": "landing-d.html",    # Command Center (3-column app)
-        "C": "landing-e.html",    # Ambient Focus (minimal, ambient)
-    }
-    _VARIANT_KEYS = list(_LANDING_VARIANTS.keys())
-
     @app.get("/")
-    async def root(request: Request, variant: Optional[str] = Query(None)):
-        """Serve landing page with A/B/C variant assignment."""
-        if not _website_dir:
-            return {
-                "name": "CLS++ API",
-                "version": "0.1.0",
-                "docs": "/docs",
-                "health": "/v1/memory/health",
-            }
-
-        # 1. Admin override via ?variant=B
-        chosen = None
-        if variant and variant.upper() in _LANDING_VARIANTS:
-            chosen = variant.upper()
-
-        # 2. Check existing cookie
-        if not chosen:
-            chosen = request.cookies.get("cls_variant")
-            if chosen not in _LANDING_VARIANTS:
-                chosen = None
-
-        # 3. Random assignment for new visitors
-        if not chosen:
-            chosen = random.choice(_VARIANT_KEYS)
-
-        # Serve the variant file
-        page_file = FilePath(_website_dir) / _LANDING_VARIANTS[chosen]
-        if not page_file.exists():
-            # Fallback to index.html if variant file missing
-            page_file = FilePath(_website_dir) / "index.html"
-            chosen = "A"
-
-        from starlette.responses import Response
-        with open(str(page_file), "r") as f:
-            html_content = f.read()
-        response = Response(content=html_content, media_type="text/html")
-
-        # Set variant cookie (30 days)
-        response.set_cookie(
-            key="cls_variant",
-            value=chosen,
-            max_age=30 * 24 * 60 * 60,
-            path="/",
-            samesite="lax",
-        )
-        return response
+    async def root():
+        """API info — UI is served separately from Vercel at https://www.clsplusplus.com."""
+        return {
+            "name": "CLS++ API",
+            "version": "0.1.0",
+            "docs": "/docs",
+            "health": "/v1/memory/health",
+            "ui": "https://www.clsplusplus.com",
+        }
 
     @app.get("/health")
     async def health_check():
@@ -1860,7 +1807,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     # Admin — Launch waitlist view + lifecycle test runner
     # =========================================================================
 
-    _WAITLIST_RESULTS_DIR = FilePath(__file__).resolve().parent.parent.parent / "website" / "tests" / "waitlist"
+    _WAITLIST_RESULTS_DIR = FilePath(__file__).resolve().parent.parent.parent / "archive" / "website" / "tests" / "waitlist"
     _WAITLIST_RUNNER = FilePath(__file__).resolve().parent.parent.parent / "scripts" / "run_waitlist_tests.py"
 
     @app.get("/admin/waitlist")
@@ -2696,10 +2643,6 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     from clsplusplus.local_routes import create_local_router
     _local_router = create_local_router(memory_service, settings, metrics_emitter=_metrics)
     app.include_router(_local_router)
-
-    # Serve website static files if the directory exists
-    if _website_dir and FilePath(_website_dir).is_dir():
-        app.mount("/", StaticFiles(directory=_website_dir, html=True), name="website")
 
     return app
 
