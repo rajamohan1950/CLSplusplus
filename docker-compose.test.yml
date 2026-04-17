@@ -19,6 +19,7 @@ services:
       - CLS_REQUIRE_API_KEY=false
       - CLS_TEST_MODE=true
       - CLS_JWT_SECRET=test-jwt-secret-not-for-prod-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      - CLS_MAX_ACTIVE_USERS=10000
     depends_on:
       redis-test:
         condition: service_healthy
