@@ -12,7 +12,9 @@ RUN pip install --no-cache-dir -r requirements-render.txt
 COPY src/ ./src/
 COPY prototype/ ./prototype/
 COPY extension/ ./extension/
-COPY website/ ./website/
+# website/ archived to archive/website/ — the API no longer serves static HTML.
+# archive/ is copied so the waitlist test runner still finds its fixture path.
+COPY archive/ ./archive/
 
 ENV PYTHONPATH=/app/src
 
