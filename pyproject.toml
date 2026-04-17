@@ -68,6 +68,7 @@ dev = [
     "pytest-cov>=4.1.0",
     "pytest-timeout>=2.2.0",
     "httpx>=0.26.0",
+    "locust>=2.20.0",
 ]
 
 [project.scripts]
@@ -90,8 +91,22 @@ where = ["src"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["src"]
+# Test category markers — every new test should carry at least one.
+# The old suite (tests/test_*.py) is implicitly "unit" unless otherwise marked.
 markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "slow: long-running tests — excluded from default run",
+    "unit: pure function/module tests, no network, no database",
+    "regression: guards against specific previously-fixed bugs",
+    "functional: end-to-end against a running API + Postgres + Redis",
+    "smoke: minimal liveness checks — server up, basic routes respond",
+    "sanity: shallow correctness checks on critical contracts",
+    "performance: measures latency/throughput with assertions on bounds",
+    "load: sustained high concurrency over time",
+    "stress: pushes beyond expected capacity to find breaking point",
+    "dip: sustained-load ramp-down test; looks for leak / degradation",
+    "whitebox: uses internal module imports and private state",
+    "blackbox: exercises only the public HTTP surface",
+    "beta: curated user-journey scenarios that mimic real customer use",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",
