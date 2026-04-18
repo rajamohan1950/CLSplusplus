@@ -27,6 +27,12 @@ CREATE TABLE IF NOT EXISTS waitlist_visitors (
     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Position the user was last notified about. We email a "you moved up"
+-- message every time a user's real position improves by 10 or more. This
+-- column holds the most recent notified value so the scheduler can diff.
+ALTER TABLE waitlist_visitors
+    ADD COLUMN IF NOT EXISTS last_notified_position INTEGER;
+
 CREATE INDEX IF NOT EXISTS idx_waitlist_status_created ON waitlist_visitors(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_waitlist_email ON waitlist_visitors(email);
 CREATE INDEX IF NOT EXISTS idx_waitlist_invite_hash ON waitlist_visitors(invite_token_hash)

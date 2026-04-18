@@ -59,6 +59,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     _integration_store = IntegrationStore(settings)
     integration_service = IntegrationService(settings, store=_integration_store)
     user_service = UserService(settings)
+
+    # Demo chat session persistence — used by /v1/chat/sessions/* so users
+    # can replay earlier demos. Initialised lazily on first use.
+    from clsplusplus.stores.chat_session_store import ChatSessionStore
+    chat_session_store = ChatSessionStore(settings)
     logger = logging.getLogger(__name__)
 
     # Launch-mode waitlist service (rate-limited rollout + social-proof widget)
@@ -2319,46 +2324,103 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         message: str
 
     @app.post("/v1/chat/sessions")
-    async def create_chat_session(req: _ChatSessionCreateReq):
-        """Create a new chat session bound to the caller's persistent namespace.
-
-        The namespace is the user's identity boundary — all sessions for the same
-        user must use the same namespace so memory accumulates across conversations
-        and across LLM models.
-        """
+    async def create_chat_session(req: _ChatSessionCreateReq, request: Request):
+        """Create a new chat session bound to the caller's persistent namespace."""
         try:
             validate_namespace(req.namespace)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        sid = str(_uuid_mod.uuid4())
+        user_id = getattr(request.state, "user_id", None)
         _session_counter[0] += 1
         name = f"Chat {_session_counter[0]}"
+        # Persist to DB when possible; fall back to ephemeral in-memory if the
+        # store isn't reachable (e.g. in a test stack without Postgres).
+        try:
+            rec = await chat_session_store.create(user_id, req.namespace, name)
+            sid = rec["id"]
+        except Exception:
+            sid = str(_uuid_mod.uuid4())
         _sessions[sid] = _ChatSession(session_id=sid, name=name, namespace=req.namespace)
         return {"session_id": sid, "name": name, "namespace": req.namespace}
 
+    @app.get("/v1/chat/sessions")
+    async def list_chat_sessions(request: Request, limit: int = Query(50, ge=1, le=200)):
+        """List the authenticated user's persisted chat sessions, newest first."""
+        user_id = getattr(request.state, "user_id", None)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        try:
+            rows = await chat_session_store.list_for_user(user_id, limit=limit)
+            # Strip messages from the list view to keep it lightweight.
+            return {
+                "sessions": [
+                    {
+                        "id": r["id"],
+                        "name": r["name"],
+                        "namespace": r["namespace"],
+                        "message_count": len(r.get("messages", [])),
+                        "created_at": r["created_at"],
+                        "updated_at": r["updated_at"],
+                    }
+                    for r in rows
+                ],
+            }
+        except Exception as e:
+            logger.warning("list_chat_sessions failed: %s", e)
+            return {"sessions": []}
+
     @app.get("/v1/chat/sessions/{session_id}")
-    async def get_chat_session(session_id: str = Path(..., min_length=1, max_length=64)):
+    async def get_chat_session(
+        request: Request,
+        session_id: str = Path(..., min_length=1, max_length=64),
+    ):
         """Return a session with its full message history."""
+        user_id = getattr(request.state, "user_id", None)
         sess = _sessions.get(session_id)
-        if not sess:
+        if sess:
+            return {
+                "session_id": sess.session_id,
+                "name": sess.name,
+                "namespace": sess.namespace,
+                "messages": [
+                    {"role": m.role, "content": m.content,
+                     "memory_used": m.memory_used, "memory_count": m.memory_count}
+                    for m in sess.messages
+                ],
+            }
+        try:
+            rec = await chat_session_store.get(session_id, user_id=user_id)
+        except Exception:
+            rec = None
+        if not rec:
             raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
         return {
-            "session_id": sess.session_id,
-            "name": sess.name,
-            "namespace": sess.namespace,
-            "messages": [
-                {"role": m.role, "content": m.content,
-                 "memory_used": m.memory_used, "memory_count": m.memory_count}
-                for m in sess.messages
-            ],
+            "session_id": rec["id"],
+            "name": rec["name"],
+            "namespace": rec["namespace"],
+            "messages": rec["messages"],
+            "created_at": rec["created_at"],
+            "updated_at": rec["updated_at"],
         }
 
     @app.delete("/v1/chat/sessions/{session_id}")
-    async def delete_chat_session(session_id: str = Path(..., min_length=1, max_length=64)):
+    async def delete_chat_session(
+        request: Request,
+        session_id: str = Path(..., min_length=1, max_length=64),
+    ):
         """Delete a session (removes history but not memory)."""
-        if session_id not in _sessions:
+        user_id = getattr(request.state, "user_id", None)
+        in_memory = session_id in _sessions
+        db_removed = False
+        if user_id:
+            try:
+                db_removed = await chat_session_store.delete(session_id, user_id)
+            except Exception:
+                db_removed = False
+        if in_memory:
+            del _sessions[session_id]
+        if not in_memory and not db_removed:
             raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
-        del _sessions[session_id]
         return {"deleted": True, "session_id": session_id}
 
     @app.post("/v1/chat/sessions/{session_id}/message")
@@ -2454,12 +2516,19 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         except Exception:
             pass
 
-        # 7. Persist messages in session
+        # 7. Persist messages — in the in-memory cache AND the DB. The DB
+        # write is best-effort; the in-memory store is the one handlers
+        # still read from.
         sess.messages.append(_ChatMsg(role="user", content=user_text))
         sess.messages.append(_ChatMsg(
             role="assistant", content=reply,
             memory_used=memory_used, memory_count=memory_count,
         ))
+        try:
+            await chat_session_store.add_message(session_id, "user", user_text, llm=model)
+            await chat_session_store.add_message(session_id, "assistant", reply, llm=model)
+        except Exception as e:  # noqa: BLE001
+            logger.debug("chat_session_store add_message failed: %s", e)
 
         # 8. Build debug snapshot
         debug_info = {

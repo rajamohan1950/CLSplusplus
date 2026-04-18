@@ -124,6 +124,15 @@ class WaitlistService:
                 "position": self._display_position(pos) if pos else None,
             }
 
+        # Hard queue cap — refuse if >= waitlist_queue_limit (default 50).
+        queue_limit = int(getattr(self.settings, "waitlist_queue_limit", 50))
+        if queue_limit > 0:
+            current = int(await self.store.count_waiting())
+            if current >= queue_limit:
+                raise WaitlistError(
+                    f"Waitlist is full ({current}/{queue_limit}). Check back soon."
+                )
+
         # Cooldown: don't spam OTPs if the user hits "Join" repeatedly
         prev = await self.store.get_pending_otp_any(email)
         if prev:
@@ -178,30 +187,101 @@ class WaitlistService:
         await self.store.delete_pending_otp(email)
 
         raw_position = await self.store.get_position(email) or 1
+        waiting_count = await self.store.count_waiting()
+        # Fire-and-forget join email + record the notified position so the
+        # position-drop watcher knows the baseline.
+        try:
+            await self.email.send_waitlist_position_update(
+                to=email,
+                position=raw_position,
+                queue_length=waiting_count,
+                is_join=True,
+            )
+            await self._set_last_notified_position(email, raw_position)
+        except Exception as e:  # noqa: BLE001 — email failure must not block join
+            logger.warning("Waitlist join email failed for %s: %s", email, e)
+
         return {
             "email": email,
             "status": visitor["status"],
-            "position": self._display_position(raw_position),
-            "waiting_count": await self._display_waiting_count(),
+            "position": int(raw_position),
+            "waiting_count": int(waiting_count),
         }
+
+    async def _set_last_notified_position(self, email: str, pos: int) -> None:
+        try:
+            pool = await self.store.get_pool()
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE waitlist_visitors SET last_notified_position = $1 WHERE email = $2",
+                    int(pos),
+                    email,
+                )
+        except Exception as e:  # noqa: BLE001
+            logger.debug("could not set last_notified_position: %s", e)
+
+    async def notify_position_drops(self, threshold: int = 10) -> int:
+        """For every 'waiting' visitor, send a move-up email if their real
+        position is at least `threshold` places better than the last one they
+        were notified about. Returns the count of emails sent. Intended to
+        run from a scheduled job every few minutes.
+        """
+        sent = 0
+        try:
+            pool = await self.store.get_pool()
+            async with pool.acquire() as conn:
+                rows = await conn.fetch(
+                    """
+                    WITH ranked AS (
+                        SELECT email,
+                               last_notified_position,
+                               ROW_NUMBER() OVER (ORDER BY created_at) AS pos
+                        FROM waitlist_visitors
+                        WHERE status IN ('waiting', 'invited')
+                    )
+                    SELECT email, pos, last_notified_position
+                    FROM ranked
+                    WHERE last_notified_position IS NOT NULL
+                      AND last_notified_position - pos >= $1
+                    """,
+                    int(threshold),
+                )
+            waiting_count = await self.store.count_waiting()
+            for row in rows:
+                try:
+                    await self.email.send_waitlist_position_update(
+                        to=row["email"],
+                        position=int(row["pos"]),
+                        queue_length=int(waiting_count),
+                        is_join=False,
+                    )
+                    await self._set_last_notified_position(row["email"], int(row["pos"]))
+                    sent += 1
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("position-drop email failed for %s: %s", row["email"], e)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("notify_position_drops failed: %s", e)
+        return sent
 
     # =========================================================================
     # Public stats (for the landing widget)
     # =========================================================================
 
     async def stats(self, email: Optional[str] = None) -> dict:
-        raw_waiting = await self.store.count_waiting()
-        active_now = await self.metrics.get_active_now()
-        floor = getattr(self.settings, "waitlist_active_floor", 3)
-        displayed_waiting = raw_waiting + getattr(
-            self.settings, "waitlist_queue_seed_offset", 0
-        )
-        displayed_active = max(int(active_now), int(floor))
+        """Real queue stats — NO seeding, NO floors, NO fake numbers.
 
-        # "Pending" = users mid-registration: they submitted /auth/register
-        # but haven't completed OTP verification yet. Best signal we have
-        # for "prospective but not yet counted" demand. Query the
-        # pending_registrations table via the same pool the user store uses.
+        Semantics (agreed with product):
+          active_now    = distinct users with at least one api_credentials
+                          row with status='active' (= has a working key)
+          waiting_count = real waitlist_visitors rows with status='waiting'
+          pending_count = pending_registrations with expires_at > NOW()
+                          (submitted /auth/register but haven't verified OTP)
+          queue_limit   = hard cap on waitlist length (default 50)
+          queue_full    = waiting_count >= queue_limit
+        """
+        waiting_count = int(await self.store.count_waiting())
+        active_now = int(await self._count_active_api_users())
+
         pending_count = 0
         try:
             pool = await self.store.get_pool()
@@ -211,35 +291,58 @@ class WaitlistService:
                     "WHERE expires_at > NOW()"
                 )
                 pending_count = int(row["c"] if row else 0)
-        except Exception as e:  # noqa: BLE001 — pending count is purely informational
+        except Exception as e:  # noqa: BLE001
             logger.debug("pending count unavailable: %s", e)
 
+        queue_limit = int(getattr(self.settings, "waitlist_queue_limit", 50))
+
         result = {
-            "waiting_count": displayed_waiting,
-            "active_now": displayed_active,
+            "active_now": active_now,
+            "waiting_count": waiting_count,
             "pending_count": pending_count,
+            "queue_limit": queue_limit,
+            "queue_full": waiting_count >= queue_limit,
         }
         if email:
             try:
                 email_norm = self._validate_email(email)
                 pos = await self.store.get_position(email_norm)
                 if pos:
-                    result["your_position"] = self._display_position(pos)
-                    result["your_status"] = (
-                        await self.store.get_visitor(email_norm) or {}
-                    ).get("status")
+                    result["your_position"] = int(pos)
+                    visitor = await self.store.get_visitor(email_norm) or {}
+                    result["your_status"] = visitor.get("status")
             except WaitlistError:
                 pass
         return result
 
-    def _display_position(self, raw_position: int) -> int:
-        return int(raw_position) + int(
-            getattr(self.settings, "waitlist_queue_seed_offset", 0)
-        )
+    async def _count_active_api_users(self) -> int:
+        """Count distinct user namespaces that have at least one active key.
 
-    async def _display_waiting_count(self) -> int:
-        raw = await self.store.count_waiting()
-        return raw + int(getattr(self.settings, "waitlist_queue_seed_offset", 0))
+        The users table stores profile data; API credentials are owned by
+        integrations keyed on namespace=f"user-{uid[:8]}". A user is
+        "active" iff any integration of theirs has a live api_credentials
+        row. This is the only real-world signal we have for "this account
+        is wired up and usable".
+        """
+        try:
+            pool = await self.store.get_pool()
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    """
+                    SELECT COUNT(DISTINCT i.namespace)::int AS c
+                    FROM api_credentials c
+                    JOIN integrations i ON i.id = c.integration_id
+                    WHERE c.status = 'active'
+                      AND i.namespace LIKE 'user-%'
+                    """
+                )
+                return int(row["c"] if row else 0)
+        except Exception as e:  # noqa: BLE001
+            logger.debug("active-api-users count unavailable: %s", e)
+            return 0
+
+    def _display_position(self, raw_position: int) -> int:
+        return int(raw_position)
 
     # =========================================================================
     # Promotion (background task triggers this)
@@ -292,11 +395,16 @@ class WaitlistService:
         if dau < healthy:
             invited = await self.promote(batch=batch, base_url=base_url)
 
+        # Every tick, also sweep for users whose position has dropped by 10
+        # or more since we last emailed them.
+        position_emails = await self.notify_position_drops(threshold=10)
+
         return {
             "dau": dau,
             "healthy_threshold": healthy,
             "invited": invited,
             "stale_invites_reset": stale_reset,
+            "position_emails_sent": position_emails,
         }
 
     # =========================================================================
@@ -368,9 +476,14 @@ class WaitlistService:
     # =========================================================================
 
     async def is_launch_cap_exceeded(self) -> tuple[bool, int, int]:
-        """Returns (exceeded, current_users, cap). If cap == 0, unlimited."""
+        """Returns (exceeded, current_active_users, cap).
+
+        "Current" is users with at least one active API key (see
+        _count_active_api_users). Signed-up-but-idle users do NOT consume
+        a seat; the cap guards capacity, not accounts.
+        """
         cap = int(getattr(self.settings, "max_active_users", 0))
         if cap <= 0:
             return False, 0, 0
-        current = await self.user_store.count_users() or 0
+        current = int(await self._count_active_api_users())
         return current >= cap, current, cap

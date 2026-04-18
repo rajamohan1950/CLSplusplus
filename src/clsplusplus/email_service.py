@@ -133,6 +133,49 @@ class EmailService:
 </html>"""
         return await self._send(to, "🎉 Your CLS++ invite is here", html)
 
+    async def send_waitlist_position_update(
+        self,
+        to: str,
+        position: int,
+        queue_length: int,
+        is_join: bool = False,
+    ) -> bool:
+        """Send a queue-position notification.
+
+        Called from waitlist_service on three triggers:
+          * initial join (is_join=True) — "you are #X"
+          * every time a user's position drops by 10 — "good news, you moved up to #X"
+          * (activation is a separate template — send_waitlist_invite)
+        """
+        headline = "You're on the waitlist" if is_join else "You're moving up"
+        intro = (
+            f"Thanks for joining CLS++. You're currently <strong>#{position}</strong> in line of {queue_length}."
+            if is_join
+            else f"Good news — you just moved up the waitlist. You're now <strong>#{position}</strong> of {queue_length}."
+        )
+        html = f"""
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;background:#fafafa;padding:40px 20px;">
+  <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:48px 40px;box-shadow:0 2px 20px rgba(0,0,0,0.06);">
+    <div style="text-align:center;margin-bottom:32px;">
+      <span style="font-size:24px;font-weight:700;color:#1d1d1f;">CLS</span><span style="font-size:24px;font-weight:700;color:#ff6b35;">++</span>
+    </div>
+    <h1 style="font-size:22px;font-weight:600;color:#1d1d1f;text-align:center;margin-bottom:8px;">{headline}</h1>
+    <p style="color:#86868b;text-align:center;font-size:15px;margin-bottom:32px;">{intro}</p>
+    <div style="background:#f5f5f7;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px;">
+      <span style="font-size:36px;font-weight:700;color:#1d1d1f;">#{position}</span>
+    </div>
+    <p style="color:#86868b;text-align:center;font-size:13px;margin-bottom:24px;">We'll email again when you move up by 10 more places, and when a seat opens for you.</p>
+    <hr style="border:none;border-top:1px solid #f0f0f0;margin:32px 0 16px;">
+    <p style="color:#c0c0c0;text-align:center;font-size:11px;">If you didn't sign up for the CLS++ waitlist, you can ignore this email.</p>
+  </div>
+</body>
+</html>"""
+        subject = "You're on the CLS++ waitlist" if is_join else f"You moved up to #{position}"
+        return await self._send(to, subject, html)
+
     async def send_password_reset_email(
         self, to: str, otp_code: str, reset_link: str
     ) -> bool:

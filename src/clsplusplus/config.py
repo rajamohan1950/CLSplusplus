@@ -124,16 +124,18 @@ class Settings(BaseSettings):
     email_from: str = "CLS++ <noreply@clsplusplus.com>"  # CLS_EMAIL_FROM
 
     # ── Launch waitlist / rate-limited rollout ────────────────────────────
-    # Hard cap on organic /v1/auth/register. Walk-in signups above this are
-    # redirected to the waitlist widget. Waitlist-invited users bypass the cap.
+    # Hard cap on users with an active API key. Walk-in signups above this
+    # are redirected to the waitlist. Waitlist-invited users bypass the cap.
     # Set to 0 to disable the cap entirely.
-    max_active_users: int = 5
-    # Fake baseline added to the displayed "waiting" count and every reported
-    # position so day-1 visitors see social proof instead of "#1".
-    waitlist_queue_seed_offset: int = 47
-    # Floor for the live "active now" counter shown in the widget so the
-    # number never reads 0 during dead hours.
-    waitlist_active_floor: int = 3
+    max_active_users: int = 50
+    # Hard upper bound on the waiting queue. When waiting_count >= this,
+    # /v1/waitlist/join refuses new entries and the widget shows "queue full".
+    waitlist_queue_limit: int = 50
+    # DEPRECATED — kept to avoid config crashes on old deploys. The public
+    # stats endpoint no longer applies any seeding or floor to the live
+    # counters, so these values are ignored.
+    waitlist_queue_seed_offset: int = 0
+    waitlist_active_floor: int = 0
     # Daily promotion loop: promote the oldest N waiting visitors iff DAU is
     # below the healthy threshold.
     waitlist_promote_batch: int = 1
