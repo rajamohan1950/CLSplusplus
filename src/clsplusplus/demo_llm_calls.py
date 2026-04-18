@@ -80,9 +80,16 @@ async def call_gemini(settings: Settings, system: str, user: str) -> str:
         if not key:
             return "Gemini: Add CLS_GOOGLE_API_KEY to env."
         genai.configure(api_key=key)
-        model = genai.GenerativeModel("gemini-2.0-flash")
-        full_prompt = f"{system}\n\nUser: {user}"
-        resp = model.generate_content(full_prompt)
+        # Pass the CLS++ memory-augmented system prompt as a proper
+        # system_instruction so Gemini treats it as grounding context on
+        # every turn. Previously we concatenated system + user into a
+        # single string, which Gemini would sometimes treat as a fresh
+        # prompt and ignore the memory context baked into `system`.
+        model = genai.GenerativeModel(
+            "gemini-2.0-flash",
+            system_instruction=system,
+        )
+        resp = model.generate_content(user)
         try:
             return resp.text or "No response"
         except (ValueError, AttributeError):

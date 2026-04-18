@@ -198,9 +198,26 @@ class WaitlistService:
         )
         displayed_active = max(int(active_now), int(floor))
 
+        # "Pending" = users mid-registration: they submitted /auth/register
+        # but haven't completed OTP verification yet. Best signal we have
+        # for "prospective but not yet counted" demand. Query the
+        # pending_registrations table via the same pool the user store uses.
+        pending_count = 0
+        try:
+            pool = await self.store.get_pool()
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT COUNT(*)::int AS c FROM pending_registrations "
+                    "WHERE expires_at > NOW()"
+                )
+                pending_count = int(row["c"] if row else 0)
+        except Exception as e:  # noqa: BLE001 — pending count is purely informational
+            logger.debug("pending count unavailable: %s", e)
+
         result = {
             "waiting_count": displayed_waiting,
             "active_now": displayed_active,
+            "pending_count": pending_count,
         }
         if email:
             try:

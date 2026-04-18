@@ -15,7 +15,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Razorpay amounts are in paise (1/100 of INR)
+# Authoritative prices in USD cents — mirrors src/clsplusplus/tiers.TIER_PRICES.
+# Razorpay accepts currency=USD for merchants with international payments
+# enabled. If the merchant is INR-only, the create-order call will surface a
+# clear error up to the UI.
+TIER_AMOUNT_USD_CENTS: dict[str, int] = {
+    "pro": 900,          # $9.00
+    "business": 2900,    # $29.00
+    "enterprise": 14900, # $149.00
+}
+
+# Legacy INR amounts (paise). Kept as fallback for INR-only Razorpay accounts;
+# the backend picks USD by default.
 TIER_AMOUNT_PAISE: dict[str, int] = {
     "pro": 74900,         # INR 749
     "business": 239900,   # INR 2,399
@@ -34,15 +45,24 @@ async def create_order(
     user_id: str,
     tier: str,
     settings: "Settings",
+    currency: str = "USD",
 ) -> dict:
     """Create a Razorpay Order for a tier upgrade.
 
-    Returns dict with order_id, amount, currency, key_id for frontend checkout.
+    Default currency is USD (the prices the UI shows). Callers can override
+    with currency="INR" for INR-only merchant accounts.
     """
     if tier == "free":
         raise ValueError("Cannot create order for the free tier")
 
-    amount = TIER_AMOUNT_PAISE.get(tier)
+    currency = (currency or "USD").upper()
+    if currency == "USD":
+        amount = TIER_AMOUNT_USD_CENTS.get(tier)
+    elif currency == "INR":
+        amount = TIER_AMOUNT_PAISE.get(tier)
+    else:
+        raise ValueError(f"Unsupported currency: {currency}")
+
     if amount is None:
         raise ValueError(f"Invalid tier: {tier}")
 
@@ -50,7 +70,7 @@ async def create_order(
 
     order_data = {
         "amount": amount,
-        "currency": "INR",
+        "currency": currency,
         "notes": {"user_id": user_id, "tier": tier},
     }
 
