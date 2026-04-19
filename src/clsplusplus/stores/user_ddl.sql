@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
     email           TEXT NOT NULL UNIQUE,
     password_hash   TEXT,
     google_id       TEXT UNIQUE,
+    github_id       TEXT UNIQUE,
     name            TEXT NOT NULL DEFAULT '',
     avatar_url      TEXT,
     tier            TEXT NOT NULL DEFAULT 'free'
@@ -20,6 +21,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- Migrations for existing tables (safe on fresh tables too)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT UNIQUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS github_id TEXT UNIQUE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
@@ -33,6 +35,7 @@ ALTER TABLE users ADD CONSTRAINT users_tier_check CHECK (tier IN ('free', 'pro',
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_github_id ON users(github_id) WHERE github_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_tier ON users(tier);
 CREATE INDEX IF NOT EXISTS idx_users_created_at ON users(created_at DESC);
 

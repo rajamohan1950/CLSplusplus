@@ -25,6 +25,10 @@ _EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$")
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
+GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
+GITHUB_USER_URL = "https://api.github.com/user"
+GITHUB_EMAILS_URL = "https://api.github.com/user/emails"
+
 
 def _hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
@@ -185,6 +189,8 @@ class UserService:
 
         stored_hash = user.get("password_hash")
         if not stored_hash:
+            if user.get("github_id") and not user.get("google_id"):
+                raise ValueError("This account uses GitHub sign-in. Please use the GitHub button.")
             raise ValueError("This account uses Google sign-in. Please use the Google button.")
 
         if not _verify_password(password, stored_hash):
@@ -252,6 +258,109 @@ class UserService:
                     avatar_url=avatar_url,
                 )
                 # Auto-verify Google users
+                await self.store.mark_email_verified(user["id"])
+                user["email_verified"] = True
+
+        token = create_token(
+            user_id=user["id"],
+            email=user["email"],
+            is_admin=user["is_admin"],
+            secret=self.settings.jwt_secret,
+        )
+        return _strip_password(user), token
+
+    async def github_auth(self, code: str, redirect_uri: str) -> tuple[dict, str]:
+        """Exchange GitHub OAuth code for a user session.
+
+        Fetches the GitHub profile and (if the profile email is private or
+        missing) the primary verified email from /user/emails. Links to an
+        existing account by github_id first, then by verified email; otherwise
+        creates a new auto-verified user.
+
+        Returns (user_dict, jwt_token).
+        Raises ValueError on OAuth failure (bad code, missing verified email).
+        """
+        async with httpx.AsyncClient() as client:
+            token_resp = await client.post(
+                GITHUB_TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": self.settings.github_client_id,
+                    "client_secret": self.settings.github_client_secret,
+                    "redirect_uri": redirect_uri,
+                },
+                headers={"Accept": "application/json"},
+            )
+            if token_resp.status_code != 200:
+                raise ValueError("Failed to exchange GitHub authorization code")
+            token_data = token_resp.json()
+            access_token = token_data.get("access_token")
+            if not access_token:
+                # GitHub returns 200 with {"error": "..."} on bad code
+                raise ValueError("GitHub did not return an access token")
+
+            auth_headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            }
+            user_resp = await client.get(GITHUB_USER_URL, headers=auth_headers)
+            if user_resp.status_code != 200:
+                raise ValueError("Failed to fetch GitHub user profile")
+            profile = user_resp.json()
+
+            # GitHub may return null/empty email on the profile when private.
+            # /user/emails requires the user:email scope and returns the full
+            # list, from which we pick the primary verified one.
+            profile_email = (profile.get("email") or "").strip().lower()
+            email = profile_email
+            if not email:
+                emails_resp = await client.get(GITHUB_EMAILS_URL, headers=auth_headers)
+                if emails_resp.status_code != 200:
+                    raise ValueError("Failed to fetch GitHub user emails")
+                emails = emails_resp.json() or []
+                primary = next(
+                    (e for e in emails if e.get("primary") and e.get("verified")),
+                    None,
+                )
+                if not primary:
+                    # Fall back to any verified email
+                    primary = next(
+                        (e for e in emails if e.get("verified")),
+                        None,
+                    )
+                if not primary:
+                    raise ValueError(
+                        "No verified email on your GitHub account. "
+                        "Verify an email in GitHub settings and try again."
+                    )
+                email = (primary.get("email") or "").strip().lower()
+
+        if not email:
+            raise ValueError("GitHub account has no usable email")
+
+        github_id = str(profile["id"])
+        name = (profile.get("name") or profile.get("login") or email.split("@")[0])
+        avatar_url = profile.get("avatar_url")
+
+        # Find existing user by github_id, then by email (link), else create.
+        user = await self.store.get_by_github_id(github_id)
+        if not user:
+            user = await self.store.get_by_email(email)
+            if user:
+                await self.store.update_github_id(user["id"], github_id, avatar_url)
+                user["github_id"] = github_id
+                user["avatar_url"] = avatar_url
+                if not user.get("email_verified"):
+                    await self.store.mark_email_verified(user["id"])
+                    user["email_verified"] = True
+            else:
+                user = await self.store.create_user(
+                    email=email,
+                    github_id=github_id,
+                    name=name,
+                    avatar_url=avatar_url,
+                )
                 await self.store.mark_email_verified(user["id"])
                 user["email_verified"] = True
 

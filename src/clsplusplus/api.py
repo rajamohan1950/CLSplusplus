@@ -1295,6 +1295,119 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         _set_session_cookie(response, token)
         return response
 
+    # ------------------------------------------------------------------
+    # GitHub OAuth — "Continue with GitHub"
+    # ------------------------------------------------------------------
+    # State is a short-lived HS256 JWT signed with the same jwt_secret.
+    # It carries {kind: "gh_oauth", redirect, nonce, exp} so the callback can
+    # (a) confirm the state was minted by this server, (b) recover the post-
+    # auth redirect path, and (c) reject replays after the 10-minute window.
+    _GH_STATE_TTL_SECONDS = 600
+    _GH_DEFAULT_REDIRECT = "/profile"
+
+    def _github_callback_url(request: Request) -> str:
+        if settings.github_redirect_uri:
+            return settings.github_redirect_uri
+        callback_url = str(request.base_url).rstrip("/") + "/v1/auth/github/callback"
+        if (
+            request.headers.get("x-forwarded-proto") == "https"
+            or "onrender.com" in callback_url
+            or "clsplusplus.com" in callback_url
+        ):
+            callback_url = callback_url.replace("http://", "https://", 1)
+        return callback_url
+
+    def _mint_github_state(redirect: str) -> str:
+        import secrets as _secrets
+        import jwt as _pyjwt
+        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+        payload = {
+            "kind": "gh_oauth",
+            "redirect": redirect,
+            "nonce": _secrets.token_urlsafe(16),
+            "iat": _dt.now(_tz.utc),
+            "exp": _dt.now(_tz.utc) + _td(seconds=_GH_STATE_TTL_SECONDS),
+        }
+        return _pyjwt.encode(payload, settings.jwt_secret, algorithm="HS256")
+
+    def _verify_github_state(token: str) -> Optional[str]:
+        """Return the safe redirect path if state is valid, else None."""
+        import jwt as _pyjwt
+        try:
+            payload = _pyjwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+        except (_pyjwt.ExpiredSignatureError, _pyjwt.InvalidTokenError):
+            return None
+        if payload.get("kind") != "gh_oauth":
+            return None
+        redirect = payload.get("redirect") or _GH_DEFAULT_REDIRECT
+        if (
+            isinstance(redirect, str)
+            and redirect.startswith("/")
+            and "://" not in redirect
+            and not redirect.startswith("//")
+        ):
+            return redirect
+        return _GH_DEFAULT_REDIRECT
+
+    @app.get("/v1/auth/github")
+    async def github_auth_redirect(request: Request, redirect: str = _GH_DEFAULT_REDIRECT):
+        """Redirect to GitHub OAuth consent screen."""
+        from urllib.parse import urlencode
+        if not settings.github_client_id or not settings.jwt_secret:
+            raise HTTPException(status_code=501, detail="GitHub sign-in not configured")
+        safe_redirect = (
+            redirect
+            if (
+                isinstance(redirect, str)
+                and redirect.startswith("/")
+                and "://" not in redirect
+                and not redirect.startswith("//")
+            )
+            else _GH_DEFAULT_REDIRECT
+        )
+        callback_url = _github_callback_url(request)
+        state = _mint_github_state(safe_redirect)
+        params = urlencode({
+            "client_id": settings.github_client_id,
+            "redirect_uri": callback_url,
+            "scope": "read:user user:email",
+            "state": state,
+            "allow_signup": "true",
+        })
+        from starlette.responses import RedirectResponse
+        return RedirectResponse(
+            f"https://github.com/login/oauth/authorize?{params}"
+        )
+
+    @app.get("/v1/auth/github/callback")
+    async def github_auth_callback(
+        request: Request,
+        code: str = "",
+        state: str = "",
+        error: str = "",
+    ):
+        """Handle GitHub OAuth callback — validate state, exchange code, sign in/up."""
+        # GitHub sends ?error=access_denied when the user cancels consent.
+        if error:
+            raise HTTPException(status_code=400, detail=f"GitHub sign-in cancelled ({error})")
+        if not code or not state:
+            raise HTTPException(status_code=400, detail="Missing authorization code or state")
+        safe_redirect = _verify_github_state(state)
+        if safe_redirect is None:
+            raise HTTPException(status_code=400, detail="Invalid or expired sign-in state")
+        callback_url = _github_callback_url(request)
+        try:
+            user, token = await user_service.github_auth(code, callback_url)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error("GitHub auth error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="GitHub sign-in service unavailable")
+        from starlette.responses import RedirectResponse
+        response = RedirectResponse(safe_redirect)
+        _set_session_cookie(response, token)
+        return response
+
     # =========================================================================
     # User Dashboard API — Per-user usage and tier management
     # =========================================================================
