@@ -30,3 +30,11 @@ services:
         sync: false
       - key: CLS_RAZORPAY_WEBHOOK_SECRET
         sync: false
+      - key: CLS_GITHUB_CLIENT_ID
+        sync: false
+      - key: CLS_GITHUB_CLIENT_SECRET
+        sync: false
+      - key: CLS_GITHUB_REDIRECT_URI
+        sync: false
+      - key: CLS_FRONTEND_URL
+        sync: false

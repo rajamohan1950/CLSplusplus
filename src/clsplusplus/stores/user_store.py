@@ -87,6 +87,7 @@ class UserStore:
         email: str,
         password_hash: Optional[str] = None,
         google_id: Optional[str] = None,
+        github_id: Optional[str] = None,
         name: str = "",
         avatar_url: Optional[str] = None,
     ) -> dict:
@@ -94,11 +95,11 @@ class UserStore:
         async with pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                INSERT INTO users (email, password_hash, google_id, name, avatar_url)
-                VALUES ($1, $2, $3, $4, $5)
+                INSERT INTO users (email, password_hash, google_id, github_id, name, avatar_url)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 RETURNING *
                 """,
-                email, password_hash, google_id, name, avatar_url,
+                email, password_hash, google_id, github_id, name, avatar_url,
             )
             return _row_to_dict(row)
 
@@ -153,6 +154,25 @@ class UserStore:
             result = await conn.execute(
                 "UPDATE users SET google_id = $1, avatar_url = COALESCE($2, avatar_url), updated_at = $3 WHERE id = $4",
                 google_id, avatar_url, _now(), user_id,
+            )
+            return result == "UPDATE 1"
+
+    async def get_by_github_id(self, github_id: str) -> Optional[dict]:
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM users WHERE github_id = $1", github_id,
+            )
+            if not row:
+                return None
+            return _row_to_dict(row)
+
+    async def update_github_id(self, user_id: str, github_id: str, avatar_url: Optional[str] = None) -> bool:
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE users SET github_id = $1, avatar_url = COALESCE($2, avatar_url), updated_at = $3 WHERE id = $4",
+                github_id, avatar_url, _now(), user_id,
             )
             return result == "UPDATE 1"
 

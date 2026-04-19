@@ -31,10 +31,19 @@ class Settings(BaseSettings):
     tier: str = "free"                # free | pro | unlimited
     enforce_quotas: bool = False      # Enable quota enforcement (off for local/demo)
 
-    # User auth (JWT + Google OAuth)
+    # User auth (JWT + Google OAuth + GitHub OAuth)
     jwt_secret: str = ""                  # CLS_JWT_SECRET (required for user auth)
     google_client_id: str = ""            # CLS_GOOGLE_CLIENT_ID
     google_client_secret: str = ""        # CLS_GOOGLE_CLIENT_SECRET
+    github_client_id: str = ""            # CLS_GITHUB_CLIENT_ID
+    github_client_secret: str = ""        # CLS_GITHUB_CLIENT_SECRET
+    # Optional explicit redirect URI; if empty, computed from request.base_url
+    github_redirect_uri: str = ""         # CLS_GITHUB_REDIRECT_URI
+
+    # Frontend origin for post-auth redirects. Needed when the API host
+    # (e.g. api.clsplusplus.com) differs from the UI host (www.clsplusplus.com).
+    # Leave empty to use same-origin relative redirects.
+    frontend_url: str = ""                # CLS_FRONTEND_URL
 
     # Idempotency: cache window (seconds)
     idempotency_ttl_seconds: int = 86400  # 24 hours
