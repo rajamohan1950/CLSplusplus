@@ -113,6 +113,10 @@ class Settings(BaseSettings):
     # Site
     site_base_url: str = "https://www.clsplusplus.com"  # CLS_SITE_BASE_URL
     cookie_secure: bool = True  # CLS_COOKIE_SECURE (False for local dev only)
+    # Cookie Domain attribute. Set to ".clsplusplus.com" in prod so the session
+    # cookie set by api.clsplusplus.com is also sent on www.clsplusplus.com.
+    # Leave empty for same-host dev (cookie stays host-only).
+    cookie_domain: str = ""  # CLS_COOKIE_DOMAIN
 
     # Razorpay billing (active payment gateway)
     razorpay_key_id: str = ""               # CLS_RAZORPAY_KEY_ID
