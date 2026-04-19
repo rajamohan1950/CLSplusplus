@@ -38,3 +38,5 @@ services:
         sync: false
       - key: CLS_FRONTEND_URL
         sync: false
+      - key: CLS_COOKIE_DOMAIN
+        sync: false

@@ -959,6 +959,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             samesite="lax",
             max_age=7 * 86400,  # 7 days
             path="/",
+            domain=settings.cookie_domain or None,
         )
         return response
 
