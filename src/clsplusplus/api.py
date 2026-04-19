@@ -1291,7 +1291,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         if state and state.startswith("/") and "://" not in state and not state.startswith("//"):
             _safe_redirect = state
         from starlette.responses import RedirectResponse
-        response = RedirectResponse(_safe_redirect)
+        _target = (settings.frontend_url.rstrip("/") + _safe_redirect) if settings.frontend_url else _safe_redirect
+        response = RedirectResponse(_target)
         _set_session_cookie(response, token)
         return response
 
@@ -1404,7 +1405,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             logger.error("GitHub auth error: %s: %s", type(e).__name__, e)
             raise HTTPException(status_code=500, detail="GitHub sign-in service unavailable")
         from starlette.responses import RedirectResponse
-        response = RedirectResponse(safe_redirect)
+        _target = (settings.frontend_url.rstrip("/") + safe_redirect) if settings.frontend_url else safe_redirect
+        response = RedirectResponse(_target)
         _set_session_cookie(response, token)
         return response
 
