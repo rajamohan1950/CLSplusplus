@@ -36,6 +36,8 @@ services:
         sync: false
       - key: CLS_GITHUB_REDIRECT_URI
         sync: false
+      - key: CLS_GOOGLE_REDIRECT_URI
+        sync: false
       - key: CLS_FRONTEND_URL
         sync: false
       - key: CLS_COOKIE_DOMAIN

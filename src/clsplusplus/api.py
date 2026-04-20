@@ -1251,16 +1251,25 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="User not found")
         return user
 
+    def _google_callback_url(request: Request) -> str:
+        if settings.google_redirect_uri:
+            return settings.google_redirect_uri
+        callback_url = str(request.base_url).rstrip("/") + "/v1/auth/google/callback"
+        if (
+            request.headers.get("x-forwarded-proto") == "https"
+            or "onrender.com" in callback_url
+            or "clsplusplus.com" in callback_url
+        ):
+            callback_url = callback_url.replace("http://", "https://", 1)
+        return callback_url
+
     @app.get("/v1/auth/google")
     async def google_auth_redirect(request: Request, redirect: str = "/dashboard.html"):
         """Redirect to Google OAuth consent screen."""
         from urllib.parse import urlencode
         if not settings.google_client_id:
             raise HTTPException(status_code=501, detail="Google OAuth not configured")
-        callback_url = str(request.base_url).rstrip("/") + "/v1/auth/google/callback"
-        # Force HTTPS when behind reverse proxy (Render, Cloudflare, etc.)
-        if request.headers.get("x-forwarded-proto") == "https" or "onrender.com" in callback_url:
-            callback_url = callback_url.replace("http://", "https://", 1)
+        callback_url = _google_callback_url(request)
         params = urlencode({
             "client_id": settings.google_client_id,
             "redirect_uri": callback_url,
@@ -1277,10 +1286,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         """Handle Google OAuth callback — exchange code, create/login user, redirect."""
         if not code:
             raise HTTPException(status_code=400, detail="Missing authorization code")
-        callback_url = str(request.base_url).rstrip("/") + "/v1/auth/google/callback"
-        # Force HTTPS when behind reverse proxy (Render, Cloudflare, etc.)
-        if request.headers.get("x-forwarded-proto") == "https" or "onrender.com" in callback_url:
-            callback_url = callback_url.replace("http://", "https://", 1)
+        callback_url = _google_callback_url(request)
         try:
             user, token = await user_service.google_auth(code, callback_url)
         except ValueError as e:
