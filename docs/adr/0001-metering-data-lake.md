@@ -2,8 +2,43 @@
 
 ## Status
 
-**Proposed** — awaiting owner review. No code changes accompany this ADR;
-every production path still runs the current Redis-only pipeline.
+**Accepted** — 2026-04-20. Owner answered all six open questions (see
+§ 7). Step 1 of the rollout (schema + feature flag, zero writers) is
+permitted; every subsequent step still requires explicit sign-off
+before it starts.
+
+## Decisions locked in (owner, 2026-04-20)
+
+1. **Retention: 24 months.** Parquet partitioning + lifecycle rules
+   sized for a two-year billing-dispute window.
+2. **Pricing: hybrid — flat tier + pay-as-you-go above the cap.**
+   Event schema **must carry `unit_cost_cents`** so each event can be
+   priced at write time. Over-cap usage is billed separately from the
+   flat tier fee. Existing quota enforcement (402 at the cap) changes
+   behaviour: instead of hard-blocking, it switches to pay-per-use
+   after the cap. A separate rule-set decides when to hard-block
+   (e.g. 10× the cap or a configurable absolute cents ceiling).
+3. **Data-lake host: MinIO.** The MinIO instance already in the stack
+   ([config.py:53](src/clsplusplus/config.py:53)) becomes the billing-grade
+   archive. A separate bucket `cls-metering` (not `cls-l3`) with
+   24-month lifecycle and versioning enabled.
+4. **Site URLs on extension telemetry are PII.** The raw URL is
+   hashed (SHA-256, truncated to 16 hex chars) before anything is
+   persisted. The raw URL never leaves the request handler. Existing
+   Redis `cls:ext:sites:*` keys need the same treatment.
+5. **Dead-letter paging.** A new on-call agent ("Gita Kaur" per
+   [project memory](.claude/projects/-Users-rjabbala-Projects-CLSplusplus/memory/project_gita_kaur.md))
+   receives **failure** notifications. **Customers** receive **success**
+   notifications (e.g. monthly invoice sent, pay-as-you-go threshold
+   crossed). Two separate notification lanes, not a single stream.
+6. **Back-dating window: 1 week.** If a counter bug is found, we can
+   re-issue invoices up to 7 days old. Beyond that, the delivered
+   invoice is treated as final. This means the daily reconciliation
+   job in step 3 of the rollout is the *primary* safety net; drift
+   must be caught within 7 days or it becomes permanent.
+
+No code changes are in this PR — only the ADR update. Step 1
+implementation lands in a separate PR you review in the morning.
 
 ## Good-morning summary
 
@@ -157,13 +192,15 @@ Each step ships independently and is individually reversible. The cut-over from 
 
 ---
 
-## 7 · Open questions (owner input required)
+## 7 · Answered (owner, 2026-04-20)
 
-1. **Retention.** 18 months or longer for tax/dispute? Defaults to 18 unless you say otherwise.
-2. **Prices tied to usage?** Currently flat monthly tiers. Should we charge on over-quota usage (pay-as-you-go above tier cap)? This changes the event schema (need a "unit cost" attached per event).
-3. **Data-lake host.** MinIO is already in the stack ([minio_endpoint](src/clsplusplus/config.py:53)). Is that acceptable for production invoice-grade data, or do we need an external S3-compatible provider?
-4. **Privacy in the log.** Some events today record `site` for extension telemetry. Is the site URL PII for your jurisdiction? If yes, we hash it in the event.
-5. **Dead-letter policy.** When Postgres write fails, we queue to `metering_dead_letter` and alert. Who gets paged?
-6. **Back-dated invoices.** How far back do we need to be able to re-issue an invoice if we find a counter bug?
+| # | Question | Answer |
+|---|---|---|
+| 1 | Retention | **24 months** |
+| 2 | Pricing model | **Flat tier + pay-as-you-go above the cap** (hybrid) |
+| 3 | Data-lake host | **MinIO** |
+| 4 | Site URLs PII | **Yes — hash before persist** |
+| 5 | Dead-letter paging | Oncall agent (Gita Kaur) on failures; customer on successes |
+| 6 | Back-dating window | **1 week** for re-issued invoices |
 
-No implementation code will be written until these six questions are resolved and the ADR status moves from **Proposed** to **Accepted**.
+See § Status section at top of document for how these shape the design.
