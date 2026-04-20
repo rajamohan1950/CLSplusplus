@@ -2,16 +2,37 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "api",
-      "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd /Users/rjabbala/Projects/CLSplusplus && PYTHONPATH=src python3 -m uvicorn clsplusplus.demo_local:app --reload --port 8090"],
-      "port": 8090
+      "name": "clsplusplus",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "uvicorn", "clsplusplus.api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8181"],
+      "port": 8181,
+      "env": {
+        "KMP_DUPLICATE_LIB_OK": "TRUE",
+        "PYTHONPATH": "src",
+        "CLS_DATABASE_URL": "postgresql://cls:cls@localhost:5433/cls",
+        "CLS_JWT_SECRET": "e2e-test-secret-key-min-32-bytes!",
+        "CLS_TRACK_USAGE": "true",
+        "CLS_ENFORCE_QUOTAS": "false",
+        "CLS_RATE_LIMIT_REQUESTS": "5000",
+        "CLS_RATE_LIMIT_WINDOW_SECONDS": "60"
+      }
     },
     {
-      "name": "website",
+      "name": "website-static",
+      "runtimeExecutable": "/usr/bin/python3",
+      "runtimeArgs": ["-m", "http.server", "8282", "--directory", "website"],
+      "port": 8282
+    },
+    {
+      "name": "waitlist-ui",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "3000", "--directory", "/Users/rjabbala/Projects/CLSplusplus/website"],
-      "port": 3000
+      "runtimeArgs": ["scripts/dev_server_waitlist.py"],
+      "port": 8090,
+      "env": {
+        "KMP_DUPLICATE_LIB_OK": "TRUE",
+        "PYTHONPATH": "src",
+        "CLS_DEV_PORT": "8090"
+      }
     }
   ]
 }

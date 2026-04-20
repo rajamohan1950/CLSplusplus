@@ -24,7 +24,7 @@ The API returns `"status": "degraded"` when Redis and Postgres env vars are miss
   - Format: `postgresql://user:password@dpg-xxxxx/dbname` (use **Internal**)
 
 5. Click **Save Changes** — Render will redeploy automatically
-6. Wait 2–3 minutes, then check: https://clsplusplus-api.onrender.com/v1/memory/health
+6. Wait 2–3 minutes, then check: https://www.clsplusplus.com/v1/memory/health
 
 ### Demo LLM keys (optional, for Try It live demo)
 

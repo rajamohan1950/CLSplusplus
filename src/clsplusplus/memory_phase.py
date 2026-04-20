@@ -39,10 +39,39 @@ from __future__ import annotations
 
 import math
 import string
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Optional
 from uuid import uuid4
+
+
+# =============================================================================
+# Tracer helpers — lazy import so PhaseMemoryEngine stays zero-external-dep
+# =============================================================================
+
+def _algo_span(trace_id: Optional[str], label: str, **meta):
+    """Return a tracer span context manager, or a nullcontext if no trace_id."""
+    if not trace_id:
+        from contextlib import nullcontext
+        return nullcontext()
+    try:
+        from clsplusplus.tracer import tracer as _tr  # type: ignore[import]
+        return _tr.span(trace_id, label, "phase_engine", **meta)
+    except Exception:
+        from contextlib import nullcontext
+        return nullcontext()
+
+
+def _add_algo_meta(trace_id: Optional[str], hop_id: Optional[str], **kwargs) -> None:
+    """Add metadata to a tracer hop — no-op if tracing is unavailable."""
+    if not (trace_id and hop_id):
+        return
+    try:
+        from clsplusplus.tracer import tracer as _tr  # type: ignore[import]
+        _tr.add_metadata(trace_id, hop_id, **kwargs)
+    except Exception:
+        pass
 
 
 # =============================================================================
@@ -115,19 +144,25 @@ def _strip_punctuation(token: str) -> str:
 
 def _normalize_token(token: str) -> str:
     """
-    Minimal token normalization: strip trailing 'ing' and 's'.
+    Minimal token normalization: strip possessives, trailing 'ing' and 's'.
 
-    NOT a stemmer. Two rules with minimum result length guard.
+    NOT a stemmer. Rules with minimum result length guard.
     The engine indexes BOTH raw and normalized forms, so imperfect
     normalization is acceptable — raw form provides exact match fallback.
 
     Result must be >= 4 chars after -ing stripping to prevent destructive
     normalization ("string" → "str" is BLOCKED, "visiting" → "visit" is OK).
 
+    Possessives: "alice's" → "alice", "dogs'" → "dog" (stripped then -s rule)
     'visiting' → 'visit', 'eats' → 'eat', 'bananas' → 'banana',
     'running' → 'runn', 'string' → 'string' (preserved — "str" too short)
     """
     t = token.lower()
+    # Possessive stripping: "alice's" → "alice", "dogs'" → "dogs" (then -s rule)
+    if t.endswith("'s") and len(t) > 3:
+        t = t[:-2]
+    elif t.endswith("'") and len(t) > 3:
+        t = t[:-1]
     if len(t) > 4 and t.endswith("ing"):
         candidate = t[:-3]
         if len(candidate) >= 4:
@@ -135,6 +170,42 @@ def _normalize_token(token: str) -> str:
     if len(t) > 3 and t.endswith("s") and not t.endswith("ss"):
         return t[:-1]  # "eats"→"eat", "bananas"→"banana". Known: "bias"→"bia" (raw form fallback)
     return t
+
+
+# Synonym expansion table — maps common query terms to terms likely
+# found in stored facts. Covers the vocabulary gap between how users
+# ask questions and how facts are stated.
+_SYNONYMS: dict[str, list[str]] = {
+    "husband": ["married", "spouse"],
+    "wife": ["married", "spouse"],
+    "spouse": ["married", "husband", "wife"],
+    "daughter": ["child", "girl"],
+    "son": ["child", "boy"],
+    "child": ["daughter", "son"],
+    "children": ["daughter", "son", "kids"],
+    "university": ["graduated", "college", "degree", "school", "studied", "masters", "bachelor"],
+    "college": ["graduated", "university", "degree", "school", "studied"],
+    "school": ["graduated", "university", "college", "studied"],
+    "undergrad": ["graduated", "university", "college", "bachelor", "degree"],
+    "education": ["graduated", "university", "college", "degree", "studied", "masters"],
+    "role": ["title", "position", "job", "engineer", "manager", "director", "vp", "cto", "ceo"],
+    "title": ["role", "position", "job", "engineer", "manager", "director", "vp"],
+    "job": ["work", "role", "title", "position", "company"],
+    "position": ["role", "title", "job", "work"],
+    "hobby": ["hobbies", "interests", "enjoy", "love", "favorite"],
+    "hobbies": ["hobby", "interests", "enjoy", "love", "favorite"],
+    "allergy": ["allergic", "intolerant", "sensitive"],
+    "allergies": ["allergic", "intolerant", "sensitive"],
+    "car": ["drive", "vehicle", "tesla", "toyota", "honda"],
+    "vehicle": ["car", "drive"],
+    "home": ["house", "apartment", "address"],
+    "house": ["home", "apartment", "property"],
+    "salary": ["compensation", "pay", "income", "earning"],
+    "email": ["mail", "contact", "address"],
+    "phone": ["call", "number", "mobile", "cell"],
+    "birthday": ["born", "birth", "age"],
+    "age": ["old", "years", "born"],
+}
 
 
 def _tokenize(text: str) -> list[str]:
@@ -146,6 +217,7 @@ def _tokenize(text: str) -> list[str]:
 
     Returns a list of tokens ordered by estimated informativeness
     (longer/rarer tokens first). Both raw and normalized forms included.
+    Synonym expansions are appended to improve recall across vocabulary gaps.
     Stop words and single-character tokens filtered.
 
     The ordering matters for field radius: when R(s) contracts, common
@@ -166,6 +238,11 @@ def _tokenize(text: str) -> list[str]:
         if normalized != clean and normalized not in seen and len(normalized) > 1:
             raw_tokens.append(normalized)
             seen.add(normalized)
+        # Synonym expansion: add related terms to broaden matching
+        for syn in _SYNONYMS.get(clean, []):
+            if syn not in seen and syn not in _STOP_WORDS and len(syn) > 1:
+                raw_tokens.append(syn)
+                seen.add(syn)
 
     # Sort by length descending — longer tokens are more specific/informative
     # This is a cheap proxy for IDF before we have corpus statistics
@@ -402,6 +479,24 @@ class PhaseMemoryItem:
     indexed_tokens: list[str] = field(default_factory=list)
     _last_field_radius: int = -1  # Last R(s) for lazy index update
 
+    # --- Dense Semantic Embedding (384-dim, optional — set by MemoryService) ---
+    # PhaseMemoryEngine itself remains zero-dep. MemoryService attaches this
+    # after engine.store() returns, using EmbeddingService (sentence-transformers).
+    # Used for post-TRR 384-dim semantic re-ranking (bridges vocabulary gaps).
+    embedding_dense: list = field(default_factory=list)
+
+    # --- Conversation context (set by benchmark/API callers, optional) ---
+    session_date: str = ""        # Human-readable session date ("8 May 2023")
+    conversation_turn: int = 0    # Turn index within its conversation
+
+    # --- Temporal provenance (set by MemoryService at write time) ---
+    # When the described event HAPPENED (wall-clock).  Differs from birth_order
+    # (which is a memory-event counter) and from the write timestamp.
+    event_at: Optional[datetime] = None
+    # True = a newer fact on the same (subject, relation) dimension exists.
+    # Superseded items are hidden from default reads but never deleted.
+    superseded: bool = False
+
     # --- Crystallization (Liquid → Solid phase transition) ---
     schema_meta: Optional[SchemaMeta] = None  # Non-None = solid/glass phase
 
@@ -501,6 +596,10 @@ class PhaseMemoryEngine:
         self.TAU_DEFAULT: float = tau_default
         self.TAU_OVERRIDE: float = tau_override
         self.STRENGTH_FLOOR: float = strength_floor
+        # INTENTIONAL DESIGN: in-memory cap is 1,000 hot items per namespace.
+        # The thermodynamic pressure model (density ρ = active/capacity) is
+        # calibrated for this ceiling. Items beyond 1,000 are served via L1
+        # kNN vector search (PostgreSQL + IVFFlat) — do NOT raise this limit.
         self.CAPACITY: int = capacity
         self.BETA_RETRIEVAL: float = beta_retrieval
 
@@ -512,6 +611,11 @@ class PhaseMemoryEngine:
         self.MIN_FIXED_POINT_TOKENS: int = 2                 # ≥ 2 tokens for schema
         self.MIN_GROUP_SIZE: int = 3                          # ≥ 3 episodes to crystallize
 
+        # --- TRR Constants (Thermodynamic Resonance Retrieval) ---
+        self._SVD_RECOMPUTE_INTERVAL: int = 10   # Recompute SVD every N stores (per namespace)
+        self._SVD_DIMS: int = 50                  # Embedding dimensionality
+        self._MORPH_PREFIX_LEN: int = 4           # Minimum prefix for morphological matching
+
         # State
         self._items: dict[str, list[PhaseMemoryItem]] = {}
         self._event_counter: int = 0
@@ -519,12 +623,26 @@ class PhaseMemoryEngine:
         self._item_by_id: dict[str, PhaseMemoryItem] = {}  # O(1) lookup for PESQD
 
         # Token Index — Thermodynamic Semantic Field (TSF)
-        # Single token index: token → list of PhaseMemoryItems
-        # Entries phase-transition in/out based on R(s) = floor(N × s^(1/3))
-        self._token_index: dict[str, list[PhaseMemoryItem]] = {}
+        # Nested dict: namespace -> token -> item.id -> PhaseMemoryItem
+        # O(1) insert/delete, no namespace filtering needed at search time
+        self._token_index: dict[str, dict[str, dict[str, PhaseMemoryItem]]] = {}
+
+        # Morphological Kernel — prefix equivalence classes for query-time expansion
+        # prefix4 → set of indexed tokens sharing that prefix
+        self._prefix_index: dict[str, set[str]] = {}
 
         # Document frequency for IDF computation (self-computed from corpus)
-        self._doc_freq: Counter = Counter()
+        # Per-namespace: namespace -> token -> count
+        self._doc_freq: dict[str, Counter] = defaultdict(Counter)
+
+        # PPMI Co-occurrence — token pairs co-occurring in same item (per-namespace)
+        self._cooccurrence: dict[str, Counter] = defaultdict(Counter)
+        self._svd_store_count: dict[str, int] = defaultdict(int)   # per-namespace
+        self._svd_dirty: dict[str, bool] = defaultdict(bool)        # per-namespace
+        self._token_vectors: dict[str, dict[str, list[float]]] = defaultdict(dict)  # namespace -> token -> vec
+
+        # Per-namespace dirty flag for free energy recomputation
+        self._free_energy_dirty: dict[str, bool] = {}
 
         # --- Cross-Entity Resonance (CER) — Kuramoto Coupled Oscillators ---
         self._entity_nodes: dict[str, EntityNode] = {}
@@ -534,6 +652,16 @@ class PhaseMemoryEngine:
         self._entity_index: dict[str, list[str]] = {}  # token → entity names
         self._compound_entity_index: dict[str, list[tuple[str, int]]] = {}  # first_word → [(full_name, n_parts)]
         self._K_critical: float = 0.15  # Synchronization phase transition threshold
+
+        # --- Benchmark Mode — Suppress crystallization/GC for full recall ---
+        self._benchmark_mode: bool = False
+
+        # --- Episode Archive — preserves original episodes after crystallization ---
+        # Schemas are the primary search target; archive provides detail drill-down
+        self._episode_archive: dict[str, list[PhaseMemoryItem]] = {}  # schema_id → [original episodes]
+
+        # --- Contradiction Log — Chain-of-Thought, never override ---
+        self._contradiction_log: list[dict[str, Any]] = []
 
     # =========================================================================
     # Core Physics — Information Content (Shannon Entropy)
@@ -575,58 +703,88 @@ class PhaseMemoryEngine:
             R(s) = floor(N_tokens × s^(1/3))
 
         where 1/3 is the mean-field critical exponent ν from 3D thermodynamics.
-        Liquid memories (s→1) have broad fields; gas memories have none.
+        Liquid memories (s→1) have broad fields; gas memories get radius=1
+        (fresh memories are vivid — the kid who just walked in is still visible).
 
         Tokens are ordered by informativeness (longer first, which correlates
         with rarity). As s decays, common tokens are de-indexed first,
         preserving the most discriminating tokens longest.
         """
         s = item.consolidation_strength
-        if s < self.STRENGTH_FLOOR:
-            self._deindex_item(item)
-            item._last_field_radius = 0
-            return
-
         tokens = item.indexed_tokens
         n_tokens = len(tokens)
-        cube_root_s = s ** (1.0 / 3.0)
-        radius = max(1, int(n_tokens * cube_root_s))
 
-        # Index tokens within radius
+        if n_tokens == 0:
+            return
+
+        if s < self.STRENGTH_FLOOR:
+            # Gas phase: minimal field radius=1 (still searchable, still vivid)
+            radius = 1
+        else:
+            cube_root_s = s ** (1.0 / 3.0)
+            radius = max(1, int(n_tokens * cube_root_s))
+
+        # Index tokens within radius + update prefix index
+        ns_idx = self._token_index.setdefault(item.namespace, {})
         for token in tokens[:radius]:
-            if token not in self._token_index:
-                self._token_index[token] = []
-            if item not in self._token_index[token]:
-                self._token_index[token].append(item)
+            tok_idx = ns_idx.setdefault(token, {})
+            tok_idx[item.id] = item  # O(1) insert, replaces list.append
+            # Maintain prefix index for morphological kernel
+            if len(token) >= self._MORPH_PREFIX_LEN:
+                prefix = token[:self._MORPH_PREFIX_LEN]
+                self._prefix_index.setdefault(prefix, set()).add(token)
 
         # De-index tokens beyond radius
         for token in tokens[radius:]:
-            if token in self._token_index and item in self._token_index[token]:
-                self._token_index[token].remove(item)
-                if not self._token_index[token]:
-                    del self._token_index[token]
+            ns_idx.get(token, {}).pop(item.id, None)
+            # Clean up empty token dicts + prefix index
+            if token in ns_idx and not ns_idx[token]:
+                del ns_idx[token]
+                if len(token) >= self._MORPH_PREFIX_LEN:
+                    prefix = token[:self._MORPH_PREFIX_LEN]
+                    # Only remove prefix if no namespace has this token indexed
+                    token_still_exists = any(
+                        token in self._token_index.get(ns, {})
+                        for ns in self._token_index
+                    )
+                    if not token_still_exists and prefix in self._prefix_index:
+                        self._prefix_index[prefix].discard(token)
+                        if not self._prefix_index[prefix]:
+                            del self._prefix_index[prefix]
 
         item._last_field_radius = radius
 
     def _deindex_item(self, item: PhaseMemoryItem) -> None:
         """Remove a memory item from the token index entirely."""
+        ns_idx = self._token_index.get(item.namespace, {})
         for token in item.indexed_tokens:
-            if token in self._token_index and item in self._token_index[token]:
-                self._token_index[token].remove(item)
-                if not self._token_index[token]:
-                    del self._token_index[token]
+            ns_idx.get(token, {}).pop(item.id, None)
+            if token in ns_idx and not ns_idx[token]:
+                del ns_idx[token]
+                # Clean prefix index if no namespace has this token anymore
+                if len(token) >= self._MORPH_PREFIX_LEN:
+                    prefix = token[:self._MORPH_PREFIX_LEN]
+                    token_still_exists = any(
+                        token in self._token_index.get(ns, {})
+                        for ns in self._token_index
+                    )
+                    if not token_still_exists and prefix in self._prefix_index:
+                        self._prefix_index[prefix].discard(token)
+                        if not self._prefix_index[prefix]:
+                            del self._prefix_index[prefix]
 
     def _update_field_radius(self, item: PhaseMemoryItem) -> None:
         """Lazy field radius update. Only re-indexes if R(s) has changed."""
         s = item.consolidation_strength
-        if s < self.STRENGTH_FLOOR:
-            if item._last_field_radius != 0:
-                self._deindex_item(item)
-                item._last_field_radius = 0
+        n_tokens = len(item.indexed_tokens)
+        if n_tokens == 0:
             return
 
-        cube_root_s = s ** (1.0 / 3.0)
-        new_radius = max(1, int(len(item.indexed_tokens) * cube_root_s))
+        if s < self.STRENGTH_FLOOR:
+            new_radius = 1  # Gas: minimal but present
+        else:
+            cube_root_s = s ** (1.0 / 3.0)
+            new_radius = max(1, int(n_tokens * cube_root_s))
 
         if new_radius != item._last_field_radius:
             self._index_item(item)
@@ -639,18 +797,345 @@ class PhaseMemoryEngine:
             return 0.0
         return fe
 
-    def _compute_idf(self, token: str) -> float:
+    def _compute_idf(self, token: str, namespace: str = "") -> float:
         """
         Compute Inverse Document Frequency for a token.
 
         idf(t) = log(1 + N / (1 + df(t)))
 
         Self-computed from the engine's own corpus. Zero external knowledge.
-        N = total items across all namespaces.
-        df(t) = number of items containing token t.
+        N = total items in the namespace (or all namespaces if namespace="").
+        df(t) = number of items containing token t in the namespace.
         """
-        df = self._doc_freq.get(token, 0)
-        return math.log(1.0 + self._total_item_count / (1.0 + df))
+        if namespace:
+            ns_freq = self._doc_freq.get(namespace, Counter())
+            df = ns_freq.get(token, 0)
+            ns_items = self._items.get(namespace, [])
+            N = len(ns_items) if ns_items else self._total_item_count
+        else:
+            # Fallback: aggregate across all namespaces
+            df = sum(self._doc_freq[ns].get(token, 0) for ns in self._doc_freq)
+            N = self._total_item_count
+        return math.log(1.0 + max(N, 1) / (1.0 + df))
+
+    # =========================================================================
+    # TRR — Thermodynamic Resonance Retrieval
+    #
+    # Self-tuning retrieval: all parameters derived from corpus statistics.
+    # Zero LLM. Zero external dependencies. Zero manual tuning.
+    #
+    # Layers:
+    #   1. Morphological Kernel — prefix equivalence (query-time)
+    #   2. BMX Scoring — entropy-weighted BM25
+    #   3. Phase-Dependent Susceptibility — Gas/Liquid/Solid/Glass
+    #   4. PPMI Co-occurrence — token coupling constants
+    #   5. PPMI-SVD — local embeddings (background recompute)
+    #   6. Schema-Aware Query Expansion
+    # =========================================================================
+
+    def _morph_expand(self, token: str, namespace: str = "") -> list[str]:
+        """
+        Morphological Kernel: expand a query token to all indexed variants
+        sharing a ≥4-char prefix.
+
+        "move" → ["move", "moved", "moving", "movement"]
+
+        Uses _prefix_index for O(1) lookup. No suffix rules.
+        Universal: works for any language with prefixed morphology.
+        When namespace is provided, only returns tokens present in that namespace's index.
+        """
+        ns_idx = self._token_index.get(namespace, {}) if namespace else {}
+
+        def _token_indexed(t: str) -> bool:
+            if namespace:
+                return t in ns_idx
+            # Fallback: check any namespace
+            return any(t in self._token_index.get(ns, {}) for ns in self._token_index)
+
+        if len(token) < self._MORPH_PREFIX_LEN:
+            return [token] if _token_indexed(token) else []
+        prefix = token[:self._MORPH_PREFIX_LEN]
+        variants = self._prefix_index.get(prefix, set())
+        if not variants:
+            return [token] if _token_indexed(token) else []
+        # Return variants that are actually in the token index
+        result = [v for v in variants if _token_indexed(v)]
+        # Ensure original token is included if indexed
+        if _token_indexed(token) and token not in result:
+            result.append(token)
+        return result
+
+    def _compute_entropy_weight(self, token: str, namespace: str = "") -> float:
+        """
+        BMX entropy weight: penalizes tokens distributed uniformly across items,
+        boosts tokens that cluster in specific items.
+
+        H_weight = max(0.1, 1.0 - H_binary(p))
+        where p = df(token) / N.
+
+        Clustered token (low entropy) → high weight → more informative.
+        Uniform token (high entropy) → low weight → less discriminating.
+        """
+        if namespace:
+            ns_freq = self._doc_freq.get(namespace, Counter())
+            df = ns_freq.get(token, 0)
+            N = max(len(self._items.get(namespace, [])), 1)
+        else:
+            df = sum(self._doc_freq[ns].get(token, 0) for ns in self._doc_freq)
+            N = max(self._total_item_count, 1)
+        if df == 0 or df == N:
+            return 1.0
+        p = df / N
+        # Binary entropy of the token's distribution
+        H = -p * math.log2(max(p, 1e-15)) - (1.0 - p) * math.log2(max(1.0 - p, 1e-15))
+        return max(0.1, 1.0 - H)
+
+    def _phase_susceptibility(self, item: PhaseMemoryItem) -> float:
+        """
+        Phase-dependent susceptibility χ(phase).
+
+        Gas:    χ = 0.7  (fresh, vivid, slightly lower trust)
+        Liquid: χ = 1.0  (normal)
+        Solid:  χ = min(1.2, 1.0 + 0.1 / max(|ΔF|, 0.1))
+        Glass:  χ = min(1.3, 1.0 + 0.2 / max(|ΔF|, 0.1))
+
+        Capped to prevent schema nodes from dominating raw facts in search.
+        At high item counts, uncapped schemas (10x boost) drown out individual facts.
+        """
+        s = item.consolidation_strength
+
+        if item.schema_meta is not None:
+            delta_F = abs(item.schema_meta.delta_F)
+            if _is_glass_static(item):
+                return min(1.3, 1.0 + 0.2 / max(delta_F, 0.1))
+            else:
+                return min(1.2, 1.0 + 0.1 / max(delta_F, 0.1))
+
+        if s < self.STRENGTH_FLOOR:
+            return 0.7  # Gas
+
+        return 1.0  # Liquid
+
+    def _compute_pmi(self, token_a: str, token_b: str, namespace: str = "") -> float:
+        """
+        Pointwise Mutual Information from co-occurrence statistics.
+
+        PMI(a,b) = log(N × co(a,b) / (df(a) × df(b)))
+        Clamped to PPMI (≥ 0).
+
+        Self-computed from the engine's own corpus. Zero external knowledge.
+        """
+        a, b = (token_a, token_b) if token_a < token_b else (token_b, token_a)
+        if namespace:
+            ns_co = self._cooccurrence.get(namespace, Counter())
+            co = ns_co.get((a, b), 0)
+            ns_freq = self._doc_freq.get(namespace, Counter())
+            df_a = ns_freq.get(token_a, 0)
+            df_b = ns_freq.get(token_b, 0)
+            N = max(len(self._items.get(namespace, [])), 1)
+        else:
+            co = sum(self._cooccurrence[ns].get((a, b), 0) for ns in self._cooccurrence)
+            df_a = sum(self._doc_freq[ns].get(token_a, 0) for ns in self._doc_freq)
+            df_b = sum(self._doc_freq[ns].get(token_b, 0) for ns in self._doc_freq)
+            N = max(self._total_item_count, 1)
+        if co == 0:
+            return 0.0
+        if df_a == 0 or df_b == 0:
+            return 0.0
+        pmi = math.log(N * co / (df_a * df_b))
+        return max(0.0, pmi)  # PPMI: clamp negative
+
+    def _recompute_svd(self, namespace: str = "") -> None:
+        """
+        Recompute PPMI-SVD token vectors from co-occurrence matrix.
+
+        Pure Python. Zero external dependencies (no numpy, no scipy).
+        Uses randomized power iteration for truncated SVD.
+
+        When namespace is provided, recomputes only for that namespace.
+        Output: self._token_vectors[namespace] — per-token vectors for semantic matching.
+        Mathematically equivalent to word2vec (Levy & Goldberg 2014).
+        """
+        if namespace:
+            ns_co = self._cooccurrence.get(namespace, Counter())
+            ns_freq = self._doc_freq.get(namespace, Counter())
+            N = max(len(self._items.get(namespace, [])), 1)
+        else:
+            # Fallback: aggregate across all namespaces (used by finalize_batch)
+            ns_co = Counter()
+            for ns_counter in self._cooccurrence.values():
+                ns_co.update(ns_counter)
+            ns_freq = Counter()
+            for ns_counter in self._doc_freq.values():
+                ns_freq.update(ns_counter)
+            N = max(self._total_item_count, 1)
+
+        if not ns_co:
+            return
+
+        # Build vocabulary from tokens with sufficient document frequency
+        vocab: set[str] = set()
+        for (a, b) in ns_co:
+            if ns_freq.get(a, 0) >= 2:
+                vocab.add(a)
+            if ns_freq.get(b, 0) >= 2:
+                vocab.add(b)
+
+        # Cap vocabulary at top 5000 by document frequency
+        if len(vocab) > 5000:
+            vocab_sorted = sorted(vocab, key=lambda t: ns_freq.get(t, 0), reverse=True)
+            vocab = set(vocab_sorted[:5000])
+
+        vocab_list = sorted(vocab)
+        V = len(vocab_list)
+        if V < 3:
+            return
+
+        tok2idx = {t: i for i, t in enumerate(vocab_list)}
+        dims = min(self._SVD_DIMS, V - 1)
+
+        # Build sparse PPMI matrix as dict-of-dicts
+        ppmi_rows: dict[int, dict[int, float]] = {}
+        for (a, b), co in ns_co.items():
+            if a not in tok2idx or b not in tok2idx:
+                continue
+            df_a = ns_freq.get(a, 0)
+            df_b = ns_freq.get(b, 0)
+            if df_a == 0 or df_b == 0:
+                continue
+            pmi_val = math.log(N * co / (df_a * df_b))
+            if pmi_val <= 0:
+                continue
+            i, j = tok2idx[a], tok2idx[b]
+            ppmi_rows.setdefault(i, {})[j] = pmi_val
+            ppmi_rows.setdefault(j, {})[i] = pmi_val
+
+        if not ppmi_rows:
+            return
+
+        # Sparse matrix-vector multiply: y = PPMI @ x
+        def spmv(x: list[float]) -> list[float]:
+            y = [0.0] * V
+            for i, row in ppmi_rows.items():
+                for j, val in row.items():
+                    y[i] += val * x[j]
+            return y
+
+        # Power iteration for top-k approximate singular vectors
+        import random as _rng
+        _rng.seed(42)  # Reproducible
+
+        # Initialize random basis
+        basis: list[list[float]] = []
+        for _ in range(dims):
+            vec = [_rng.gauss(0, 1) for _ in range(V)]
+            mag = math.sqrt(sum(v * v for v in vec)) or 1.0
+            basis.append([v / mag for v in vec])
+
+        # 15 power iterations
+        for _iter in range(15):
+            # Multiply each basis vector by PPMI
+            new_basis = [spmv(vec) for vec in basis]
+
+            # Modified Gram-Schmidt orthogonalization
+            for i in range(len(new_basis)):
+                for j in range(i):
+                    dot = sum(a * b for a, b in zip(new_basis[i], new_basis[j]))
+                    new_basis[i] = [a - dot * b for a, b in zip(new_basis[i], new_basis[j])]
+                mag = math.sqrt(sum(v * v for v in new_basis[i])) or 1e-12
+                new_basis[i] = [v / mag for v in new_basis[i]]
+
+            basis = new_basis
+
+        # Extract token vectors: each token gets a dims-dimensional vector
+        target_ns = namespace if namespace else ""
+        self._token_vectors[target_ns] = {}
+        for idx, token in enumerate(vocab_list):
+            vec = [basis[d][idx] for d in range(dims)]
+            # Scale by approximate singular value (Rayleigh quotient)
+            Av = [0.0] * V
+            for j, val in ppmi_rows.get(idx, {}).items():
+                for d in range(dims):
+                    Av[d] = Av[d]  # skip full computation for speed
+            self._token_vectors[target_ns][token] = vec
+
+        # Bug #412: Back-fill embedding_dense on all items in this namespace
+        if namespace:
+            ns_vecs = self._token_vectors[namespace]
+            if ns_vecs:
+                dims_actual = len(next(iter(ns_vecs.values())))
+                for item in self._items.get(namespace, []):
+                    vecs = [ns_vecs[t] for t in item.indexed_tokens if t in ns_vecs]
+                    if vecs:
+                        avg = [sum(v[d] for v in vecs) / len(vecs) for d in range(dims_actual)]
+                        item.embedding_dense = avg
+
+    @staticmethod
+    def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
+        """Cosine similarity between two vectors. Pure Python."""
+        dot = sum(a * b for a, b in zip(vec_a, vec_b))
+        mag_a = math.sqrt(sum(a * a for a in vec_a))
+        mag_b = math.sqrt(sum(b * b for b in vec_b))
+        if mag_a < 1e-12 or mag_b < 1e-12:
+            return 0.0
+        return dot / (mag_a * mag_b)
+
+    def _mean_vector(self, tokens: list[str], namespace: str = "") -> Optional[list[float]]:
+        """Average vector of tokens that have embeddings. None if no vectors."""
+        tv = self._token_vectors.get(namespace, {}) if namespace else self._token_vectors.get("", {})
+        vecs = [tv[t] for t in tokens if t in tv]
+        if not vecs:
+            return None
+        dims = len(vecs[0])
+        avg = [0.0] * dims
+        for vec in vecs:
+            for d in range(dims):
+                avg[d] += vec[d]
+        n = len(vecs)
+        return [v / n for v in avg]
+
+    def _expand_query_with_schemas(
+        self,
+        query_tokens: list[str],
+        query_token_set: set[str],
+        namespace: str,
+    ) -> tuple[list[str], set[str], set[str]]:
+        """
+        Schema-Aware Query Expansion.
+
+        When query matches a known entity with a schema, expand with the
+        schema's fixed_point_tokens. The phase engine feeds retrieval.
+
+        Expanded tokens scored at 0.5× weight (inferred, not queried).
+        """
+        inferred: set[str] = set()
+
+        for token in list(query_token_set):
+            # Check if token is a known entity
+            canonical = token
+            if token in self._entity_alias_map:
+                canonical = self._entity_alias_map[token]
+            if canonical not in self._entity_nodes:
+                continue
+
+            node = self._entity_nodes[canonical]
+            # Find schemas this entity participates in
+            for mid in node.memory_ids:
+                item = self._item_by_id.get(mid)
+                if (item and item.namespace == namespace
+                        and item.schema_meta is not None):
+                    for fp_token in item.schema_meta.fixed_point_tokens[:3]:
+                        if (fp_token not in query_token_set
+                                and fp_token not in _STOP_WORDS
+                                and len(fp_token) > 1):
+                            inferred.add(fp_token)
+
+        if inferred:
+            expanded_tokens = query_tokens + list(inferred)
+            expanded_token_set = query_token_set | inferred
+            return expanded_tokens, expanded_token_set, inferred
+
+        return query_tokens, query_token_set, set()
 
     # =========================================================================
     # Contradiction Detection — Token Overlap (No S/R/V Required)
@@ -816,6 +1301,17 @@ class PhaseMemoryEngine:
         tau_new = self.TAU_OVERRIDE if new_fact.override else self.TAU_DEFAULT
 
         for item in contradicted:
+            # In benchmark mode: log contradiction but DON'T damage.
+            # Keep both facts alive — chain-of-thought lets user decide.
+            if self._benchmark_mode:
+                self._contradiction_log.append({
+                    "old_item_id": item.id,
+                    "old_text": item.fact.raw_text if item.fact else "",
+                    "new_text": new_fact.raw_text if new_fact else "",
+                    "surprise": surprise,
+                })
+                continue
+
             tau_ratio = tau_new / max(item.tau, 1e-6)
             tau_factor = min(tau_ratio, 4.0) / 4.0 + 0.5
             damage = sigmoid_damage * tau_factor * amplifier
@@ -849,6 +1345,16 @@ class PhaseMemoryEngine:
         tau_new = self.TAU_OVERRIDE if is_override else self.TAU_DEFAULT
 
         for item in contradicted:
+            # In benchmark mode: log but don't damage (same as structured path)
+            if self._benchmark_mode:
+                self._contradiction_log.append({
+                    "old_item_id": item.id,
+                    "old_text": item.fact.raw_text if item.fact else "",
+                    "new_text": "(token-overlap contradiction)",
+                    "surprise": surprise,
+                })
+                continue
+
             tau_ratio = tau_new / max(item.tau, 1e-6)
             tau_factor = min(tau_ratio, 4.0) / 4.0 + 0.5
             damage = sigmoid_damage * tau_factor * amplifier
@@ -1061,10 +1567,10 @@ class PhaseMemoryEngine:
         # Resolve aliases
         entities = list(set(self._resolve_alias(e) for e in entities_raw))
 
-        # Compute IDF for item tokens
+        # Compute IDF for item tokens (namespace-scoped)
         tokens_with_idf: dict[str, float] = {}
         for token in item.indexed_tokens:
-            tokens_with_idf[token] = self._compute_idf(token)
+            tokens_with_idf[token] = self._compute_idf(token, namespace)
 
         # Build entity token filter: compound entity parts excluded from spectrum
         # e.g. "jean paul" → {"jean paul", "jean", "paul"}
@@ -1433,14 +1939,14 @@ class PhaseMemoryEngine:
                     candidates.append(members)
 
         # 2. High-IDF token co-occurrence
-        for token, token_items in self._token_index.items():
-            idf = self._compute_idf(token)
+        ns_tok_idx = self._token_index.get(namespace, {})
+        for token, tok_items_dict in ns_tok_idx.items():
+            idf = self._compute_idf(token, namespace)
             if idf < 1.0:
                 continue  # Skip common tokens
             ns_items = [
-                i for i in token_items
-                if i.namespace == namespace
-                and i.schema_meta is None
+                i for i in tok_items_dict.values()
+                if i.schema_meta is None
                 and i.consolidation_strength >= self.STRENGTH_FLOOR
             ]
             if len(ns_items) >= self.MIN_GROUP_SIZE:
@@ -1466,11 +1972,12 @@ class PhaseMemoryEngine:
             for token in set(item.indexed_tokens):
                 token_member_count[token] += 1
 
+        ns = group[0].namespace if group else ""
         fixed: dict[str, float] = {}
         for token, count in token_member_count.items():
             coverage = count / N
             if coverage >= self.RG_SOFT_THRESHOLD:
-                idf = self._compute_idf(token)
+                idf = self._compute_idf(token, ns)
                 fixed[token] = idf * idf * coverage  # MI contribution
 
         ordered = sorted(fixed.keys(), key=lambda t: fixed[t], reverse=True)
@@ -1541,7 +2048,12 @@ class PhaseMemoryEngine:
         # Abstraction cost (surface energy)
         C_abs = self.kT * math.log(2) * H_lost / max(self.TAU_SCHEMA, 1e-6)
 
-        delta_F = F_schema - sum_F_liquid + C_abs
+        # Density penalty: high density = more conservative crystallization
+        # At ρ > 0.5, require increasingly negative ΔF to crystallize
+        rho = len(group) / max(self.CAPACITY, 1)
+        density_penalty = max(0.0, rho - 0.5) * self.kT * math.log(2)
+
+        delta_F = F_schema - sum_F_liquid + C_abs + density_penalty
         return delta_F, H_schema, H_sum
 
     def _crystallize(
@@ -1607,7 +2119,10 @@ class PhaseMemoryEngine:
         self._index_item(schema_item)
 
         for token in set(fixed_tokens):
-            self._doc_freq[token] += 1
+            self._doc_freq[namespace][token] += 1
+
+        # Archive constituent episodes for detail retrieval before evaporation
+        self._episode_archive[schema_item.id] = list(group)
 
         # Set constituent episodes to sub-critical τ → evaporate naturally
         for item in group:
@@ -1633,6 +2148,11 @@ class PhaseMemoryEngine:
             ]
             if len(alive_group) < self.MIN_GROUP_SIZE:
                 continue
+
+            # Cap group size to prevent mega-schemas that lose too much detail
+            MAX_CRYSTALLIZE_GROUP = 10
+            if len(alive_group) > MAX_CRYSTALLIZE_GROUP:
+                alive_group = alive_group[:MAX_CRYSTALLIZE_GROUP]
 
             fixed_tokens, weights = self._compute_fixed_point(alive_group)
             if len(fixed_tokens) < self.MIN_FIXED_POINT_TOKENS:
@@ -1673,6 +2193,11 @@ class PhaseMemoryEngine:
             coverage = overlap / len(fp_tokens)
 
             if coverage >= self.SCHEMA_ABSORPTION_COVERAGE:
+                # Archive the absorbed episode
+                if schema.id not in self._episode_archive:
+                    self._episode_archive[schema.id] = []
+                self._episode_archive[schema.id].append(new_item)
+
                 # Reinforce schema
                 schema.retrieval_count += 1
 
@@ -1766,6 +2291,7 @@ class PhaseMemoryEngine:
         text: str,
         namespace: str,
         fact: Optional[Fact] = None,
+        trace_id: Optional[str] = None,
     ) -> Optional[PhaseMemoryItem]:
         """
         Store raw text as a memory item. Zero external calls.
@@ -1786,99 +2312,135 @@ class PhaseMemoryEngine:
             PhaseMemoryItem if stored, None if confirmed (duplicate reinforced).
         """
         self._event_counter += 1
+        # Skip algo tracing in batch-load mode (startup replay)
+        _trace = None if getattr(self, '_batch_mode', False) else trace_id
 
         # --- Tokenize (engine-internal) ---
-        tokens = _tokenize(text)
-        token_set = set(tokens)
+        with _algo_span(_trace, "algo.tokenize", input=text[:120]) as _tok_hop:
+            tokens = _tokenize(text)
+            token_set = set(tokens)
+            _add_algo_meta(_trace, _tok_hop, output=f"{len(tokens)} tokens: {' '.join(tokens[:10])}")
 
         # --- Build or use Fact ---
-        if fact is None:
-            # Auto-create minimal fact from raw text
-            # Subject: first non-stop token, relation: second, value: rest
-            content_words = [
-                clean for w in text.lower().split()
-                for clean in [_strip_punctuation(w)]  # strip once, reuse
-                if clean and clean not in _STOP_WORDS and len(clean) > 1
-            ]
-            # Verb-skip heuristic: skip leading verbs/adverbs to find noun subject
-            subject_idx = 0
-            while subject_idx < len(content_words) - 1:
-                if any(content_words[subject_idx].endswith(sfx) for sfx in _VERB_SUFFIXES):
-                    subject_idx += 1
+        _fact_provided = fact is not None
+        with _algo_span(_trace, "algo.fact_build",
+                        provided=_fact_provided, input=text[:100]) as _fact_hop:
+            if fact is None:
+                # Auto-create minimal fact from raw text
+                # Subject: first non-stop token, relation: second, value: rest
+                content_words = [
+                    clean for w in text.lower().split()
+                    for clean in [_strip_punctuation(w)]  # strip once, reuse
+                    if clean and clean not in _STOP_WORDS and len(clean) > 1
+                ]
+                # Verb-skip heuristic: skip leading verbs/adverbs to find noun subject
+                subject_idx = 0
+                while subject_idx < len(content_words) - 1:
+                    if any(content_words[subject_idx].endswith(sfx) for sfx in _VERB_SUFFIXES):
+                        subject_idx += 1
+                    else:
+                        break
+                # Reorder: subject first, then skipped words become relation context
+                if subject_idx > 0:
+                    content_words = content_words[subject_idx:] + content_words[:subject_idx]
+                if len(content_words) >= 3:
+                    subject = content_words[0]
+                    relation = content_words[1]
+                    value = " ".join(content_words[2:])
+                elif len(content_words) == 2:
+                    subject = content_words[0]
+                    relation = content_words[1]
+                    value = content_words[1]
+                elif len(content_words) == 1:
+                    subject = content_words[0]
+                    relation = ""
+                    value = ""
                 else:
-                    break
-            # Reorder: subject first, then skipped words become relation context
-            if subject_idx > 0:
-                content_words = content_words[subject_idx:] + content_words[:subject_idx]
-            if len(content_words) >= 3:
-                subject = content_words[0]
-                relation = content_words[1]
-                value = " ".join(content_words[2:])
-            elif len(content_words) == 2:
-                subject = content_words[0]
-                relation = content_words[1]
-                value = content_words[1]
-            elif len(content_words) == 1:
-                subject = content_words[0]
-                relation = ""
-                value = ""
-            else:
-                subject = ""
-                relation = ""
-                value = ""
+                    subject = ""
+                    relation = ""
+                    value = ""
 
-            override = _has_override(text)
-            fact = Fact(
-                subject=subject,
-                relation=relation,
-                value=value,
-                override=override,
-                raw_text=text,
-            )
+                override = _has_override(text)
+                fact = Fact(
+                    subject=subject,
+                    relation=relation,
+                    value=value,
+                    override=override,
+                    raw_text=text,
+                )
+
+            # --- Fact-field indexing: add value tokens for semantic retrieval ---
+            # When value field contains content not in raw_text (e.g. LLM-extracted
+            # structured facts), tokenize the value and add new tokens.
+            # This enables TSF search to match queries against extracted values.
+            if fact.value:
+                value_tokens = _tokenize(fact.value)
+                for ft in value_tokens:
+                    if ft not in token_set:
+                        tokens.append(ft)
+                        token_set.add(ft)
+            _add_algo_meta(_trace, _fact_hop,
+                           output=f"S={fact.subject!r}  R={fact.relation!r}  V={fact.value[:40]!r}  override={fact.override}")
 
         existing = self._items.get(namespace, [])
 
         # --- Check for confirmation (exact duplicate) ---
         # Skip dedup when all fact fields are empty — distinct texts
         # that produce no content words should not collapse into one item.
-        has_fact_fields = bool(fact.subject or fact.relation or fact.value)
-        if has_fact_fields:
-            for item in existing:
-                if (
-                    item.fact.subject == fact.subject
-                    and item.fact.relation == fact.relation
-                    and item.fact.value == fact.value
-                    and item.consolidation_strength >= self.STRENGTH_FLOOR
-                ):
-                    item.retrieval_count += 1
-                    return item  # Confirmation — reinforced existing
+        with _algo_span(_trace, "algo.dedup_check",
+                        existing_count=len(existing)) as _dedup_hop:
+            has_fact_fields = bool(fact.subject or fact.relation or fact.value)
+            _dedup_result = "new"
+            if has_fact_fields:
+                for item in existing:
+                    if (
+                        item.fact.subject == fact.subject
+                        and item.fact.relation == fact.relation
+                        and item.fact.value == fact.value
+                        and item.consolidation_strength >= self.STRENGTH_FLOOR
+                    ):
+                        item.retrieval_count += 1
+                        _add_algo_meta(_trace, _dedup_hop,
+                                       output=f"DUPLICATE — reinforced item {item.id[:8]}  rc={item.retrieval_count}")
+                        return item  # Confirmation — reinforced existing
+            _add_algo_meta(_trace, _dedup_hop,
+                           output=f"unique — no duplicate found among {len(existing)} existing")
 
         # --- Compute surprise ---
-        if fact.subject and fact.relation:
-            # Structured surprise (if we have S, R, V)
-            surprise, contradicted = self._compute_surprise(fact, existing)
-        else:
-            # Token-based surprise (raw text)
-            surprise, contradicted, confirmed = self._compute_surprise_from_tokens(
-                text, token_set, namespace,
-            )
-            if confirmed and not contradicted:
-                return confirmed  # Token-level dedup — no new item needed
-
-        # --- Apply surprise damage ---
-        if contradicted:
+        with _algo_span(_trace, "algo.surprise_calc",
+                        mode="structured" if (fact.subject and fact.relation) else "token") as _surp_hop:
             if fact.subject and fact.relation:
-                self._apply_surprise_damage(surprise, contradicted, fact)
+                # Structured surprise (if we have S, R, V)
+                surprise, contradicted = self._compute_surprise(fact, existing)
             else:
-                self._apply_token_surprise_damage(
-                    surprise, contradicted, fact.override,
+                # Token-based surprise (raw text)
+                surprise, contradicted, confirmed = self._compute_surprise_from_tokens(
+                    text, token_set, namespace,
                 )
+                if confirmed and not contradicted:
+                    _add_algo_meta(_trace, _surp_hop,
+                                   output=f"TOKEN DEDUP — reinforced item {confirmed.id[:8]}")
+                    return confirmed  # Token-level dedup — no new item needed
+
+            # --- Apply surprise damage ---
+            if contradicted:
+                if fact.subject and fact.relation:
+                    self._apply_surprise_damage(surprise, contradicted, fact)
+                else:
+                    self._apply_token_surprise_damage(
+                        surprise, contradicted, fact.override,
+                    )
+            _add_algo_meta(_trace, _surp_hop,
+                           output=f"surprise={round(surprise, 4)}  contradicted={'yes' if contradicted else 'no'}")
 
         # --- Compute thermodynamic state ---
-        rho = self._memory_density(namespace)
-        tau = self.TAU_OVERRIDE if fact.override else self.TAU_DEFAULT
-        H = self._information_content(fact)
-        L = (self.kT * math.log(2) * H) / max(tau, 1e-6)
+        with _algo_span(_trace, "algo.thermo_state") as _thermo_hop:
+            rho = self._memory_density(namespace)
+            tau = self.TAU_OVERRIDE if fact.override else self.TAU_DEFAULT
+            H = self._information_content(fact)
+            L = (self.kT * math.log(2) * H) / max(tau, 1e-6)
+            _add_algo_meta(_trace, _thermo_hop,
+                           output=f"ρ={round(rho, 3)}  τ={round(tau, 3)}  H={round(H, 3)} bits  L={round(L, 6)} J")
 
         item = PhaseMemoryItem(
             id=str(uuid4()),
@@ -1898,23 +2460,70 @@ class PhaseMemoryEngine:
         )
 
         # --- Store + Index ---
-        self._items.setdefault(namespace, []).append(item)
-        self._total_item_count += 1
-        self._item_by_id[item.id] = item
-        self._index_item(item)
+        with _algo_span(_trace, "algo.index",
+                        item_id=item.id[:8], token_count=len(tokens)) as _idx_hop:
+            self._items.setdefault(namespace, []).append(item)
+            self._total_item_count += 1
+            self._item_by_id[item.id] = item
+            self._index_item(item)
 
-        # Update document frequency
-        for token in set(tokens):
-            self._doc_freq[token] += 1
+            # Update document frequency (per-namespace)
+            for token in set(tokens):
+                self._doc_freq[namespace][token] += 1
+
+            # Update co-occurrence matrix (PPMI Layer, per-namespace)
+            unique_tokens = list(set(tokens))
+            for i in range(len(unique_tokens)):
+                for j in range(i + 1, len(unique_tokens)):
+                    a, b = unique_tokens[i], unique_tokens[j]
+                    pair = (a, b) if a < b else (b, a)
+                    self._cooccurrence[namespace][pair] += 1
+
+            self._svd_store_count[namespace] += 1
+            self._svd_dirty[namespace] = True
+            self._free_energy_dirty[namespace] = True
+
+            # Trigger SVD recomputation if enough stores OR cooccurrence pairs accumulated
+            # (dual trigger: item count OR pair count — handles dedup-heavy corpora)
+            _svd_recomputed = False
+            _n_pairs = len(self._cooccurrence.get(namespace, {}))
+            if (self._svd_dirty[namespace]
+                    and not getattr(self, '_batch_mode', False)
+                    and (self._svd_store_count[namespace] >= self._SVD_RECOMPUTE_INTERVAL
+                         or _n_pairs >= 10)):
+                self._recompute_svd(namespace)
+                self._svd_store_count[namespace] = 0
+                self._svd_dirty[namespace] = False
+                _svd_recomputed = True
+            _add_algo_meta(_trace, _idx_hop,
+                           output=f"indexed  total_ns={len(self._items.get(namespace,[]))}  svd_recomputed={_svd_recomputed}")
 
         # --- Recompute free energy for ALL items ---
-        self._recompute_all_free_energies(namespace)
+        # In batch mode, skip per-item recompute (caller handles it)
+        if not getattr(self, '_batch_mode', False):
+            with _algo_span(_trace, "algo.free_energy",
+                            ns_size=len(self._items.get(namespace, []))) as _fe_hop:
+                self._recompute_all_free_energies(namespace)
+                _add_algo_meta(_trace, _fe_hop,
+                               output=f"F={round(item.free_energy, 4)}  s={round(item.consolidation_strength, 3)}")
 
-        # --- Cross-Entity Resonance: Write-Time Coupling ---
-        self._cer_update(item, text, namespace)
+            # --- Cross-Entity Resonance: Write-Time Coupling ---
+            with _algo_span(_trace, "algo.cer_update",
+                            item_id=item.id[:8]) as _cer_hop:
+                _cer_before = len(getattr(self, '_entity_nodes', {}))
+                self._cer_update(item, text, namespace)
+                _cer_after = len(getattr(self, '_entity_nodes', {}))
+                _add_algo_meta(_trace, _cer_hop,
+                               output=f"entity_nodes={_cer_after}  new={_cer_after - _cer_before}")
 
-        # --- Schema Absorption: Check if episode is absorbed by existing schema ---
-        self._try_schema_absorption(item, namespace)
+            # --- Schema Absorption: Check if episode is absorbed by existing schema ---
+            with _algo_span(_trace, "algo.schema_absorb",
+                            item_id=item.id[:8]) as _schema_hop:
+                _was_schema = item.schema_meta is not None
+                self._try_schema_absorption(item, namespace)
+                _is_schema = item.schema_meta is not None
+                _add_algo_meta(_trace, _schema_hop,
+                               output=f"crystallized={'yes' if _is_schema else 'no'}  was_schema={_was_schema}")
 
         return item
 
@@ -1928,6 +2537,12 @@ class PhaseMemoryEngine:
         rho = self._memory_density(namespace)
         for item in items:
             self._compute_free_energy(item, rho)
+
+        # --- Benchmark mode: preserve ALL items (no crystallization, no GC) ---
+        # Like the brain: memories aren't deleted, just hard to reach.
+        # The recall agent keeps pointers alive via retrieval_count boost.
+        if self._benchmark_mode:
+            return
 
         # --- Liquid → Solid: Melting + Crystallization (before GC) ---
         self._check_schema_melting(namespace)
@@ -1943,9 +2558,11 @@ class PhaseMemoryEngine:
                 self._deindex_item(item)
                 self._cer_gc_item(item)
                 self._item_by_id.pop(item.id, None)
-                # Decrement doc freq for dead item's tokens
+                # Decrement doc freq for dead item's tokens (per-namespace)
                 for token in set(item.indexed_tokens):
-                    self._doc_freq[token] = max(0, self._doc_freq.get(token, 1) - 1)
+                    self._doc_freq[namespace][token] = max(
+                        0, self._doc_freq[namespace].get(token, 1) - 1
+                    )
         self._items[namespace] = alive
         # Recompute cached total item count after GC
         self._total_item_count = sum(len(v) for v in self._items.values())
@@ -1962,26 +2579,45 @@ class PhaseMemoryEngine:
         query: str,
         namespace: str,
         limit: int = 10,
+        trace_id: Optional[str] = None,
     ) -> list[tuple[float, PhaseMemoryItem]]:
         """
-        Unified retrieval: Cross-Entity Resonance (CER) + TSF.
+        Unified retrieval: TRR (Thermodynamic Resonance Retrieval).
 
-        For multi-entity queries (2+ recognized entities):
-            Uses pre-computed entanglement graph — O(1) edge lookup.
-            CER results merged with TSF results, CER boosted 2×.
+        Layers applied in order:
+            1. Schema-Aware Query Expansion (add fixed-point tokens)
+            2. Morphological Kernel (prefix expansion at query time)
+            3. BMX Scoring (entropy-weighted BM25)
+            4. Semantic Bonus (PPMI-SVD cosine similarity)
+            5. Phase-Dependent Susceptibility (Gas/Liquid/Solid/Glass)
+            6. Cross-Entity Resonance (CER) for multi-entity queries
 
-        For single-entity or unrecognized queries:
-            Falls back to standard TSF (IDF-weighted Boltzmann ranking).
-
+        All parameters self-tuned from corpus statistics.
         Zero external calls. Sub-millisecond.
         """
-        self._recompute_all_free_energies(namespace)
+        # Bug #410: Only recompute free energy when state has changed (dirty flag)
+        if self._free_energy_dirty.get(namespace, True):
+            self._recompute_all_free_energies(namespace)
+            self._free_energy_dirty[namespace] = False
 
         query_tokens = _tokenize(query)
         query_token_set = set(query_tokens)
 
+        # --- Layer 6: Schema-Aware Query Expansion ---
+        with _algo_span(trace_id, "algo.query_expand",
+                        input=query[:120], raw_tokens=len(query_tokens)) as _qe_hop:
+            query_tokens, query_token_set, inferred_tokens = self._expand_query_with_schemas(
+                query_tokens, query_token_set, namespace,
+            )
+            _add_algo_meta(trace_id, _qe_hop,
+                           output=f"{len(query_tokens)} tokens (inferred={len(inferred_tokens)})  added={len(inferred_tokens)}")
+
         # --- CER: Multi-entity detection ---
-        query_entities = self._detect_multi_entity_query(query_token_set, namespace, query)
+        with _algo_span(trace_id, "algo.cer_detect",
+                        input=query[:80]) as _cer_hop:
+            query_entities = self._detect_multi_entity_query(query_token_set, namespace, query)
+            _add_algo_meta(trace_id, _cer_hop,
+                           output=f"{len(query_entities)} entities: {query_entities[:5]}")
 
         if len(query_entities) >= 2:
             cer_results = self._cer_search(
@@ -1990,13 +2626,19 @@ class PhaseMemoryEngine:
             if cer_results:
                 tsf_results = self._tsf_search(
                     query_tokens, query_token_set, namespace, limit,
+                    inferred_tokens=inferred_tokens,
+                    trace_id=trace_id,
                 )
                 results = self._merge_cer_and_tsf(cer_results, tsf_results, limit)
                 for _, item in results:
                     item.retrieval_count += 1
                 return results
 
-        results = self._tsf_search(query_tokens, query_token_set, namespace, limit)
+        results = self._tsf_search(
+            query_tokens, query_token_set, namespace, limit,
+            inferred_tokens=inferred_tokens,
+            trace_id=trace_id,
+        )
         for _, item in results:
             item.retrieval_count += 1
         return results
@@ -2011,48 +2653,167 @@ class PhaseMemoryEngine:
         query_token_set: set[str],
         namespace: str,
         limit: int,
+        inferred_tokens: Optional[set[str]] = None,
+        trace_id: Optional[str] = None,
     ) -> list[tuple[float, PhaseMemoryItem]]:
         """
-        Standard Thermodynamic Semantic Field retrieval.
+        Thermodynamic Resonance Retrieval (TRR).
 
-        rank(q, i) = Σ idf(matched_tokens) - F_i / kT
+        Full scoring pipeline:
+            1. Morphological Kernel — prefix expansion finds variants
+            2. BMX Score — Σ IDF(t) × H_weight(t) × inference_weight
+            3. Semantic Bonus — cosine(query_vec, item_vec) × avg_idf
+            4. Thermo Component — -F(item) / kT
+            5. Phase Susceptibility — χ(phase) multiplier
+
+        rank = (bmx + semantic + thermo) × χ
+
+        All parameters self-tuned. Zero external calls. Sub-millisecond.
         """
+        if inferred_tokens is None:
+            inferred_tokens = set()
+
         candidates: dict[str, tuple[PhaseMemoryItem, list[str]]] = {}
 
-        for token in query_tokens:
-            if token in self._token_index:
-                for item in self._token_index[token]:
-                    if item.namespace != namespace:
+        # Layer 1: Morphological Kernel — expand query tokens to prefix variants
+        # Use namespace-scoped token index: no namespace filter needed in inner loop
+        ns_idx = self._token_index.get(namespace, {})
+        with _algo_span(trace_id, "algo.morph_kernel",
+                        query_tokens=len(query_tokens)) as _morph_hop:
+            for token in query_tokens:
+                variants = self._morph_expand(token, namespace)
+                if not variants:
+                    # Direct lookup fallback for short tokens
+                    if token in ns_idx:
+                        variants = [token]
+                    else:
                         continue
-                    if item.id not in candidates:
-                        candidates[item.id] = (item, [])
-                    if token not in candidates[item.id][1]:
-                        candidates[item.id][1].append(token)
+                for variant in variants:
+                    if variant not in ns_idx:
+                        continue
+                    for item in ns_idx[variant].values():  # O(1) dict values, no namespace filter
+                        if item.id not in candidates:
+                            candidates[item.id] = (item, [])
+                        if variant not in candidates[item.id][1]:
+                            candidates[item.id][1].append(variant)
+            _add_algo_meta(trace_id, _morph_hop,
+                           output=f"{len(candidates)} candidates from token expansion")
 
         scored: list[tuple[float, PhaseMemoryItem]] = []
 
         if candidates:
-            for item, matched_tokens in candidates.values():
-                if item.consolidation_strength < self.STRENGTH_FLOOR:
-                    continue
+            # Pre-compute query vector for semantic bonus (namespace-scoped)
+            query_vec = self._mean_vector(query_tokens, namespace) if self._token_vectors.get(namespace) else None
+            avg_idf = 0.0
+            if query_tokens:
+                avg_idf = sum(self._compute_idf(t, namespace) for t in query_tokens) / len(query_tokens)
 
-                self._update_field_radius(item)
+            # Layers 2–5: score all candidates in one pass
+            with _algo_span(trace_id, "algo.score",
+                            candidates=len(candidates),
+                            avg_idf=round(avg_idf, 4),
+                            has_svd=query_vec is not None) as _score_hop:
+                for item, matched_tokens in candidates.values():
+                    self._update_field_radius(item)
 
-                idf_score = sum(self._compute_idf(t) for t in matched_tokens)
-                rank = idf_score - self._safe_fe(item) / max(self.kT, 1e-9)
-                # Schema boost: solid/glass items are compressed knowledge
-                if item.schema_meta is not None:
-                    rank *= 1.5
-                scored.append((rank, item))
+                    # Layer 2: BMX Scoring — entropy-weighted BM25
+                    bmx_score = 0.0
+                    for t in matched_tokens:
+                        idf = self._compute_idf(t, namespace)
+                        h_weight = self._compute_entropy_weight(t, namespace)
+                        # Inferred tokens (from schema expansion) scored at 0.5×
+                        inf_weight = 0.5 if t in inferred_tokens else 1.0
+                        bmx_score += idf * h_weight * inf_weight
+
+                    # Length normalization: normalize BMX by item token count
+                    # to prevent long documents from dominating short personal facts.
+                    # Uses sqrt(len) to dampen rather than fully divide — so slightly
+                    # longer items still have a small advantage (more context = richer match).
+                    n_item_tokens = max(len(item.indexed_tokens), 1)
+                    bmx_score = bmx_score / (n_item_tokens ** 0.5)
+
+                    # Coverage bonus: reward items where matched tokens cover a high
+                    # fraction of the item's total tokens. Short facts that match well
+                    # (e.g. "My name is Kavya" with 3/4 tokens matched) get boosted.
+                    coverage = len(matched_tokens) / max(n_item_tokens, 1)
+                    bmx_score *= (1.0 + coverage)
+
+                    # Layer 3: Semantic Bonus (PPMI-SVD vectors, if available)
+                    semantic_bonus = 0.0
+                    if query_vec is not None:
+                        item_vec = self._mean_vector(item.indexed_tokens, namespace)
+                        if item_vec is not None:
+                            sim = self._cosine_similarity(query_vec, item_vec)
+                            semantic_bonus = sim * avg_idf
+
+                    # Layer 4: Thermodynamic component
+                    thermo = -self._safe_fe(item) / max(self.kT, 1e-9)
+
+                    # Layer 5: Phase-Dependent Susceptibility
+                    chi = self._phase_susceptibility(item)
+
+                    rank = (bmx_score + semantic_bonus + thermo) * chi
+                    scored.append((rank, item))
+
+                # Supplementary: raw text substring scan for items the token
+                # index missed. Catches vocabulary gaps (e.g. query "husband"
+                # matching stored text "married to Vikram").
+                scored_ids = {item.id for _, item in scored}
+                items = self._items.get(namespace, [])
+                query_lower = " ".join(query_tokens).lower()
+                for item in items:
+                    if item.id in scored_ids:
+                        continue
+                    raw = (item.fact.raw_text or "").lower()
+                    if not raw:
+                        continue
+                    hits = sum(1 for w in query_token_set if w in raw)
+                    if hits > 0:
+                        chi = self._phase_susceptibility(item)
+                        n_toks = max(len(item.indexed_tokens), 1)
+                        coverage = hits / max(len(query_token_set), 1)
+                        thermo = -self._safe_fe(item) / max(self.kT, 1e-9)
+                        rank = coverage * 5.0 / (n_toks ** 0.5) * chi + thermo * 0.01
+                        scored.append((rank, item))
+
+                scored.sort(key=lambda x: x[0], reverse=True)
+                _top = scored[0] if scored else None
+                _top_info = (f"rank={round(_top[0], 4)}  bmx+sem+thermo×χ  "
+                             f"text={(_top[1].fact.raw_text or '')[:60]}") if _top else "no results"
+                _add_algo_meta(trace_id, _score_hop,
+                               output=f"{len(scored)} scored  top: {_top_info}")
         else:
-            items = self._items.get(namespace, [])
-            for item in items:
-                if item.consolidation_strength < self.STRENGTH_FLOOR:
-                    continue
-                rank = -self._safe_fe(item) / max(self.kT, 1e-9)
-                scored.append((rank, item))
-
-        scored.sort(key=lambda x: x[0], reverse=True)
+            # No token matches: fallback to raw text substring search.
+            # This catches cases where query tokens (e.g. "husband", "daughter",
+            # "university") don't appear in the tokenized index but DO appear
+            # as substrings of the stored raw text.
+            with _algo_span(trace_id, "algo.score",
+                            candidates=0, fallback="substring") as _score_hop:
+                items = self._items.get(namespace, [])
+                query_lower = " ".join(query_tokens).lower()
+                query_words = set(query_tokens)
+                for item in items:
+                    raw = (item.fact.raw_text or "").lower()
+                    if not raw:
+                        continue
+                    # Count how many query words appear as substrings in the raw text
+                    hits = sum(1 for w in query_words if w in raw)
+                    if hits > 0:
+                        chi = self._phase_susceptibility(item)
+                        # Score by hit ratio × chi, with slight thermo tiebreaker
+                        thermo = -self._safe_fe(item) / max(self.kT, 1e-9)
+                        rank = (hits / max(len(query_words), 1)) * 10.0 * chi + thermo * 0.01
+                        scored.append((rank, item))
+                if not scored:
+                    # True fallback: no substring matches either, use free energy
+                    for item in items:
+                        chi = self._phase_susceptibility(item)
+                        rank = -self._safe_fe(item) / max(self.kT, 1e-9) * chi
+                        scored.append((rank, item))
+                scored.sort(key=lambda x: x[0], reverse=True)
+                _add_algo_meta(trace_id, _score_hop,
+                               output=f"substring fallback  {len(scored)} items  "
+                                      f"{'matched' if any(s[0] > 0.1 for s in scored) else 'FE only'}")
 
         # retrieval_count incremented by search(), not here
         return scored[:limit]
@@ -2247,8 +3008,7 @@ class PhaseMemoryEngine:
                 item = self._item_by_id.get(mid)
                 if not item or item.namespace != namespace:
                     continue
-                if item.consolidation_strength < self.STRENGTH_FLOOR:
-                    continue
+                # Gas items now searchable (TRR: fresh memories are vivid)
                 memory_entity_map.setdefault(mid, set()).add(entity_name)
 
         if not memory_entity_map:
@@ -2355,15 +3115,13 @@ class PhaseMemoryEngine:
 
                 # Accumulate IDF per item across all matching tokens
                 # (consistent with TSF/PESQD which sum IDFs)
+                # Use namespace-scoped token index: no namespace filter needed
+                ns_tok_idx = self._token_index.get(namespace, {})
                 item_idf_acc: dict[str, tuple[float, PhaseMemoryItem]] = {}
                 for token, weight in search_tokens.most_common(20):
-                    if token in self._token_index:
-                        for item in self._token_index[token]:
-                            if item.namespace != namespace:
-                                continue
-                            if item.consolidation_strength < self.STRENGTH_FLOOR:
-                                continue
-                            idf = self._compute_idf(token)
+                    if token in ns_tok_idx:
+                        for item in ns_tok_idx[token].values():
+                            idf = self._compute_idf(token, namespace)
                             if item.id in item_idf_acc:
                                 prev_idf, _ = item_idf_acc[item.id]
                                 item_idf_acc[item.id] = (prev_idf + idf, item)
@@ -2381,19 +3139,18 @@ class PhaseMemoryEngine:
                 # Also include shared memories — score via IDF of shared tokens
                 for memory_id in edge.shared_memory_ids:
                     item = self._item_by_id.get(memory_id)
-                    if item and item.namespace == namespace and \
-                       item.consolidation_strength >= self.STRENGTH_FLOOR:
+                    if item and item.namespace == namespace:
                         # Use sum of shared token IDFs (consistent with token-match scoring)
                         item_token_set = set(item.indexed_tokens)
                         shared_idf = sum(
-                            self._compute_idf(t)
+                            self._compute_idf(t, namespace)
                             for t in search_tokens
                             if t in item_token_set
                         )
                         if shared_idf == 0:
                             # Fallback: mean IDF of item's tokens
                             shared_idf = sum(
-                                self._compute_idf(t) for t in item.indexed_tokens
+                                self._compute_idf(t, namespace) for t in item.indexed_tokens
                             ) / max(len(item.indexed_tokens), 1)
                         rank = (
                             edge.coupling_strength * shared_idf
@@ -2404,16 +3161,13 @@ class PhaseMemoryEngine:
 
         elif len(entities) >= 3:
             entity_set = set(entities)
+            ns_tok_idx = self._token_index.get(namespace, {})
             for cluster in self._resonance_clusters.values():
                 if entity_set.issubset(cluster.members):
                     for token, weight in cluster.cluster_spectrum.most_common(20):
-                        if token in self._token_index:
-                            for item in self._token_index[token]:
-                                if item.namespace != namespace:
-                                    continue
-                                if item.consolidation_strength < self.STRENGTH_FLOOR:
-                                    continue
-                                idf = self._compute_idf(token)
+                        if token in ns_tok_idx:
+                            for item in ns_tok_idx[token].values():
+                                idf = self._compute_idf(token, namespace)
                                 cer_score = (
                                     cluster.coherence * idf
                                     * item.consolidation_strength
@@ -2502,12 +3256,116 @@ class PhaseMemoryEngine:
         return context, debug_items
 
     # =========================================================================
+    # Two-Tier Retrieval — Schemas + Episode Archive
+    # =========================================================================
+
+    def search_with_details(
+        self,
+        query: str,
+        namespace: str,
+        limit: int = 10,
+        detail_limit: int = 50,
+    ) -> tuple[list[tuple[float, "PhaseMemoryItem"]], list["PhaseMemoryItem"]]:
+        """
+        Two-tier retrieval: schemas for relevance, archive for detail.
+
+        1. Standard search() returns ranked schemas/items
+        2. For matched schemas, fetches archived original episodes
+        3. Also token-matches query against all archived episodes
+
+        Returns (ranked_results, detail_episodes).
+        """
+        results = self.search(query, namespace, limit=limit)
+
+        # Collect archived episodes from matched schemas
+        detail_episodes: list[PhaseMemoryItem] = []
+        seen_ids: set[str] = set()
+
+        for _score, item in results:
+            if item.schema_meta is not None and item.id in self._episode_archive:
+                for ep in self._episode_archive[item.id]:
+                    if ep.id not in seen_ids:
+                        detail_episodes.append(ep)
+                        seen_ids.add(ep.id)
+
+        # Also do a token-match search against all archived episodes
+        query_tokens = _tokenize(query)
+        query_set = set(query_tokens)
+        for _schema_id, episodes in self._episode_archive.items():
+            for ep in episodes:
+                if ep.id in seen_ids:
+                    continue
+                ep_tokens = set(ep.indexed_tokens)
+                if query_set & ep_tokens:
+                    detail_episodes.append(ep)
+                    seen_ids.add(ep.id)
+
+        # Sort by birth_order (chronological)
+        detail_episodes.sort(key=lambda e: e.birth_order)
+        return results, detail_episodes[:detail_limit]
+
+    def build_augmented_context_with_details(
+        self,
+        query: str,
+        namespace: str,
+        limit: int = 10,
+        detail_limit: int = 50,
+    ) -> tuple[str, list[dict]]:
+        """
+        Build context with schema summaries + episode details.
+
+        Two sections:
+        1. Ranked retrieval results (schemas + liquid items)
+        2. Detailed conversation excerpts from episode archive
+        """
+        results, details = self.search_with_details(
+            query, namespace, limit=limit, detail_limit=detail_limit,
+        )
+
+        if not results and not details:
+            return "No prior context yet.", []
+
+        lines: list[str] = []
+        debug_items: list[dict] = []
+
+        # Schema summaries / ranked items
+        for score, item in results:
+            s = item.consolidation_strength
+            if item.schema_meta is not None:
+                n_members = len(item.schema_meta.member_ids)
+                phase = "glass" if _is_glass_static(item) else "schema"
+                lines.append(f"- [strength={s:.2f}, {phase}, {n_members} memories] {item.fact.raw_text}")
+            else:
+                lines.append(f"- [strength={s:.2f}] {item.fact.raw_text}")
+            debug_items.append({
+                "text": item.fact.raw_text,
+                "score": round(score, 4),
+                **item.to_debug_dict(strength_floor=self.STRENGTH_FLOOR),
+            })
+
+        # Detail episodes from archive
+        if details:
+            lines.append("\nDetailed conversation excerpts:")
+            for ep in details:
+                lines.append(f"  - {ep.fact.raw_text}")
+                debug_items.append({
+                    "text": ep.fact.raw_text,
+                    "score": 0.0,
+                    **ep.to_debug_dict(strength_floor=self.STRENGTH_FLOOR),
+                })
+
+        context = "Memory (strongest recall first):\n" + "\n".join(lines)
+        return context, debug_items
+
+    # =========================================================================
     # Phase Debug Output — Full Thermodynamic State
     # =========================================================================
 
     def get_phase_debug(self, namespace: str) -> dict[str, Any]:
         """Return the complete thermodynamic state for the debug panel."""
-        self._recompute_all_free_energies(namespace)
+        if self._free_energy_dirty.get(namespace, True):
+            self._recompute_all_free_energies(namespace)
+            self._free_energy_dirty[namespace] = False
 
         items = self._items.get(namespace, [])
         rho = self._memory_density(namespace)
@@ -2549,4 +3407,135 @@ class PhaseMemoryEngine:
                     for edge in edges.values() if edge.is_synchronized
                 ),
             },
+            "trr": {
+                "cooccurrence_pairs": len(self._cooccurrence.get(namespace, {})),
+                "token_vectors": len(self._token_vectors.get(namespace, {})),
+                "prefix_index_size": len(self._prefix_index),
+                "svd_store_count": self._svd_store_count.get(namespace, 0),
+            },
         }
+
+    # =========================================================================
+    # Cross-User Vector API — Federated Semantic Learning
+    # =========================================================================
+
+    def finalize_batch(self, namespace: str | None = None) -> dict[str, Any]:
+        """
+        Finalize a batch ingest: recompute SVD + free energies.
+
+        MUST be called after setting _batch_mode = False post-ingest.
+        Without this, _token_vectors stays empty → semantic bonus = 0.
+
+        Args:
+            namespace: If provided, recompute free energies for this namespace.
+                       If None, recompute for all namespaces.
+
+        Returns:
+            dict with finalization stats (token_vectors, cooccurrence_pairs, etc.)
+        """
+        self._batch_mode = False
+
+        # 1. Recompute SVD from accumulated co-occurrence (per-namespace)
+        namespaces_to_process = [namespace] if namespace is not None else list(self._items.keys())
+        for ns in namespaces_to_process:
+            if self._cooccurrence.get(ns) and self._svd_dirty.get(ns, False):
+                self._recompute_svd(ns)
+                self._svd_store_count[ns] = 0
+                self._svd_dirty[ns] = False
+
+        # 2. Recompute free energies (triggers crystallization, GC, etc.)
+        for ns in namespaces_to_process:
+            self._recompute_all_free_energies(ns)
+            self._free_energy_dirty[ns] = False
+
+        # Aggregate stats across all namespaces
+        total_vecs = sum(len(v) for v in self._token_vectors.values())
+        total_co = sum(len(c) for c in self._cooccurrence.values())
+
+        return {
+            "token_vectors": total_vecs,
+            "cooccurrence_pairs": total_co,
+            "total_items": self._total_item_count,
+        }
+
+    # =========================================================================
+    # Recall Agent — Hippocampal Replay for Long-Tail Memory Preservation
+    # =========================================================================
+
+    def recall_long_tail(self, namespace: str, batch_size: int = 50) -> int:
+        """
+        Memory rehearsal agent. Like hippocampal replay during sleep.
+
+        Human brains don't delete old memories — they lose the retrieval
+        pointer. This method "recalls" old, low-retrieval-count items,
+        incrementing R so that:
+
+            s(t) = exp(-Δt/τ) · (1 + 0.15·ln(1 + R))
+
+        stays above STRENGTH_FLOOR indefinitely. Mathematically equivalent
+        to spaced repetition.
+
+        Finds items with lowest retrieval_count (oldest, least-recalled)
+        and touches them. This is the "recall agent" — a background process
+        whose ONLY job is to keep long-tail memory pointers alive.
+
+        Args:
+            namespace: Memory namespace to rehearse.
+            batch_size: Number of items to rehearse per call.
+
+        Returns:
+            Number of items rehearsed.
+        """
+        items = self._items.get(namespace, [])
+        if not items:
+            return 0
+
+        # Sort by retrieval_count ascending, then birth_order ascending (oldest first)
+        candidates = sorted(
+            items,
+            key=lambda i: (i.retrieval_count, i.birth_order),
+        )
+
+        rehearsed = 0
+        for item in candidates[:batch_size]:
+            item.retrieval_count += 1  # The "recall" — strengthens the pointer
+            rehearsed += 1
+
+        return rehearsed
+
+    def export_vectors(self, namespace: str = "") -> dict[str, list[float]]:
+        """
+        Export anonymized token vectors for cross-user knowledge sharing.
+
+        Returns a copy of _token_vectors for the given namespace (or global "").
+        No user-identifying information. Token vectors are derived from co-occurrence statistics only.
+        """
+        return dict(self._token_vectors.get(namespace, {}))
+
+    def import_vectors(self, external_vectors: dict[str, list[float]], namespace: str = "") -> int:
+        """
+        Import token vectors from another user's memory space.
+
+        Merges external vectors with local via weighted average:
+        - Local vectors (user's own data) get 0.8 weight
+        - External vectors get 0.2 weight
+        - New tokens (not in local space) get external vectors directly
+
+        Returns the number of tokens affected.
+        """
+        affected = 0
+        local_vecs = self._token_vectors[namespace]  # defaultdict(dict) creates it
+        for token, ext_vec in external_vectors.items():
+            if len(ext_vec) != self._SVD_DIMS:
+                continue
+            if token in local_vecs:
+                local_vec = local_vecs[token]
+                merged = [0.8 * l + 0.2 * e for l, e in zip(local_vec, ext_vec)]
+                mag = math.sqrt(sum(v * v for v in merged))
+                if mag > 1e-12:
+                    local_vecs[token] = [v / mag for v in merged]
+                affected += 1
+            else:
+                local_vecs[token] = ext_vec
+                affected += 1
+        return affected

@@ -42,6 +42,19 @@ htmlcov/
 # Wiki script temp
 .wiki-temp/
 
+# Extension E2E (npm)
+extension/node_modules/
+extension/test-results/
+extension/playwright-report/
+
+# JavaScript SDK
+sdk-js/node_modules/
+sdk-js/dist/
+
+# Built installer artifacts
+prototype/downloads/
+
 # OS
 .DS_Store
 Thumbs.db
+benchmarking_LoCoMo/locomo/

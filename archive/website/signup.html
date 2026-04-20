@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Up | CLS++</title>
+  <link rel="stylesheet" href="styles.css?v=2">
+  <style>
+    .auth-page { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px; }
+    .auth-card { background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius-lg); padding:48px 40px; width:100%; max-width:420px; }
+    .auth-card h1 { font-size:1.5rem; margin-bottom:8px; }
+    .auth-card .subtitle { color:var(--text-muted); margin-bottom:32px; font-size:0.95rem; }
+    .auth-input { display:block; width:100%; padding:12px 16px; margin-bottom:16px; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); font-size:1rem; font-family:inherit; outline:none; transition:border-color 0.2s; }
+    .auth-input:focus { border-color:var(--accent); }
+    .auth-input::placeholder { color:var(--text-muted); }
+    .auth-btn { display:block; width:100%; padding:14px; background:var(--accent); color:#fff; border:none; border-radius:var(--radius); font-size:1rem; font-weight:600; cursor:pointer; transition:background 0.2s; font-family:inherit; }
+    .auth-btn:hover { background:var(--accent-dark); }
+    .auth-btn:disabled { opacity:0.5; cursor:not-allowed; }
+    .auth-divider { display:flex; align-items:center; gap:12px; margin:24px 0; color:var(--text-muted); font-size:0.85rem; }
+    .auth-divider::before, .auth-divider::after { content:''; flex:1; border-top:1px solid var(--border); }
+    .google-btn { display:flex; align-items:center; justify-content:center; gap:12px; width:100%; padding:12px; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); font-size:1rem; cursor:pointer; transition:border-color 0.2s; font-family:inherit; text-decoration:none; }
+    .google-btn:hover { border-color:var(--accent); }
+    .google-btn svg { width:20px; height:20px; }
+    .auth-error { background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#ef4444; padding:12px 16px; border-radius:var(--radius); margin-bottom:16px; font-size:0.9rem; display:none; }
+    .auth-footer { text-align:center; margin-top:24px; color:var(--text-muted); font-size:0.9rem; }
+    .auth-footer a { color:var(--accent-light); text-decoration:none; }
+    .auth-footer a:hover { text-decoration:underline; }
+  </style>
+  <script src="posthog.js" defer></script>
+  <script src="variant-loader.js"></script>
+  <script src="feedback-widget.js" defer></script>
+</head>
+<body>
+  <div class="video-bg"><video autoplay muted loop playsinline poster="beach-bg.jpg"><source src="sunrise-ocean.mp4" type="video/mp4"></video></div>
+  <div class="video-overlay"></div>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs.html">API</a>
+        <a href="/integrate.html">Integrate</a>
+        <a href="/#pricing">Pricing</a>
+        <div id="nav-auth" class="nav-auth"></div>
+        <a href="/getting-started.html" class="nav-cta">Get Started</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="auth-page">
+    <div class="auth-card">
+      <a href="/" class="logo" style="display:block;text-align:center;margin-bottom:24px;font-size:1.8rem;text-decoration:none;color:var(--text);">CLS<span class="logo-plus" style="color:var(--accent);">++</span></a>
+      <h1>Create your account</h1>
+      <p class="subtitle">Start with 1,000 free operations per month.</p>
+
+      <div id="error" class="auth-error"></div>
+      <div id="success-msg" class="auth-error" style="background:rgba(22,163,74,0.1);border-color:rgba(22,163,74,0.3);color:#16a34a;"></div>
+
+      <!-- Step 1: Registration form -->
+      <div id="signup-step">
+        <form id="signup-form">
+          <input type="text" name="name" class="auth-input" placeholder="Full name" autocomplete="name">
+          <input type="email" name="email" class="auth-input" placeholder="Email address" required autocomplete="email">
+          <input type="password" name="password" class="auth-input" placeholder="Password (8+ characters)" required minlength="8" autocomplete="new-password">
+          <button type="submit" class="auth-btn" id="submit-btn">Create Account</button>
+        </form>
+      </div>
+
+      <!-- Step 2: OTP verification -->
+      <div id="verify-step" style="display:none;">
+        <h1 style="font-size:1.3rem;margin-bottom:8px;">Verify your email</h1>
+        <p class="subtitle">Enter the 6-digit code sent to <strong id="verify-email-display"></strong></p>
+        <div style="display:flex;gap:8px;justify-content:center;margin-bottom:20px;">
+          <input type="text" id="otp-input" class="auth-input" placeholder="000000" maxlength="6" style="text-align:center;font-size:1.5rem;font-weight:700;letter-spacing:6px;max-width:220px;" autocomplete="one-time-code">
+        </div>
+        <button class="auth-btn" id="verify-btn" disabled>Verify</button>
+        <div style="text-align:center;margin-top:16px;">
+          <a href="#" id="resend-link" style="color:var(--accent-light);font-size:0.85rem;text-decoration:none;">Resend code</a>
+        </div>
+      </div>
+
+      <div class="auth-divider">or</div>
+
+      <div class="google-btn" style="opacity:0.4;cursor:not-allowed;pointer-events:none;">
+        <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+        Continue with Google — Coming Soon
+      </div>
+
+      <div class="auth-footer">
+        Already have an account? <a href="/login.html">Log in</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      var form = document.getElementById('signup-form');
+      var errorEl = document.getElementById('error');
+      var successEl = document.getElementById('success-msg');
+      var submitBtn = document.getElementById('submit-btn');
+      var signupStep = document.getElementById('signup-step');
+      var verifyStep = document.getElementById('verify-step');
+      var otpInput = document.getElementById('otp-input');
+      var verifyBtn = document.getElementById('verify-btn');
+      var resendLink = document.getElementById('resend-link');
+      var emailDisplay = document.getElementById('verify-email-display');
+      var _userEmail = '';
+
+      form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        if (window.CLSAnalytics) CLSAnalytics.track('signup_attempted');
+        errorEl.style.display = 'none';
+        successEl.style.display = 'none';
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Sending verification code...';
+        _userEmail = form.email.value.trim();
+
+        try {
+          var resp = await fetch('/v1/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+              name: form.name.value.trim(),
+              email: _userEmail,
+              password: form.password.value,
+            }),
+          });
+
+          if (resp.ok) {
+            if (window.CLSAnalytics) CLSAnalytics.track('signup_succeeded');
+            // Show OTP verification step
+            signupStep.style.display = 'none';
+            document.querySelector('.auth-divider').style.display = 'none';
+            document.querySelector('.google-btn').style.display = 'none';
+            verifyStep.style.display = 'block';
+            emailDisplay.textContent = _userEmail;
+            otpInput.focus();
+          } else if (resp.status === 503) {
+            // Launch rate-limit cap reached — bounce to waitlist widget
+            var data = {};
+            try { data = await resp.json(); } catch (e) {}
+            if (data.waitlist) {
+              if (window.CLSAnalytics) CLSAnalytics.track('signup_blocked_waitlist');
+              errorEl.innerHTML =
+                'We\'re releasing CLS++ in small waves. ' +
+                '<a href="/?waitlist=1#cls-wl-root" style="color:#ff6b35;font-weight:600;">' +
+                'Join the waitlist →</a>';
+              errorEl.style.display = 'block';
+              // Prefill the waitlist email in localStorage so the landing
+              // widget can auto-open on the pre-filled state.
+              try { localStorage.setItem('cls_waitlist_email', _userEmail); } catch (e) {}
+            } else {
+              errorEl.textContent = data.message || data.detail || 'Registration unavailable';
+              errorEl.style.display = 'block';
+            }
+          } else {
+            var data = await resp.json();
+            errorEl.textContent = data.message || data.detail || 'Registration failed';
+            errorEl.style.display = 'block';
+          }
+        } catch (err) {
+          errorEl.textContent = 'Network error. Please try again.';
+          errorEl.style.display = 'block';
+        }
+
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create Account';
+      });
+
+      // Auto-enable verify button when 6 digits entered
+      otpInput.addEventListener('input', function() {
+        this.value = this.value.replace(/\D/g, '').slice(0, 6);
+        verifyBtn.disabled = this.value.length !== 6;
+        if (this.value.length === 6) submitOTP();
+      });
+
+      verifyBtn.addEventListener('click', submitOTP);
+
+      async function submitOTP() {
+        var code = otpInput.value.trim();
+        if (code.length !== 6) return;
+        verifyBtn.disabled = true;
+        verifyBtn.textContent = 'Verifying...';
+        errorEl.style.display = 'none';
+        try {
+          var resp = await fetch('/v1/auth/verify-register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ email: _userEmail, otp_code: code }),
+          });
+          if (resp.ok) {
+            successEl.textContent = 'Email verified! Redirecting...';
+            successEl.style.display = 'block';
+            setTimeout(function() {
+              window.location.href = '/dashboard.html';
+            }, 1500);
+          } else {
+            var data = await resp.json();
+            errorEl.textContent = data.detail || 'Invalid code. Please try again.';
+            errorEl.style.display = 'block';
+            otpInput.value = '';
+            otpInput.focus();
+          }
+        } catch (err) {
+          errorEl.textContent = 'Network error. Please try again.';
+          errorEl.style.display = 'block';
+        }
+        verifyBtn.disabled = false;
+        verifyBtn.textContent = 'Verify';
+      }
+
+      resendLink.addEventListener('click', async function(e) {
+        e.preventDefault();
+        errorEl.style.display = 'none';
+        successEl.style.display = 'none';
+        try {
+          var resp = await fetch('/v1/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: form.name.value.trim(),
+              email: _userEmail,
+              password: form.password.value,
+            }),
+          });
+          if (resp.ok) {
+            successEl.textContent = 'New verification code sent!';
+            successEl.style.display = 'block';
+          } else {
+            var data = await resp.json();
+            errorEl.textContent = data.detail || 'Could not resend code.';
+            errorEl.style.display = 'block';
+          }
+        } catch (err) {
+          errorEl.textContent = 'Network error.';
+          errorEl.style.display = 'block';
+        }
+      });
+    })();
+
+    async function handleGoogleAuth() {
+      var errorEl = document.getElementById('error');
+      try {
+        var r = await fetch('/v1/auth/google', { redirect: 'manual' });
+        if (r.status === 501) {
+          errorEl.textContent = 'Google sign-in is not configured yet. Please use email and password.';
+          errorEl.style.display = 'block';
+          return false;
+        }
+        if (r.type === 'opaqueredirect' || r.status === 307 || r.status === 302) {
+          window.location.href = '/v1/auth/google';
+          return false;
+        }
+        // If we get a redirect URL in the response
+        var loc = r.headers.get('location');
+        if (loc) { window.location.href = loc; return false; }
+        // Fallback: try navigating directly
+        window.location.href = '/v1/auth/google';
+      } catch (e) {
+        errorEl.textContent = 'Google sign-in is not available. Please use email and password.';
+        errorEl.style.display = 'block';
+      }
+      return false;
+    }
+  </script>
+  <script src="footer.js?v=2"></script>
+</body>
+</html>

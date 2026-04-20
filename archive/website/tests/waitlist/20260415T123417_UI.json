@@ -1,0 +1,316 @@
+{
+  "run_id": "20260415T123417_UI",
+  "run_timestamp": "2026-04-15T12:34:17.473583+00:00",
+  "suite": "waitlist_ui_browser",
+  "total": 37,
+  "passed": 37,
+  "failed": 0,
+  "skipped": 0,
+  "pass_rate": 1.0,
+  "total_runtime_ms": 8813.4,
+  "pytest_exit_code": 0,
+  "cases": [
+    {
+      "id": "WL-UI-001",
+      "name": "index.html (A, sunset): SVG funnel mounts, orange 47 waiting + green 3 active, tickers #45/#46/#47, zero console errors",
+      "category": "LandingVariantA",
+      "status": "pass",
+      "runtime_ms": 72.3,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-002",
+      "name": "landing-d.html (B, dark Command Center): orange 73 + green 12 crisp on dark bg (theme-fixed from near-black)",
+      "category": "LandingVariantB",
+      "status": "pass",
+      "runtime_ms": 68.1,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-003",
+      "name": "landing-e.html (C, ambient dark): widget renders in right gutter beside hero stats, all values legible",
+      "category": "LandingVariantC",
+      "status": "pass",
+      "runtime_ms": 71.5,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-004",
+      "name": "body padding 280px pushes hero content away from right margin; widget sits in its own gutter (20px gap measured at 1600px viewport)",
+      "category": "Layout",
+      "status": "pass",
+      "runtime_ms": 22.1,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-005",
+      "name": "right-middle positioning only above 1280px; below: graceful fallback to bottom-right corner with 230px width",
+      "category": "Layout",
+      "status": "pass",
+      "runtime_ms": 18.4,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-010",
+      "name": "client-side invalid-email validation blocks 'not-an-email', error shown",
+      "category": "WidgetLifecycle",
+      "status": "pass",
+      "runtime_ms": 22.0,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-011",
+      "name": "server-side disposable-domain rejection surfaces 'Disposable email addresses aren\\'t accepted'",
+      "category": "WidgetLifecycle",
+      "status": "pass",
+      "runtime_ms": 85.4,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-012",
+      "name": "valid email submit \u2192 OTP form visible, verification email sent (captured from harness), email form hidden",
+      "category": "WidgetLifecycle",
+      "status": "pass",
+      "runtime_ms": 102.8,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-013",
+      "name": "wrong OTP '000000' \u2192 'Invalid or expired verification code', form stays on OTP step",
+      "category": "WidgetLifecycle",
+      "status": "pass",
+      "runtime_ms": 41.6,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-014",
+      "name": "correct OTP \u2192 success card 'YOU\\'RE IN #48', waiting count live-updated, localStorage set, harness visitors=1",
+      "category": "WidgetLifecycle",
+      "status": "pass",
+      "runtime_ms": 118.2,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-015",
+      "name": "close button \u2192 widget hidden, reopen chip visible with pulsing green dot, body padding released",
+      "category": "WidgetLifecycle",
+      "status": "pass",
+      "runtime_ms": 18.7,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-016",
+      "name": "reopen chip \u2192 widget restored, body padding re-applied, success state preserved",
+      "category": "WidgetLifecycle",
+      "status": "pass",
+      "runtime_ms": 16.4,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-020",
+      "name": "BC-01 waiting=0 baseline: orange 47 (seed offset), 3 active (floor clamp), tickers #45/#46/#47 \u2192 next #48",
+      "category": "BorderCase",
+      "status": "pass",
+      "runtime_ms": 30.2,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-021",
+      "name": "BC-02 waiting=1 real visitor: 48 waiting, tickers shift to #46/#47/#48, next #49",
+      "category": "BorderCase",
+      "status": "pass",
+      "runtime_ms": 28.7,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-022",
+      "name": "BC-03 waiting=500: 500 at full 30px, active=42 passes floor, tickers #498/#499/#500",
+      "category": "BorderCase",
+      "status": "pass",
+      "runtime_ms": 42.1,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-023",
+      "name": "BC-04 waiting=9999: formatted '9,999' auto-shrinks to 24px font, tickers #9997..#9999, next #10000",
+      "category": "BorderCase",
+      "status": "pass",
+      "runtime_ms": 44.8,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-024",
+      "name": "BC-05 waiting=25000: fmtBig compaction returns '25k', active 1234 auto-shrinks to 16px",
+      "category": "BorderCase",
+      "status": "pass",
+      "runtime_ms": 39.5,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-025",
+      "name": "BC-06 active=100: 3-digit full-size 22px, fits narrow funnel bottom",
+      "category": "BorderCase",
+      "status": "pass",
+      "runtime_ms": 31.4,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-026",
+      "name": "BC-07 active=9999: formatted '9,999' shrinks to 16px, no overflow",
+      "category": "BorderCase",
+      "status": "pass",
+      "runtime_ms": 33.2,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-027",
+      "name": "BC-08 your_position=9999: join + verify \u2192 success card 'YOU\\'RE IN #9999' in monospace, email echoed in reassurance copy",
+      "category": "BorderCase",
+      "status": "pass",
+      "runtime_ms": 185.2,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-030",
+      "name": "mobile 375px viewport: widget auto-falls to bottom-right corner (220px wide, right:12 bottom:12), body padding disabled below 1280px breakpoint",
+      "category": "Responsive",
+      "status": "pass",
+      "runtime_ms": 44.2,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-031",
+      "name": "desktop 1600px viewport: right-middle positioning active, body padding 280px cleanly separates widget from hero chat dock",
+      "category": "Responsive",
+      "status": "pass",
+      "runtime_ms": 38.9,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-040",
+      "name": "reload after verify \u2192 poll fetches your_position via ?email=, auto-renders success pane, no re-entry needed",
+      "category": "Persistence",
+      "status": "pass",
+      "runtime_ms": 1340.0,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-050",
+      "name": "backend 503 contract: 5 seeded users \u2192 POST /v1/auth/register returns {waitlist: true, cap: 5}",
+      "category": "SignupCap",
+      "status": "pass",
+      "runtime_ms": 26.7,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-051",
+      "name": "JS error-renderer: innerHTML set to 'Join the waitlist \u2192' link + /?waitlist=1#cls-q-root href + localStorage email stored",
+      "category": "SignupCap",
+      "status": "pass",
+      "runtime_ms": 58.2,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-060",
+      "name": "static HTML check: banner div + dismiss btn + profile link + emoji + query check all present in dashboard.html source",
+      "category": "WelcomeBanner",
+      "status": "pass",
+      "runtime_ms": 12.4,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-061",
+      "name": "inline script with ?welcome=waitlist \u2192 banner display flips to block, heading 'Welcome to CLS++ \u2014 you\\'re in!', profile link /profile.html#security",
+      "category": "WelcomeBanner",
+      "status": "pass",
+      "runtime_ms": 22.1,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-062",
+      "name": "dismiss click \u2192 banner hidden + history.replaceState strips '?welcome=waitlist' from URL",
+      "category": "WelcomeBanner",
+      "status": "pass",
+      "runtime_ms": 14.8,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-070",
+      "name": "GET /admin/waitlist (200) \u2192 3 seeded visitors (alice@48, bob@49, carol@50), stats + full config payload",
+      "category": "AdminWaitlist",
+      "status": "pass",
+      "runtime_ms": 36.0,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-071",
+      "name": "admin HTML: sec-waitlist section, sidebar link, wl-tbody, wl-promote-btn, initWaitlistSection() all present",
+      "category": "AdminWaitlist",
+      "status": "pass",
+      "runtime_ms": 18.9,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-072",
+      "name": "POST /admin/waitlist/promote (200) \u2192 invited=['invitee@real.com'], count=1, visitor status 'waiting'\u2192'invited'",
+      "category": "AdminWaitlist",
+      "status": "pass",
+      "runtime_ms": 44.7,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-080",
+      "name": "admin HTML: sec-testing section, test-run-btn, initTestingSection() all present",
+      "category": "AdminTesting",
+      "status": "pass",
+      "runtime_ms": 12.1,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-081",
+      "name": "POST /admin/tests/waitlist/run (200, 5.7s) \u2192 pytest subprocess returns 34/34 passed, exit_code=0, cases serialized",
+      "category": "AdminTesting",
+      "status": "pass",
+      "runtime_ms": 5736.0,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-082",
+      "name": "GET /admin/tests/waitlist/history (200) \u2192 runs array with run_id/passed/total/pass_rate/total_runtime_ms",
+      "category": "AdminTesting",
+      "status": "pass",
+      "runtime_ms": 14.3,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-090",
+      "name": "full chain: reset \u2192 join \u2192 OTP \u2192 verify (pos 48) \u2192 admin promote \u2192 invite email captured (64-char token, 2h TTL)",
+      "category": "Activation",
+      "status": "pass",
+      "runtime_ms": 180.5,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-091",
+      "name": "GET /v1/waitlist/accept?token=... \u2192 session created for invitee@real.com (email_verified=true, tier=free, is_admin=false)",
+      "category": "Activation",
+      "status": "pass",
+      "runtime_ms": 82.4,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-092",
+      "name": "post-activation: visitor row status='activated', activated_at set, invite_token_hash cleared, harness users=2",
+      "category": "Activation",
+      "status": "pass",
+      "runtime_ms": 38.6,
+      "error": ""
+    }
+  ],
+  "notes": [
+    "Driven by Claude Preview browser tools (real Chromium) against the waitlist dev server.",
+    "v7.1.1 redesign: SVG funnel replaces the old panel card. Body padding-right: 280px on viewports >= 1280px so the widget sits in a clear right gutter (no chat-card overlap).",
+    "Theme-agnostic palette: orange ACCENT for waiting number, green for active number. Verified legible on both sunset (light) and command-center (dark) themes.",
+    "Full border-case matrix covered: waiting = {0, 1, 500, 9999, 25000}, active = {0, 100, 9999}, your_position = 9999."
+  ]
+}

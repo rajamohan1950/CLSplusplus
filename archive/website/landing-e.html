@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLS++ | Every AI Remembers You</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#0a0a0c;--card:#111114;--hover:#18181c;--input:#141417;
+      --text:#f0f0f2;--text-2:#9898a0;--text-3:#55555e;
+      --accent:#ff6b35;--accent-soft:rgba(255,107,53,0.12);
+      --green:#34d399;--green-soft:rgba(52,211,153,0.1);
+      --purple:#a78bfa;--purple-soft:rgba(167,139,250,0.1);
+      --blue:#60a5fa;--blue-soft:rgba(96,165,250,0.1);
+      --border:rgba(255,255,255,0.05);
+      --chatgpt:#10a37f;--claude:#d97757;--gemini:#4285f4;--copilot:#0078d4;--grok:#ffffff;--deepseek:#4a9eff;
+    }
+    body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;-webkit-font-smoothing:antialiased}
+
+    /* Ambient blobs */
+    .ambient{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+    .ab{position:absolute;border-radius:50%;filter:blur(120px);opacity:0.12}
+    .ab1{width:500px;height:500px;background:var(--accent);top:-100px;right:10%;animation:drift 25s ease-in-out infinite}
+    .ab2{width:400px;height:400px;background:var(--purple);bottom:-80px;left:5%;animation:drift 30s ease-in-out infinite reverse}
+    .ab3{width:300px;height:300px;background:var(--green);top:40%;left:40%;animation:drift 20s ease-in-out infinite}
+    @keyframes drift{0%,100%{transform:translate(0,0)}33%{transform:translate(-50px,30px)}66%{transform:translate(30px,-40px)}}
+
+    /* Layout */
+    .app{position:relative;z-index:1;height:100vh;display:flex;flex-direction:column}
+
+    /* Top bar */
+    .topbar{display:flex;align-items:center;padding:12px 24px;backdrop-filter:blur(20px);background:rgba(10,10,12,0.6);border-bottom:1px solid var(--border);gap:16px;z-index:10;flex-shrink:0}
+    .logo{font-weight:800;font-size:1rem;color:#fff;text-decoration:none;letter-spacing:-0.5px;flex-shrink:0}
+    .logo .plus{color:var(--accent)}
+    .tb-div{width:1px;height:20px;background:var(--border);flex-shrink:0}
+
+    .model-chips{display:flex;gap:6px;overflow-x:auto;flex:1;-ms-overflow-style:none;scrollbar-width:none;mask-image:linear-gradient(to right,black 90%,transparent)}
+    .model-chips::-webkit-scrollbar{display:none}
+    .chip{display:flex;align-items:center;gap:6px;padding:6px 14px;background:var(--card);border:1px solid var(--border);border-radius:20px;font-size:0.78rem;color:var(--text-3);white-space:nowrap;cursor:pointer;transition:all 0.15s;flex-shrink:0}
+    .chip:hover{border-color:rgba(255,255,255,0.12);color:var(--text-2)}
+    .chip.speaking{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+    .chip .cd{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+
+    .tb-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+    .tb-btn{padding:6px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-3);font-family:inherit;font-size:0.78rem;cursor:pointer;transition:all 0.15s;text-decoration:none;white-space:nowrap}
+    .tb-btn:hover{color:var(--text-2);border-color:rgba(255,255,255,0.12)}
+    .tb-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+    .tb-btn.primary:hover{background:#ff8c5a}
+    .tb-avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--purple));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:#fff;cursor:pointer}
+
+    /* Content */
+    .content{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+    .content::-webkit-scrollbar{width:4px}
+    .content::-webkit-scrollbar-thumb{background:var(--hover);border-radius:2px}
+
+    /* Welcome */
+    .welcome{text-align:center;padding:48px 24px 32px;flex-shrink:0}
+    .w-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:var(--accent-soft);border:1px solid rgba(255,107,53,0.15);border-radius:16px;font-size:0.72rem;font-weight:600;color:var(--accent);margin-bottom:20px}
+    .w-badge .wd{width:5px;height:5px;border-radius:50%;background:var(--accent);animation:pulse 1.5s infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+    .welcome h1{font-size:clamp(2.2rem,5vw,3.4rem);font-weight:800;letter-spacing:-2px;line-height:1.05;margin-bottom:12px}
+    .welcome h1 .acc{background:linear-gradient(135deg,var(--accent),#ff9a5c);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .welcome p{font-size:1rem;color:var(--text-2);max-width:480px;margin:0 auto;line-height:1.6}
+
+    /* Stats bar */
+    .stats-bar{display:flex;justify-content:center;gap:20px;padding:0 24px 32px;flex-shrink:0}
+    .st{text-align:center;padding:12px 20px;background:var(--card);border:1px solid var(--border);border-radius:12px}
+    .st .sn{font-size:1.2rem;font-weight:800;line-height:1}
+    .st .sl{font-size:0.62rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-top:3px}
+
+    /* Messages area */
+    .messages-area{max-width:760px;margin:0 auto;width:100%;padding:0 24px 24px;flex:1}
+
+    .conv-divider{display:flex;align-items:center;gap:8px;font-size:0.7rem;color:var(--text-3);margin-bottom:24px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+    .conv-divider .cd-line{flex:1;height:1px;background:var(--border)}
+    .conv-divider .cd-status{color:var(--green);display:flex;align-items:center;gap:4px}
+    .conv-divider .cd-status::before{content:'';width:4px;height:4px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+
+    /* Document-style messages */
+    .msg{display:flex;gap:14px;margin-bottom:24px;opacity:0;transform:translateY(10px);animation:fade-up 0.5s ease forwards}
+    @keyframes fade-up{to{opacity:1;transform:none}}
+
+    .msg-icon{width:32px;height:32px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;margin-top:2px}
+    .msg-icon.chatgpt{background:rgba(16,163,127,0.15);border:1px solid rgba(16,163,127,0.2);color:var(--chatgpt)}
+    .msg-icon.chatgpt::after{content:'G'}
+    .msg-icon.claude{background:rgba(217,119,87,0.15);border:1px solid rgba(217,119,87,0.2);color:var(--claude)}
+    .msg-icon.claude::after{content:'C'}
+    .msg-icon.gemini{background:rgba(66,133,244,0.15);border:1px solid rgba(66,133,244,0.2);color:var(--gemini)}
+    .msg-icon.gemini::after{content:'G'}
+    .msg-icon.copilot{background:rgba(0,120,212,0.15);border:1px solid rgba(0,120,212,0.2);color:var(--copilot)}
+    .msg-icon.copilot::after{content:'C'}
+    .msg-icon.grok{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);color:#fff}
+    .msg-icon.grok::after{content:'X'}
+    .msg-icon.deepseek{background:rgba(74,158,255,0.15);border:1px solid rgba(74,158,255,0.2);color:var(--deepseek)}
+    .msg-icon.deepseek::after{content:'D'}
+    .msg-icon.user{background:var(--hover);border:1px solid var(--border);color:var(--accent)}
+    .msg-icon.user::after{content:'→'}
+    .msg-icon.system{background:var(--accent-soft);border:1px solid rgba(255,107,53,0.2);color:var(--accent)}
+    .msg-icon.system::after{content:'✦'}
+
+    .msg-body{flex:1;min-width:0}
+    .msg-role{font-size:0.75rem;font-weight:600;margin-bottom:5px;display:flex;align-items:center;gap:8px}
+    .msg-role .mr-model{font-weight:400;font-size:0.65rem;color:var(--text-3);background:var(--card);padding:2px 8px;border-radius:6px}
+    .msg-role.chatgpt{color:var(--chatgpt)}.msg-role.claude{color:var(--claude)}.msg-role.gemini{color:var(--gemini)}.msg-role.copilot{color:var(--copilot)}.msg-role.grok{color:#fff}.msg-role.deepseek{color:var(--deepseek)}.msg-role.you{color:var(--text-2)}.msg-role.cls{color:var(--accent)}
+
+    .msg-text{font-size:0.92rem;line-height:1.7;color:var(--text)}
+    .msg.human .msg-text{color:var(--text-2)}
+    .msg-text code{background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:0.84em;color:var(--accent)}
+
+    .msg-footer{display:flex;align-items:center;gap:10px;margin-top:8px}
+    .msg-mem{display:inline-flex;align-items:center;gap:5px;font-size:0.7rem;color:var(--green);background:var(--green-soft);padding:4px 10px;border-radius:20px}
+    .msg-mem::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+    .msg-stored{display:inline-flex;align-items:center;gap:5px;font-size:0.7rem;color:var(--accent);background:var(--accent-soft);padding:4px 10px;border-radius:20px}
+    .msg-stored::before{content:'↑';font-weight:700}
+
+    /* Transfer line */
+    .xfer{display:flex;align-items:center;gap:10px;margin:0 0 24px 46px;animation:fade-up 0.4s ease forwards;opacity:0}
+    .xfer .xf-text{font-size:0.7rem;color:var(--text-3);display:flex;align-items:center;gap:5px;white-space:nowrap}
+    .xfer .xf-icon{color:var(--accent)}
+    .xfer .xf-line{flex:1;height:1px;background:linear-gradient(to right,var(--accent),transparent)}
+
+    /* Typing */
+    .typing{display:flex;gap:14px;margin-bottom:24px;animation:fade-up 0.3s ease forwards;opacity:0}
+    .typing-dots{display:flex;gap:4px;align-items:center;padding:8px 0}
+    .td{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:tb 1.4s infinite ease-in-out both}
+    .td:nth-child(2){animation-delay:0.16s}.td:nth-child(3){animation-delay:0.32s}
+    @keyframes tb{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}
+
+    /* Input dock */
+    .input-dock{padding:0 24px 28px;z-index:5;flex-shrink:0}
+    .input-box{max-width:760px;margin:0 auto;background:var(--input);border:1px solid var(--border);border-radius:20px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.4);transition:all 0.2s}
+    .input-box:focus-within{border-color:rgba(255,107,53,0.25);box-shadow:0 8px 40px rgba(0,0,0,0.5),0 0 0 4px var(--accent-soft)}
+    .input-row{display:flex;align-items:flex-end;padding:12px 16px;gap:10px}
+    .input-ta{flex:1;background:transparent;border:none;color:var(--text);font-family:'Inter',sans-serif;font-size:0.93rem;resize:none;outline:none;max-height:140px;line-height:1.5;padding:4px 0}
+    .input-ta::placeholder{color:var(--text-3)}
+    .input-send{width:38px;height:38px;border-radius:12px;border:none;background:var(--accent);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s;flex-shrink:0}
+    .input-send:hover{background:#ff8c5a}
+    .input-send svg{width:18px;height:18px}
+    .input-tb{display:flex;align-items:center;justify-content:space-between;padding:0 16px 10px}
+    .input-tb .tb-l{display:flex;gap:4px}
+    .input-tb .tb-r{display:flex;align-items:center;gap:8px}
+    .input-tb .ns{display:flex;align-items:center;gap:5px;padding:4px 12px;border-radius:20px;background:var(--purple-soft);font-size:0.72rem;color:var(--purple);font-family:'JetBrains Mono',monospace}
+    .input-tb .ar{display:flex;align-items:center;gap:5px;padding:4px 12px;border-radius:20px;background:var(--card);border:1px solid var(--border);font-size:0.72rem;color:var(--text-2)}
+    .input-tb .ar::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green)}
+    .tb-hint{font-size:0.7rem;color:var(--text-3);padding:4px 10px;border-radius:8px;border:none;background:transparent;font-family:inherit}
+
+    /* Below fold */
+    .bf-reveal{display:none;max-width:760px;margin:0 auto;padding:0 24px 40px}
+    .bf-reveal.visible{display:block}
+    .bf-reveal hr{border:none;border-top:1px solid var(--border);margin:40px 0}
+    .bf-reveal h2{font-size:1.4rem;font-weight:700;letter-spacing:-0.5px;margin-bottom:28px;text-align:center}
+    .bf-g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+    .bf-step{padding:24px 20px;background:var(--card);border:1px solid var(--border);border-radius:12px;text-align:center;transition:all 0.2s}
+    .bf-step:hover{border-color:var(--accent);transform:translateY(-2px)}
+    .bf-step .sn{width:36px;height:36px;border-radius:50%;background:var(--accent);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:0.95rem}
+    .bf-step h3{font-size:0.9rem;font-weight:700;margin-bottom:6px}
+    .bf-step p{font-size:0.78rem;color:var(--text-2);line-height:1.4}
+    .bf-g4{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .ph{padding:20px;background:var(--card);border:1px solid var(--border);border-radius:12px;border-left:3px solid;transition:all 0.2s}
+    .ph:hover{transform:translateY(-2px)}
+    .ph.gas{border-left-color:#ef4444}.ph.liquid{border-left-color:var(--blue)}.ph.solid{border-left-color:var(--green)}.ph.crystal{border-left-color:var(--accent)}
+    .ph .ph-h{display:flex;align-items:center;gap:8px;margin-bottom:4px}.ph .ph-n{font-weight:700}.ph .ph-l{font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--accent);margin-bottom:6px}.ph .ph-d{font-size:0.78rem;color:var(--text-2);line-height:1.4}
+    .bf-pr{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    .pc{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;display:flex;flex-direction:column;transition:all 0.2s}
+    .pc:hover{transform:translateY(-3px)}
+    .pc.feat{border-color:rgba(255,107,53,0.3);box-shadow:0 0 24px rgba(255,107,53,0.06);position:relative}
+    .pc.feat::before{content:'Popular';position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;font-size:0.6rem;font-weight:700;padding:3px 10px;border-radius:12px;text-transform:uppercase}
+    .pc .pt{font-size:0.72rem;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+    .pc .pp{font-size:2rem;font-weight:800;letter-spacing:-1px;margin-bottom:2px}
+    .pc .pd{font-size:0.75rem;color:var(--text-3);margin-bottom:16px}
+    .pc ul{list-style:none;flex:1;margin-bottom:16px}
+    .pc ul li{font-size:0.76rem;color:var(--text-2);padding:3px 0;display:flex;align-items:center;gap:6px}
+    .pc ul li::before{content:'✓';color:var(--green);font-weight:700}
+    .pc .pb{width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);font-family:inherit;font-size:0.82rem;font-weight:600;cursor:pointer;text-decoration:none;display:block;text-align:center;transition:all 0.15s}
+    .pc .pb:hover{border-color:var(--accent);color:var(--accent)}
+    .pc.feat .pb{background:var(--accent);border-color:var(--accent);color:#fff}
+    .pc.feat .pb:hover{background:#ff8c5a}
+    .bf-cta{text-align:center;padding:48px 0}
+    .bf-cta h2{margin-bottom:12px}
+    .bf-cta p{color:var(--text-2);margin-bottom:24px;font-size:0.95rem}
+    .bf-cta a{display:inline-flex;padding:14px 32px;background:var(--accent);color:#fff;border-radius:12px;font-weight:600;text-decoration:none;box-shadow:0 4px 20px rgba(255,107,53,0.25);transition:all 0.15s}
+    .bf-cta a:hover{background:#ff8c5a;transform:translateY(-2px)}
+    .scroll-link{display:inline-flex;align-items:center;gap:6px;font-size:0.78rem;color:var(--text-3);padding:8px 16px;background:var(--card);border:1px solid var(--border);border-radius:20px;cursor:pointer;transition:all 0.15s;text-decoration:none;margin-top:16px}
+    .scroll-link:hover{border-color:var(--accent);color:var(--accent)}
+
+    @media(max-width:768px){.tb-right .tb-btn:not(.primary){display:none}.bf-g3,.bf-g4{grid-template-columns:1fr}.bf-pr{grid-template-columns:1fr 1fr}.stats-bar{flex-wrap:wrap}}
+    @media(max-width:500px){.bf-pr{grid-template-columns:1fr}.model-chips{display:none}}
+    ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:var(--hover);border-radius:2px}
+  </style>
+</head>
+<body>
+  <div class="ambient"><div class="ab ab1"></div><div class="ab ab2"></div><div class="ab ab3"></div></div>
+
+  <div class="app">
+    <!-- Top bar -->
+    <div class="topbar">
+      <a href="/" class="logo">CLS<span class="plus">++</span></a>
+      <div class="tb-div"></div>
+      <div class="model-chips" id="chips">
+        <div class="chip speaking" data-m="chatgpt"><span class="cd" style="background:var(--chatgpt)"></span>ChatGPT</div>
+        <div class="chip" data-m="claude"><span class="cd" style="background:var(--claude)"></span>Claude</div>
+        <div class="chip" data-m="gemini"><span class="cd" style="background:var(--gemini)"></span>Gemini</div>
+        <div class="chip" data-m="copilot"><span class="cd" style="background:var(--copilot)"></span>Copilot</div>
+        <div class="chip" data-m="grok"><span class="cd" style="background:var(--grok);border:1px solid #555"></span>Grok</div>
+        <div class="chip" data-m="deepseek"><span class="cd" style="background:var(--deepseek)"></span>DeepSeek</div>
+      </div>
+      <div class="tb-right">
+        <a href="/docs.html" class="tb-btn">API</a>
+        <a href="/#pricing" class="tb-btn">Pricing</a>
+        <div id="nav-auth"></div>
+        <a href="/getting-started.html" class="tb-btn primary">Get Started</a>
+      </div>
+    </div>
+
+    <div class="content" id="content">
+      <!-- Welcome -->
+      <div class="welcome" id="welcome-sec">
+        <div class="w-badge"><span class="wd"></span>Live demo — watch memory flow</div>
+        <h1>Every AI<br><span class="acc">remembers.</span></h1>
+        <p>Persistent memory across ChatGPT, Claude, Gemini, Copilot, Grok, and DeepSeek. Tell one — they all know.</p>
+      </div>
+
+      <div class="stats-bar" id="stats-sec">
+        <div class="st"><div class="sn" style="color:var(--accent)">2.4M+</div><div class="sl">Operations</div></div>
+        <div class="st"><div class="sn" style="color:var(--green)">850K+</div><div class="sl">Memories</div></div>
+        <div class="st"><div class="sn" style="color:var(--purple)">6</div><div class="sl">Models</div></div>
+        <div class="st"><div class="sn" style="color:var(--blue)">4</div><div class="sl">Phases</div></div>
+      </div>
+
+      <!-- Messages -->
+      <div class="messages-area">
+        <div class="conv-divider"><span>Live demonstration</span><span class="cd-line"></span><span class="cd-status">Auto-playing</span></div>
+        <div id="msg-box"></div>
+      </div>
+
+      <!-- Below fold -->
+      <div class="bf-reveal" id="bf">
+        <hr>
+        <h2>Dead simple.</h2>
+        <div class="bf-g3">
+          <div class="bf-step"><div class="sn">1</div><h3>Install</h3><p>One click from Chrome Web Store. Or use the Python Software Development Kit.</p></div>
+          <div class="bf-step"><div class="sn">2</div><h3>Use Any AI</h3><p>CLS++ captures context automatically. No workflow changes.</p></div>
+          <div class="bf-step"><div class="sn">3</div><h3>Switch Freely</h3><p>Every model remembers. Context never gets lost.</p></div>
+        </div>
+        <hr>
+        <h2>Memory as phase transitions.</h2>
+        <div class="bf-g4">
+          <div class="ph gas"><div class="ph-h"><span>💨</span><span class="ph-n">Gas</span></div><div class="ph-l">Raw Experience</div><div class="ph-d">Immediate episodic capture. High fidelity, fast decay.</div></div>
+          <div class="ph liquid"><div class="ph-h"><span>💧</span><span class="ph-n">Liquid</span></div><div class="ph-l">Active Memory</div><div class="ph-d">Sharp-wave ripple consolidation. Pattern extraction.</div></div>
+          <div class="ph solid"><div class="ph-h"><span>🧊</span><span class="ph-n">Solid</span></div><div class="ph-l">Schema</div><div class="ph-d">100 episodes compressed to 1 abstract knowledge schema.</div></div>
+          <div class="ph crystal"><div class="ph-h"><span>💎</span><span class="ph-n">Crystal</span></div><div class="ph-l">Axiom</div><div class="ph-d">Immutable verified truth. Zero decay.</div></div>
+        </div>
+        <hr>
+        <h2>Start free. Scale when ready.</h2>
+        <div class="bf-pr">
+          <div class="pc"><div class="pt">Free</div><div class="pp">$0</div><div class="pd">forever</div><ul><li>1,000 ops/month</li><li>500 memories</li><li>1 namespace</li></ul><a href="/getting-started.html" class="pb">Get Started</a></div>
+          <div class="pc feat"><div class="pt">Pro</div><div class="pp">$9</div><div class="pd">/month</div><ul><li>50,000 ops/month</li><li>50,000 memories</li><li>10 namespaces</li><li>All 4 layers</li></ul><a href="/signup.html?next=%2Fprofile.html%3Ftier%3Dpro%23billing" class="pb" data-tier="pro">Subscribe</a></div>
+          <div class="pc"><div class="pt">Business</div><div class="pp">$29</div><div class="pd">/month</div><ul><li>200,000 ops/month</li><li>200,000 memories</li><li>50 namespaces</li></ul><a href="/signup.html?next=%2Fprofile.html%3Ftier%3Dbusiness%23billing" class="pb" data-tier="business">Subscribe</a></div>
+          <div class="pc"><div class="pt">Enterprise</div><div class="pp">$149</div><div class="pd">/month</div><ul><li>1M ops/month</li><li>1M memories</li><li>SSO + SLA</li></ul><a href="/signup.html?next=%2Fprofile.html%3Ftier%3Denterprise%23billing" class="pb" data-tier="enterprise">Subscribe</a></div>
+        </div>
+        <div class="bf-cta"><h2>Stop losing context.</h2><p>One memory layer. Every model. Free to start.</p><a href="/getting-started.html">Get Started →</a></div>
+      </div>
+    </div>
+
+    <!-- Input -->
+    <div class="input-dock">
+      <div class="input-box">
+        <div class="input-row">
+          <textarea class="input-ta" placeholder="Try it yourself — sign up free..." rows="1" disabled></textarea>
+          <button class="input-send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
+        </div>
+        <div class="input-tb">
+          <div class="tb-l"><span class="tb-hint">↵ Enter to send</span></div>
+          <div class="tb-r"><div class="ns">🧠 demo-brain</div><div class="ar">Auto-route</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="posthog.js" defer></script>
+  <script src="variant-loader.js"></script>
+  <script src="feedback-widget.js" defer></script>
+  <script src="auth.js" defer></script>
+  <script>
+  (function(){
+    var box=document.getElementById('msg-box');
+    var content=document.getElementById('content');
+    var chips=document.querySelectorAll('.chip');
+    var bf=document.getElementById('bf');
+
+    function setChip(model){chips.forEach(function(c){c.classList.remove('speaking');if(c.dataset.m===model)c.classList.add('speaking')})}
+
+    function addMsg(icon,roleClass,roleName,modelBadge,text,footerHtml,delay){
+      return new Promise(function(r){setTimeout(function(){
+        var div=document.createElement('div');div.className='msg'+(roleClass==='you'?' human':'');
+        var mbHtml=modelBadge?'<span class="mr-model">'+modelBadge+'</span>':'';
+        div.innerHTML='<div class="msg-icon '+icon+'"></div><div class="msg-body"><div class="msg-role '+roleClass+'">'+roleName+' '+mbHtml+'</div><div class="msg-text">'+text+'</div>'+(footerHtml?'<div class="msg-footer">'+footerHtml+'</div>':'')+'</div>';
+        box.appendChild(div);content.scrollTop=content.scrollHeight;r();
+      },delay)});
+    }
+
+    function addXfer(text,delay){
+      return new Promise(function(r){setTimeout(function(){
+        var div=document.createElement('div');div.className='xfer';
+        div.innerHTML='<span class="xf-text"><span class="xf-icon">⚡</span>'+text+'</span><span class="xf-line"></span>';
+        box.appendChild(div);content.scrollTop=content.scrollHeight;r();
+      },delay)});
+    }
+
+    function showTyping(icon,delay){
+      return new Promise(function(r){setTimeout(function(){
+        var div=document.createElement('div');div.className='typing';div.id='typ';
+        div.innerHTML='<div class="msg-icon '+icon+'"></div><div class="msg-body"><div class="typing-dots"><div class="td"></div><div class="td"></div><div class="td"></div></div></div>';
+        box.appendChild(div);content.scrollTop=content.scrollHeight;r();
+      },delay)});
+    }
+    function hideTyping(){var e=document.getElementById('typ');if(e)e.remove()}
+
+    async function play(){
+      await new Promise(r=>setTimeout(r,1800));
+
+      // 1. User → ChatGPT
+      setChip('chatgpt');
+      await addMsg('user','you','You → ChatGPT',null,'My name is Pratap. I\'m building CLS++ with Python and PostgreSQL. I prefer dark mode and use FastAPI.',null,0);
+      await showTyping('chatgpt',800);await new Promise(r=>setTimeout(r,2000));hideTyping();
+      await addMsg('chatgpt','chatgpt','ChatGPT','OpenAI','Got it, Pratap! I\'ll remember: you\'re building <code>CLS++</code> with Python, PostgreSQL, and FastAPI, and you prefer dark mode. How can I help?','<span class="msg-stored">Memory stored → 4 facts</span>',200);
+
+      await addXfer('Memory synced across all connected models',2000);
+
+      // 2. User → Claude
+      setChip('claude');
+      await addMsg('user','you','You → Claude',null,'What do you know about me and my project?',null,1500);
+      await showTyping('claude',600);await new Promise(r=>setTimeout(r,2200));hideTyping();
+      await addMsg('claude','claude','Claude','Anthropic','You\'re Pratap! You\'re building <code>CLS++</code> — a cross-model memory layer using Python, PostgreSQL, and FastAPI. You prefer dark mode. Want help with the architecture?','<span class="msg-mem">CLS++ recalled 4 memories</span>',200);
+
+      await addXfer('Context flows seamlessly — no copy-paste',2500);
+
+      // 3. User → Gemini
+      setChip('gemini');
+      await addMsg('user','you','You → Gemini',null,'Suggest a caching strategy for my project.',null,1500);
+      await showTyping('gemini',600);await new Promise(r=>setTimeout(r,2400));hideTyping();
+      await addMsg('gemini','gemini','Gemini','Google','Since CLS++ uses Python + PostgreSQL + FastAPI, I\'d recommend Redis for your L0 hot cache with <code>pgvector</code> for semantic search. Add a FastAPI middleware to auto-cache recent memories for sub-5ms reads.','<span class="msg-mem">CLS++ recalled 4 memories</span>',200);
+
+      await addXfer('Every model builds on shared context',2500);
+
+      // 4. User → Grok
+      setChip('grok');
+      await addMsg('user','you','You → Grok',null,'Summarize everything you know about me.',null,1500);
+      await showTyping('grok',600);await new Promise(r=>setTimeout(r,2000));hideTyping();
+      await addMsg('grok','grok','Grok','xAI','Pratap — dark mode lover, Python + PostgreSQL + FastAPI stack, building CLS++ (cross-model memory). Gemini just suggested Redis + pgvector caching. Should I roast your choices or help? 😄','<span class="msg-mem">CLS++ recalled 6 memories</span>',200);
+
+      // System
+      await addMsg('system','cls','CLS++',null,'✨ <strong>That\'s the magic.</strong> One memory, every model. No config, no copy-paste. Your AI just <em>remembers</em>. <a href="/getting-started.html" style="color:var(--accent);text-decoration:underline">Try it free →</a>',null,3000);
+
+      chips.forEach(function(c){c.classList.remove('speaking')});
+
+      // Show below fold
+      setTimeout(function(){bf.classList.add('visible');content.scrollTop=content.scrollHeight},2000);
+    }
+
+    play();
+  })();
+  </script>
+  <script src="namespace.js"></script>
+  <script src="toast.js"></script>
+  <script src="billing-ui.js"></script>
+  <script src="waitlist-widget.js?v=1"></script>
+  <script src="footer.js?v=2"></script>
+</body>
+</html>

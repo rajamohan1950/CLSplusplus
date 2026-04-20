@@ -22,7 +22,7 @@ except ImportError:
     print("pip install httpx")
     raise
 
-API_URL = os.environ.get("CLS_API_URL", "https://clsplusplus-api.onrender.com")
+API_URL = os.environ.get("CLS_API_URL", "https://www.clsplusplus.com")
 TIMEOUT = 120.0  # Cold start can take 60-90s
 DELAY_BETWEEN_REQUESTS = 3.0  # Avoid overwhelming free tier; 5 users * 11 req = 55 req
 

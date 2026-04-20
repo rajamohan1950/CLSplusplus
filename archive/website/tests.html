@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLS++ | Test Suite</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=2">
+  <script src="posthog.js" defer></script>
+  <script src="auth.js" defer></script>
+  <style>
+    body { background: transparent; color: #1d1d1f; min-height: 100vh; }
+
+    .page { background: rgba(255,255,255,0.92); border-radius: 24px; box-shadow: 0 4px 40px rgba(0,0,0,0.08); max-width: 980px; margin: 0 auto; padding: 80px 20px 60px; margin-top: 80px; }
+
+    .page-header { margin-bottom: 32px; }
+    .page-header h1 { font-size: 1.8rem; margin-bottom: 6px; }
+    .page-header .subtitle { color: #86868b; font-size: 0.9rem; }
+
+    /* ---- Layout ---- */
+    .layout { display: grid; grid-template-columns: 280px 1fr; gap: 24px; }
+    @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } }
+
+    /* ---- Run History Sidebar ---- */
+    .sidebar { display: flex; flex-direction: column; gap: 8px; }
+    .sidebar-title { color: #86868b; font-size: 0.72rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
+
+    .run-item {
+      background: rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.08); border-radius: 8px;
+      cursor: pointer; padding: 10px 12px; transition: border-color 0.15s;
+    }
+    .run-item:hover { border-color: #ff6b35; }
+    .run-item.active { border-color: #ff6b35; background: rgba(255,107,53,0.06); }
+    .run-item .run-ts { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #86868b; margin-bottom: 4px; }
+    .run-item .run-score {
+      font-size: 1.1rem; font-weight: 600;
+    }
+    .run-item .run-score.perfect { color: #34d399; }
+    .run-item .run-score.good { color: #ff6b35; }
+    .run-item .run-score.bad { color: #f87171; }
+    .run-item .run-meta { color: #86868b; font-size: 0.72rem; margin-top: 2px; }
+
+    /* ---- Main Panel ---- */
+    .main {}
+
+    /* Summary cards */
+    .summary-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+    .card {
+      background: rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.08); border-radius: 10px;
+      padding: 16px 20px; flex: 1; min-width: 120px;
+    }
+    .card .card-label { color: #86868b; font-size: 0.72rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; }
+    .card .card-value { font-size: 1.6rem; font-weight: 600; }
+    .card .card-value.green { color: #34d399; }
+    .card .card-value.indigo { color: #ff6b35; }
+    .card .card-value.yellow { color: #fbbf24; }
+    .card .card-value.red { color: #f87171; }
+    .card .card-sub { color: #86868b; font-size: 0.78rem; margin-top: 2px; }
+
+    /* Category summary table */
+    .section-title { color: #86868b; font-size: 0.72rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin: 24px 0 10px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    thead th { color: #86868b; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; padding: 6px 10px; text-align: left; border-bottom: 1px solid rgba(0,0,0,0.08); }
+    tbody tr { border-bottom: 1px solid rgba(0,0,0,0.06); transition: background 0.1s; cursor: default; }
+    tbody tr:hover { background: rgba(0,0,0,0.02); }
+    tbody td { padding: 9px 10px; }
+    td.mono { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; }
+
+    .badge {
+      display: inline-block; border-radius: 4px; font-size: 0.7rem; font-weight: 700;
+      padding: 2px 7px; white-space: nowrap;
+    }
+    .badge.pass { background: rgba(52,211,153,0.15); color: #34d399; }
+    .badge.fail { background: rgba(248,113,113,0.15); color: #f87171; }
+    .badge.cat { background: rgba(255,107,53,0.12); color: #ff6b35; }
+
+    .bar-wrap { background: rgba(0,0,0,0.06); border-radius: 4px; height: 6px; width: 80px; display: inline-block; vertical-align: middle; }
+    .bar-fill { border-radius: 4px; height: 6px; background: #ff6b35; }
+    .bar-fill.green { background: #34d399; }
+    .bar-fill.red { background: #f87171; }
+
+    /* Test result rows */
+    .test-row { cursor: pointer; }
+    .test-row .expand-icon { color: #86868b; font-size: 0.8rem; transition: transform 0.2s; }
+    .test-row.open .expand-icon { transform: rotate(90deg); }
+    .detail-row td { padding: 0; }
+    .detail-box {
+      background: rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.08); border-radius: 8px;
+      margin: 4px 10px 8px; padding: 14px 16px; font-size: 0.82rem; line-height: 1.6;
+    }
+    .detail-box .dl { display: grid; grid-template-columns: 160px 1fr; gap: 4px 12px; }
+    .detail-box .dl dt { color: #86868b; font-size: 0.75rem; }
+    .detail-box .dl dd { color: #1d1d1f; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; word-break: break-word; margin: 0; }
+
+    /* Engine diagnostics */
+    .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+    @media (max-width: 600px) { .diag-grid { grid-template-columns: 1fr; } }
+    .diag-item { background: rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.08); border-radius: 6px; padding: 10px 12px; }
+    .diag-item dt { color: #86868b; font-size: 0.7rem; margin-bottom: 2px; }
+    .diag-item dd { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #ff6b35; margin: 0; }
+    .diag-item dd.on { color: #34d399; }
+    .diag-item dd.off { color: #f87171; }
+
+    .empty-state { color: #86868b; text-align: center; padding: 48px; font-size: 0.9rem; }
+
+    .loading { color: #86868b; font-size: 0.85rem; padding: 20px 0; }
+  </style>
+</head>
+<body>
+
+  <div class="video-bg"><video autoplay muted loop playsinline poster="beach-bg.jpg"><source src="sunrise-ocean.mp4" type="video/mp4"></video></div>
+  <div class="video-overlay"></div>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs.html">API</a>
+        <a href="/integrate.html">Integrate</a>
+        <a href="/#pricing">Pricing</a>
+        <div id="nav-auth" class="nav-auth"></div>
+        <a href="/getting-started.html" class="nav-cta">Get Started</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="page">
+    <div class="page-header">
+      <h1>Test Suite</h1>
+      <p class="subtitle">Honest, non-fabricated end-to-end tests for PhaseMemoryEngine. History preserved across runs.</p>
+    </div>
+
+    <div class="layout">
+      <!-- Sidebar: run history -->
+      <aside class="sidebar">
+        <div class="sidebar-title">Run History</div>
+        <div id="run-list"><div class="loading">Loading…</div></div>
+      </aside>
+
+      <!-- Main: selected run detail -->
+      <main class="main" id="main-panel">
+        <div class="empty-state">← Select a run from the history</div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const HISTORY_BASE = 'tests/history';
+    let currentRun = null;
+
+    // ----------------------------------------------------------------
+    // Load manifest
+    // ----------------------------------------------------------------
+    async function loadManifest() {
+      try {
+        const r = await fetch(`${HISTORY_BASE}/manifest.json?_=${Date.now()}`);
+        if (!r.ok) throw new Error('No manifest');
+        return await r.json();
+      } catch {
+        return [];
+      }
+    }
+
+    // ----------------------------------------------------------------
+    // Load a single run file
+    // ----------------------------------------------------------------
+    async function loadRun(file) {
+      const r = await fetch(`${HISTORY_BASE}/${file}?_=${Date.now()}`);
+      if (!r.ok) throw new Error(`Could not load ${file}`);
+      return await r.json();
+    }
+
+    // ----------------------------------------------------------------
+    // Render sidebar
+    // ----------------------------------------------------------------
+    function renderSidebar(manifest, activeId) {
+      const el = document.getElementById('run-list');
+      if (!manifest.length) {
+        el.innerHTML = '<div class="empty-state">No runs yet.<br>Run python3 run_tests.py</div>';
+        return;
+      }
+      el.innerHTML = manifest.map(m => {
+        const rate = (m.pass_rate * 100).toFixed(1);
+        const cls = m.pass_rate === 1 ? 'perfect' : m.pass_rate >= 0.8 ? 'good' : 'bad';
+        const ts = new Date(m.run_timestamp).toLocaleString();
+        const active = m.run_id === activeId ? ' active' : '';
+        return `<div class="run-item${active}" data-file="${m.file}" data-id="${m.run_id}">
+          <div class="run-ts">${ts}</div>
+          <div class="run-score ${cls}">${m.passed}/${m.total} <span style="font-size:0.85rem;font-weight:400">(${rate}%)</span></div>
+          <div class="run-meta">${m.total_runtime_ms}ms total</div>
+        </div>`;
+      }).join('');
+
+      el.querySelectorAll('.run-item').forEach(item => {
+        item.addEventListener('click', () => {
+          el.querySelectorAll('.run-item').forEach(x => x.classList.remove('active'));
+          item.classList.add('active');
+          loadRun(item.dataset.file).then(renderMain);
+        });
+      });
+    }
+
+    // ----------------------------------------------------------------
+    // Render main panel for a run
+    // ----------------------------------------------------------------
+    function renderMain(run) {
+      currentRun = run;
+      const rate = (run.pass_rate * 100).toFixed(1);
+      const rateColor = run.pass_rate === 1 ? 'green' : run.pass_rate >= 0.8 ? 'indigo' : 'red';
+      const ts = new Date(run.run_timestamp).toLocaleString();
+      const snap = run.engine_snapshot || {};
+
+      // Category summary rows
+      const catRows = Object.entries(run.category_summary || {}).map(([cat, s]) => {
+        const pct = s.total ? (s.passed / s.total * 100).toFixed(0) : 0;
+        const barColor = s.failed === 0 ? 'green' : s.passed === 0 ? 'red' : '';
+        return `<tr>
+          <td><span class="badge cat">${cat.replace('CAT', 'C').replace(/_/g,' ')}</span></td>
+          <td class="mono">${s.passed}/${s.total}</td>
+          <td>
+            <div class="bar-wrap"><div class="bar-fill ${barColor}" style="width:${pct}%"></div></div>
+            <span style="margin-left:6px;color:#666;font-size:0.75rem">${pct}%</span>
+          </td>
+          <td class="mono">${s.avg_j1.toFixed(3)}</td>
+          <td class="mono">${s.avg_relevant_at_5.toFixed(2)}</td>
+          <td class="mono">${s.avg_latency_ms.toFixed(1)}ms</td>
+        </tr>`;
+      }).join('');
+
+      // Individual test rows
+      const testRows = (run.results || []).map((r, idx) => {
+        const passClass = r.passed ? 'pass' : 'fail';
+        const passText = r.passed ? 'PASS' : 'FAIL';
+        const rowId = `tr-${idx}`;
+        const detId = `det-${idx}`;
+        return `
+        <tr class="test-row" data-det="${detId}" id="${rowId}">
+          <td><span class="expand-icon">▶</span></td>
+          <td class="mono">${r.test_id}</td>
+          <td><span class="badge ${passClass}">${passText}</span></td>
+          <td>${r.description.slice(0,46)}</td>
+          <td class="mono">${r.j1_score.toFixed(3)}</td>
+          <td class="mono">${r.relevant_at_5.toFixed(2)}</td>
+          <td class="mono">${r.latency_ms.toFixed(1)}ms</td>
+        </tr>
+        <tr id="${detId}" style="display:none">
+          <td colspan="7">
+            <div class="detail-box">
+              <dl class="dl">
+                <dt>Category</dt><dd>${r.category}</dd>
+                <dt>Query</dt><dd>${esc(r.query)}</dd>
+                <dt>Expected</dt><dd>${esc(r.expected_answer)}</dd>
+                <dt>Retrieved (top-5)</dt><dd>${esc(r.actual_text || '—')}</dd>
+                <dt>Notes</dt><dd>${esc(r.notes || '—')}</dd>
+                <dt>Items returned</dt><dd>${r.items_returned}</dd>
+                <dt>Token vectors</dt><dd>${r.vectors_used}</dd>
+                <dt>LLM calls</dt><dd>${r.llm_calls}</dd>
+              </dl>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+
+      document.getElementById('main-panel').innerHTML = `
+        <!-- Summary cards -->
+        <div class="summary-row">
+          <div class="card">
+            <div class="card-label">Pass Rate</div>
+            <div class="card-value ${rateColor}">${rate}%</div>
+            <div class="card-sub">${run.passed}/${run.total} tests</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Failed</div>
+            <div class="card-value ${run.failed > 0 ? 'red' : 'green'}">${run.failed}</div>
+            <div class="card-sub">test${run.failed !== 1 ? 's' : ''}</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Runtime</div>
+            <div class="card-value indigo">${run.total_runtime_ms}ms</div>
+            <div class="card-sub">total</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Run</div>
+            <div class="card-value" style="font-size:0.9rem;color:#888">${ts}</div>
+          </div>
+        </div>
+
+        <!-- Category summary -->
+        <div class="section-title">By Category</div>
+        <table>
+          <thead><tr>
+            <th>Category</th><th>Pass</th><th>Rate</th>
+            <th>Avg J1</th><th>Avg R@5</th><th>Avg Lat</th>
+          </tr></thead>
+          <tbody>${catRows}</tbody>
+        </table>
+
+        <!-- Engine diagnostics -->
+        <div class="section-title">Engine Diagnostics</div>
+        <div class="diag-grid">
+          <div class="diag-item"><dt>PPMI-SVD vectors</dt><dd>${snap.token_vectors_populated || 0} tokens × ${snap.vector_dims_ppmi_svd || 50} dims</dd></div>
+          <div class="diag-item"><dt>SentenceTransformer</dt><dd>${snap.vector_dims_sentence_transformer || 384} dims · pgvector</dd></div>
+          <div class="diag-item"><dt>recall_long_tail</dt><dd>${snap.recall_long_tail_location || '—'}</dd></div>
+          <div class="diag-item"><dt>Auto-trigger</dt><dd class="${snap.recall_auto_trigger ? 'on' : 'off'}">${snap.recall_auto_trigger ? '✓ enabled (every 50 writes + 5min)' : '✗ manual only'}</dd></div>
+          <div class="diag-item"><dt>Vectors persisted</dt><dd class="${snap.vectors_persisted ? 'on' : 'off'}">${snap.vectors_persisted ? '✓ yes' : '✗ in-memory (lost on restart)'}</dd></div>
+          <div class="diag-item"><dt>Total items (all ns)</dt><dd>${snap.total_items_across_all_namespaces || 0}</dd></div>
+        </div>
+
+        <!-- Individual tests -->
+        <div class="section-title">All Tests</div>
+        <table>
+          <thead><tr>
+            <th style="width:20px"></th>
+            <th>ID</th><th>Status</th><th>Description</th>
+            <th>J1</th><th>R@5</th><th>Latency</th>
+          </tr></thead>
+          <tbody id="test-tbody">${testRows}</tbody>
+        </table>
+      `;
+
+      // Expand/collapse individual test rows
+      document.querySelectorAll('.test-row').forEach(row => {
+        row.addEventListener('click', () => {
+          const detId = row.dataset.det;
+          const det = document.getElementById(detId);
+          const open = row.classList.toggle('open');
+          det.style.display = open ? 'table-row' : 'none';
+        });
+      });
+    }
+
+    function esc(s) {
+      if (!s) return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // ----------------------------------------------------------------
+    // Init
+    // ----------------------------------------------------------------
+    (async () => {
+      const manifest = await loadManifest();
+      if (!manifest.length) {
+        renderSidebar([], null);
+        document.getElementById('main-panel').innerHTML =
+          '<div class="empty-state">No test runs yet.<br><br>Run: <code style="font-family:monospace;color:#ff6b35">python3 run_tests.py</code></div>';
+        return;
+      }
+      // Load most recent run automatically
+      renderSidebar(manifest, manifest[0].run_id);
+      const latest = await loadRun(manifest[0].file);
+      renderMain(latest);
+    })();
+  </script>
+  <script src="footer.js?v=2"></script>
+
+</body>
+</html>

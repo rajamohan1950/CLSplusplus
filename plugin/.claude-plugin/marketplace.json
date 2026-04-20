@@ -1,0 +1,9 @@
+{
+  "plugins": [
+    {
+      "name": "cls-memory",
+      "description": "Persistent cross-session memory for Claude Code. Every session remembers what happened in previous sessions — powered by CLS++.",
+      "path": "./plugin"
+    }
+  ]
+}

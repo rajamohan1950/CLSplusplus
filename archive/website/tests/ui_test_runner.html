@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLS++ Test Suite</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #f5f5f7; color: #1d1d1f; min-height: 100vh; -webkit-font-smoothing: antialiased; }
+
+    .launcher { max-width: 800px; margin: 0 auto; padding: 60px 24px; }
+    .launcher h1 { font-size: 2.2rem; font-weight: 600; margin-bottom: 6px; letter-spacing: -0.03em; }
+    .launcher .sub { font-size: 1rem; color: #86868b; margin-bottom: 40px; }
+
+    .suite-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 32px; }
+    .suite-card {
+      background: #fff; border-radius: 16px; padding: 24px; cursor: pointer;
+      border: 2px solid transparent; transition: all 0.2s;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+    }
+    .suite-card:hover { border-color: #ff6b35; box-shadow: 0 4px 20px rgba(255,107,53,0.1); }
+    .suite-card.active { border-color: #ff6b35; background: rgba(255,107,53,0.03); }
+    .suite-card h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; }
+    .suite-card .count { font-size: 2rem; font-weight: 600; color: #ff6b35; margin-bottom: 4px; }
+    .suite-card p { font-size: 0.85rem; color: #86868b; line-height: 1.5; }
+
+    .api-key-row { display: flex; gap: 10px; margin-bottom: 24px; align-items: center; }
+    .api-key-row input {
+      flex: 1; padding: 10px 14px; border: 1px solid rgba(0,0,0,0.1); border-radius: 10px;
+      font-size: 0.9rem; font-family: 'JetBrains Mono', monospace; outline: none;
+    }
+    .api-key-row input:focus { border-color: #ff6b35; }
+    .api-key-row label { font-size: 0.85rem; color: #86868b; white-space: nowrap; }
+
+    .run-btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 28px; background: #ff6b35; color: #fff; border: none; border-radius: 980px;
+      font-size: 1rem; font-weight: 600; cursor: pointer; transition: opacity 0.2s;
+      font-family: inherit;
+    }
+    .run-btn:hover { opacity: 0.85; }
+    .run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .run-all-btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 28px; background: #1d1d1f; color: #fff; border: none; border-radius: 980px;
+      font-size: 1rem; font-weight: 600; cursor: pointer; transition: opacity 0.2s;
+      font-family: inherit; margin-left: 12px;
+    }
+    .run-all-btn:hover { opacity: 0.85; }
+
+    #results { margin-top: 32px; }
+    .running { font-size: 1.1rem; color: #ff6b35; font-weight: 600; padding: 20px 0; }
+  </style>
+</head>
+<body>
+  <div class="launcher" id="launcher">
+    <h1>CLS++ Test Suite</h1>
+    <p class="sub">Comprehensive automated testing — UI, integration, and regression</p>
+
+    <div class="suite-grid">
+      <div class="suite-card active" data-suite="ui" onclick="selectSuite('ui')">
+        <div class="count">30</div>
+        <h3>UI Tests</h3>
+        <p>Nav consistency, video backgrounds, CTAs, theme compliance, accessibility across all 23 pages</p>
+      </div>
+      <div class="suite-card" data-suite="integration" onclick="selectSuite('integration')">
+        <div class="count">100</div>
+        <h3>Integration Tests</h3>
+        <p>API endpoints, auth, memory write/read/forget, cross-model, billing, security, edge cases</p>
+      </div>
+      <div class="suite-card" data-suite="regression" onclick="selectSuite('regression')">
+        <div class="count">15</div>
+        <h3>Regression Tests</h3>
+        <p>Guards against known bugs: backdrop-filter rendering, CSS specificity, cache-busting, old layouts</p>
+      </div>
+    </div>
+
+    <div class="api-key-row" id="api-key-row" style="display:none">
+      <label>API Key (for auth-required tests):</label>
+      <input type="text" id="api-key" placeholder="cls_live_... (optional — tests will skip without it)">
+    </div>
+
+    <button class="run-btn" id="run-btn" onclick="runSelected()">Run Selected Suite</button>
+    <button class="run-all-btn" onclick="runAll()">Run All Suites</button>
+  </div>
+
+  <div id="results"></div>
+
+  <script>
+    var selectedSuite = 'ui';
+
+    function selectSuite(suite) {
+      selectedSuite = suite;
+      document.querySelectorAll('.suite-card').forEach(function(c) {
+        c.classList.toggle('active', c.dataset.suite === suite);
+      });
+      document.getElementById('api-key-row').style.display = suite === 'integration' ? 'flex' : 'none';
+    }
+
+    // Check URL params for auto-run
+    var params = new URLSearchParams(window.location.search);
+    if (params.get('suite')) {
+      selectSuite(params.get('suite'));
+    }
+
+    function loadScript(src) {
+      return new Promise(function(resolve, reject) {
+        var s = document.createElement('script');
+        s.src = src + '?_t=' + Date.now();
+        s.onload = resolve;
+        s.onerror = reject;
+        document.body.appendChild(s);
+      });
+    }
+
+    async function runSuite(suite) {
+      var resultDiv = document.getElementById('results');
+      resultDiv.innerHTML = '<div class="running">Running ' + suite + ' tests...</div>';
+
+      if (suite === 'ui') {
+        if (!window.CLSTests) await loadScript('ui_tests.js');
+        var res = await window.CLSTests.runAllTests();
+        window.CLSTests.renderReport(res);
+      } else if (suite === 'integration') {
+        if (!window.CLSIntegrationTests) await loadScript('integration_tests.js');
+        var apiKey = document.getElementById('api-key').value.trim();
+        var res = await window.CLSIntegrationTests.runAllTests(apiKey);
+        window.CLSIntegrationTests.renderReport(res);
+      } else if (suite === 'regression') {
+        if (!window.CLSRegressionTests) await loadScript('regression_tests.js');
+        var res = await window.CLSRegressionTests.runAllTests();
+        window.CLSRegressionTests.renderReport(res);
+      }
+    }
+
+    function runSelected() {
+      document.getElementById('launcher').style.display = 'none';
+      runSuite(selectedSuite);
+    }
+
+    async function runAll() {
+      document.getElementById('launcher').style.display = 'none';
+      var resultDiv = document.getElementById('results');
+      var allResults = { ui: [], integration: [], regression: [] };
+
+      // Run all three suites
+      resultDiv.innerHTML = '<div class="running">Running all 145 test cases...</div>';
+
+      // UI
+      if (!window.CLSTests) await loadScript('ui_tests.js');
+      allResults.ui = await window.CLSTests.runAllTests();
+
+      // Integration
+      if (!window.CLSIntegrationTests) await loadScript('integration_tests.js');
+      var apiKey = document.getElementById('api-key').value.trim();
+      allResults.integration = await window.CLSIntegrationTests.runAllTests(apiKey);
+
+      // Regression
+      if (!window.CLSRegressionTests) await loadScript('regression_tests.js');
+      allResults.regression = await window.CLSRegressionTests.runAllTests();
+
+      // Combined report
+      renderCombinedReport(allResults);
+    }
+
+    function renderCombinedReport(allResults) {
+      var suites = [
+        { name: 'UI Tests (30 TCs)', results: allResults.ui },
+        { name: 'Integration Tests (100 TCs)', results: allResults.integration },
+        { name: 'Regression Tests (15 TCs)', results: allResults.regression }
+      ];
+
+      var totalPassed = 0, totalFailed = 0, totalSkipped = 0, totalAll = 0;
+      suites.forEach(function(s) {
+        s.results.forEach(function(r) {
+          totalAll++;
+          if (r.status === 'PASS') totalPassed++;
+          else if (r.status === 'FAIL') totalFailed++;
+          else if (r.status === 'SKIP') totalSkipped++;
+        });
+      });
+
+      var rate = totalAll > 0 ? ((totalPassed / (totalAll - totalSkipped)) * 100).toFixed(1) : '0.0';
+
+      var html = '<div style="font-family:Inter,system-ui,sans-serif;padding:24px;max-width:1100px;margin:0 auto;color:#1d1d1f">';
+      html += '<h1 style="font-size:2rem;font-weight:800;margin-bottom:8px">CLS++ Full Test Report</h1>';
+      html += '<p style="font-size:1.1rem;margin-bottom:24px;color:#86868b">145 test cases — UI + Integration + Regression</p>';
+
+      // Summary
+      html += '<div style="display:flex;gap:16px;margin-bottom:32px;flex-wrap:wrap">';
+      html += '<div style="background:#fff;border-radius:16px;padding:20px 28px;box-shadow:0 2px 12px rgba(0,0,0,0.04)"><div style="font-size:0.75rem;color:#86868b;text-transform:uppercase;margin-bottom:4px">Pass Rate</div><div style="font-size:2.2rem;font-weight:800;color:' + (totalFailed === 0 ? '#16a34a' : '#ff6b35') + '">' + rate + '%</div></div>';
+      html += '<div style="background:#fff;border-radius:16px;padding:20px 28px;box-shadow:0 2px 12px rgba(0,0,0,0.04)"><div style="font-size:0.75rem;color:#86868b;text-transform:uppercase;margin-bottom:4px">Passed</div><div style="font-size:2.2rem;font-weight:800;color:#16a34a">' + totalPassed + '</div></div>';
+      html += '<div style="background:#fff;border-radius:16px;padding:20px 28px;box-shadow:0 2px 12px rgba(0,0,0,0.04)"><div style="font-size:0.75rem;color:#86868b;text-transform:uppercase;margin-bottom:4px">Failed</div><div style="font-size:2.2rem;font-weight:800;color:' + (totalFailed > 0 ? '#ef4444' : '#16a34a') + '">' + totalFailed + '</div></div>';
+      html += '<div style="background:#fff;border-radius:16px;padding:20px 28px;box-shadow:0 2px 12px rgba(0,0,0,0.04)"><div style="font-size:0.75rem;color:#86868b;text-transform:uppercase;margin-bottom:4px">Skipped</div><div style="font-size:2.2rem;font-weight:800;color:#d97706">' + totalSkipped + '</div></div>';
+      html += '</div>';
+
+      // Per-suite summary
+      suites.forEach(function(s) {
+        var sp = s.results.filter(function(r) { return r.status === 'PASS'; }).length;
+        var sf = s.results.filter(function(r) { return r.status === 'FAIL'; }).length;
+        var ss = s.results.filter(function(r) { return r.status === 'SKIP'; }).length;
+        var color = sf === 0 ? '#16a34a' : '#ef4444';
+        html += '<details style="margin-bottom:8px;background:#fff;border-radius:12px;border:1px solid rgba(0,0,0,0.06)">';
+        html += '<summary style="padding:14px 18px;cursor:pointer;font-weight:700;font-size:1rem"><span style="color:' + color + '">' + (sf === 0 ? '✓' : '✗') + '</span> ' + s.name + ' <span style="color:#86868b;font-weight:400">' + sp + ' passed, ' + sf + ' failed, ' + ss + ' skipped</span></summary>';
+        html += '<div style="padding:0 18px 14px;max-height:400px;overflow-y:auto">';
+
+        var tcs = {};
+        s.results.forEach(function(r) { if (!tcs[r.tc]) tcs[r.tc] = []; tcs[r.tc].push(r); });
+        Object.keys(tcs).forEach(function(tc) {
+          var tr = tcs[tc];
+          var hasFail = tr.some(function(r) { return r.status === 'FAIL'; });
+          html += '<div style="padding:4px 0;font-size:0.85rem"><span style="color:' + (hasFail ? '#ef4444' : '#16a34a') + '">' + (hasFail ? '✗' : '✓') + '</span> ' + tc + '</div>';
+        });
+        html += '</div></details>';
+      });
+
+      // Failures
+      var allFails = [];
+      suites.forEach(function(s) {
+        s.results.filter(function(r) { return r.status === 'FAIL'; }).forEach(function(r) { allFails.push(r); });
+      });
+      if (allFails.length > 0) {
+        html += '<h2 style="color:#ef4444;font-size:1.2rem;margin:24px 0 12px">All Failures (' + allFails.length + ')</h2>';
+        html += '<div style="background:rgba(239,68,68,0.04);border:1px solid rgba(239,68,68,0.12);border-radius:16px;padding:16px">';
+        allFails.forEach(function(r) {
+          html += '<div style="padding:4px 0;font-size:0.85rem;border-bottom:1px solid rgba(239,68,68,0.06)"><strong style="color:#ef4444">[' + r.tc + ']</strong> ' + r.name;
+          if (r.detail) html += ' <span style="color:#86868b"> - ' + r.detail + '</span>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+
+      html += '</div>';
+      document.body.style.background = '#f5f5f7';
+      document.getElementById('results').innerHTML = html;
+    }
+
+    // Auto-run if suite param present and autorun=true
+    if (params.get('autorun') === 'true') {
+      runSelected();
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<title>CLS++ E2E UI Test Suite</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#06060c;color:#f0f0f8;font-family:-apple-system,sans-serif;padding:20px}
+  h1{font-size:18px;margin-bottom:16px;color:#7c6ef0}
+  .suite{margin-bottom:20px;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:16px}
+  .suite-title{font-size:14px;font-weight:700;margin-bottom:10px;color:#5de0c5}
+  .test{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px}
+  .pass{color:#5de0c5}.fail{color:#f05d9a}.running{color:#ffd700}
+  .icon{width:16px;text-align:center;font-size:14px}
+  #summary{font-size:14px;font-weight:700;padding:12px;border-radius:8px;margin-top:16px}
+  .log{font-size:10px;color:rgba(255,255,255,.4);margin-left:24px;max-height:40px;overflow:hidden}
+</style>
+</head>
+<body>
+<h1>CLS++ End-to-End UI Test Suite</h1>
+<div id="output"></div>
+<div id="summary"></div>
+
+<script>
+const API = 'http://localhost:8080';
+let passed = 0, failed = 0, total = 0;
+const output = document.getElementById('output');
+
+function suite(name) {
+  const div = document.createElement('div');
+  div.className = 'suite';
+  div.innerHTML = `<div class="suite-title">${name}</div><div class="tests"></div>`;
+  output.appendChild(div);
+  return div.querySelector('.tests');
+}
+
+function result(container, name, pass, detail) {
+  total++;
+  if (pass) passed++; else failed++;
+  const div = document.createElement('div');
+  div.className = 'test';
+  div.innerHTML = `<span class="icon">${pass?'✅':'❌'}</span><span class="${pass?'pass':'fail'}">${name}</span>`;
+  if (detail) div.innerHTML += `<span class="log">${detail}</span>`;
+  container.appendChild(div);
+}
+
+async function store(uid, text, model) {
+  await fetch(`${API}/api/store/${uid}`, {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({text, source:'user', model})});
+}
+
+async function ask(uid, message, model) {
+  const r = await fetch(`${API}/api/chat/${uid}`, {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({message, model})});
+  return await r.json();
+}
+
+async function ctx(uid, query) {
+  const r = await fetch(`${API}/api/context`, {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({uid, query})});
+  return await r.json();
+}
+
+async function getMems(uid) {
+  const r = await fetch(`${API}/api/memories/${uid||''}`);
+  return await r.json();
+}
+
+async function del(uid) {
+  await fetch(`${API}/api/memories/${uid}`, {method:'DELETE'});
+}
+
+async function runAll() {
+  const uid = 'e2e_ui_test_' + Date.now();
+  await del(uid);
+
+  // ═══════════════════════════════════════
+  // SUITE 1: STORE + RETRIEVE
+  // ═══════════════════════════════════════
+  const s1 = suite('1. Store and Retrieve');
+  await store(uid, 'My name is Mei Lin and I am 31', 'claude');
+  await store(uid, 'I work at Grab in Singapore as ML Engineer', 'chatgpt');
+  await store(uid, 'My cat is named Dumpling', 'gemini');
+  await store(uid, 'I have a severe peanut allergy', 'claude');
+  await store(uid, 'My boyfriend James is a pilot', 'chatgpt');
+  const m1 = await getMems(uid);
+  result(s1, 'Memories stored', m1.count >= 5, `count=${m1.count}`);
+  result(s1, 'Has Claude memories', m1.memories.some(m=>m.source_model==='claude'));
+  result(s1, 'Has ChatGPT memories', m1.memories.some(m=>m.source_model==='chatgpt'));
+  result(s1, 'Has Gemini memories', m1.memories.some(m=>m.source_model==='gemini'));
+  result(s1, 'Labels field exists', m1.memories[0].labels !== undefined);
+  result(s1, 'Timestamp set', m1.memories[0].ts && m1.memories[0].ts.length > 5);
+  result(s1, 'Phase set', ['liquid','solid','glass'].includes(m1.memories[0].phase));
+  result(s1, 'Category assigned', m1.memories[0].category && m1.memories[0].category.length > 2);
+
+  // ═══════════════════════════════════════
+  // SUITE 2: CONTEXT INJECTION FORMAT
+  // ═══════════════════════════════════════
+  const s2 = suite('2. Context Injection Prompt');
+  const c1 = await ctx(uid, 'what is my name?');
+  result(s2, 'Returns context', c1.count > 0);
+  result(s2, 'Starts with [MEMORY — VERIFIED]', (c1.context||'').includes('[MEMORY'));
+  result(s2, 'Has ground truth instruction', (c1.context||'').includes('ground truth'));
+  result(s2, 'Contains actual fact', (c1.context||'').includes('Mei Lin'));
+  result(s2, 'Uses dash bullets', (c1.context||'').includes('- '));
+  result(s2, 'No [Schema:] leak', !(c1.context||'').includes('[Schema:'));
+  result(s2, 'No [CLS++ Memory] leak', !(c1.context||'').includes('[CLS++'));
+  const cShort = await ctx(uid, 'hi');
+  result(s2, 'Short query rejected', cShort.count === 0);
+
+  // ═══════════════════════════════════════
+  // SUITE 3: NOISE FILTERING
+  // ═══════════════════════════════════════
+  const s3 = suite('3. Noise Filtering');
+  await store(uid, 'Personalization in progress Connecting...', 'gemini');
+  await store(uid, 'The following facts were learned about this user', 'claude');
+  await store(uid, '[CLS++ Memory] some old injection', 'chatgpt');
+  await store(uid, 'How can I help you today?', 'chatgpt');
+  const m3 = await getMems(uid);
+  const noisy = m3.memories.filter(m =>
+    m.text.toLowerCase().includes('personalization') ||
+    m.text.includes('[CLS++') ||
+    m.text.includes('following facts') ||
+    m.text.includes('How can I help'));
+  result(s3, 'Noise entries rejected', noisy.length === 0, `found ${noisy.length} noise`);
+
+  // ═══════════════════════════════════════
+  // SUITE 4: CROSS-LLM SINGLE-HOP
+  // ═══════════════════════════════════════
+  const s4 = suite('4. Cross-LLM Single-Hop (Claude stored → ChatGPT asks)');
+  const sh1 = await ask(uid, 'What is my name?', 'gpt-4o-mini');
+  result(s4, 'Name recall', sh1.reply.includes('Mei Lin'), sh1.reply.substring(0,80));
+  const sh2 = await ask(uid, 'What pet do I have?', 'gpt-4o-mini');
+  result(s4, 'Pet recall (Gemini→ChatGPT)', sh2.reply.includes('Dumpling'), sh2.reply.substring(0,80));
+
+  // ═══════════════════════════════════════
+  // SUITE 5: CROSS-LLM MULTI-HOP
+  // ═══════════════════════════════════════
+  const s5 = suite('5. Cross-LLM Multi-Hop');
+  // Add more facts for multi-hop
+  await store(uid, 'James proposed on New Years Eve in Kyoto', 'claude');
+  await store(uid, 'We are planning wedding in Taipei October 2025', 'chatgpt');
+  await store(uid, 'My mother has early Alzheimers and lives in Taipei', 'claude');
+  await store(uid, 'I am building MemoryLens, an app for Alzheimers caregivers', 'gemini');
+
+  const mh1 = await ask(uid, 'Where is my wedding and does my mother live near there?', 'gpt-4o-mini');
+  result(s5, '2-hop: wedding city + mother city', mh1.reply.includes('Taipei'), mh1.reply.substring(0,100));
+
+  const mh2 = await ask(uid, 'How does my app connect to my family situation?', 'gpt-4o-mini');
+  result(s5, '2-hop: MemoryLens ← Alzheimers ← mother',
+    mh2.reply.toLowerCase().includes('alzheimer') && mh2.reply.includes('MemoryLens'),
+    mh2.reply.substring(0,120));
+
+  // ═══════════════════════════════════════
+  // SUITE 6: ADVERSARIAL — CONTRADICTIONS
+  // ═══════════════════════════════════════
+  const s6 = suite('6. Adversarial — Contradictions');
+
+  const ad1 = await ask(uid, 'I want to eat some peanut butter. What brand is good?', 'gpt-4o-mini');
+  result(s6, 'Peanut allergy warning', ad1.reply.toLowerCase().includes('allergy') || ad1.reply.toLowerCase().includes('peanut allergy'), ad1.reply.substring(0,120));
+
+  await store(uid, 'I used to love coffee but quit completely, only green tea now', 'chatgpt');
+  const ad2 = await ask(uid, 'I drink 3 coffees a day. Best coffee maker?', 'gpt-4o-mini');
+  result(s6, 'Coffee→tea correction', ad2.reply.toLowerCase().includes('tea') || ad2.reply.toLowerCase().includes('stopped') || ad2.reply.toLowerCase().includes('quit'), ad2.reply.substring(0,120));
+
+  const ad3 = await ask(uid, 'What breed is my dog?', 'gpt-4o-mini');
+  result(s6, 'No dog (has cat Dumpling)', ad3.reply.toLowerCase().includes('cat') || ad3.reply.toLowerCase().includes('dumpling') || !ad3.reply.toLowerCase().includes('your dog'), ad3.reply.substring(0,120));
+
+  // ═══════════════════════════════════════
+  // SUITE 7: TEMPORAL — EVOLVED FACTS
+  // ═══════════════════════════════════════
+  const s7 = suite('7. Temporal — Evolved Facts');
+  await store(uid, 'I was taking sertraline 50mg for anxiety since 2022', 'claude');
+  await store(uid, 'I switched from sertraline to escitalopram 10mg in April 2025', 'claude');
+  await store(uid, 'My old therapist Dr Wong retired, new one is Dr Tan at Mount Elizabeth', 'chatgpt');
+
+  const tm1 = await ask(uid, 'What anxiety medication am I on now?', 'gpt-4o-mini');
+  result(s7, 'Current med (escitalopram)', tm1.reply.toLowerCase().includes('escitalopram'), tm1.reply.substring(0,100));
+
+  const tm2 = await ask(uid, 'Who is my therapist?', 'gpt-4o-mini');
+  result(s7, 'Current therapist (Dr Tan)', tm2.reply.includes('Tan'), tm2.reply.substring(0,100));
+
+  // ═══════════════════════════════════════
+  // SUITE 8: DERIVED REASONING
+  // ═══════════════════════════════════════
+  const s8 = suite('8. Derived Reasoning');
+  await store(uid, 'I completed the Ironman triathlon in Langkawi in 13 hours 42 minutes', 'chatgpt');
+  await store(uid, 'My grandmother gave me a jade pendant before she passed in 2020', 'claude');
+
+  const dr1 = await ask(uid, 'I want something meaningful from family for my wedding', 'gpt-4o-mini');
+  result(s8, 'Jade pendant for wedding', dr1.reply.toLowerCase().includes('jade') || dr1.reply.toLowerCase().includes('pendant'), dr1.reply.substring(0,120));
+
+  const dr2 = await ask(uid, 'What was my Ironman time?', 'gpt-4o-mini');
+  result(s8, 'Exact finish time recall', dr2.reply.includes('13') && dr2.reply.includes('42'), dr2.reply.substring(0,100));
+
+  // ═══════════════════════════════════════
+  // SUITE 9: NEARBY / PROXIMITY
+  // ═══════════════════════════════════════
+  const s9 = suite('9. Nearby / Proximity');
+  const nb1 = await ask(uid, 'Good restaurants near where I live that fit my diet?', 'gpt-4o-mini');
+  result(s9, 'Knows location (Singapore) + allergy', nb1.reply.includes('Singapore') || nb1.reply.toLowerCase().includes('peanut'), nb1.reply.substring(0,120));
+
+  // ═══════════════════════════════════════
+  // SUITE 10: SORT + FILTER API
+  // ═══════════════════════════════════════
+  const s10 = suite('10. Sort and Filter');
+  const byStrength = await (await fetch(`${API}/api/memories/${uid}?sort=strength&order=desc`)).json();
+  result(s10, 'Sort by strength', byStrength.count > 0);
+  const byOldest = await (await fetch(`${API}/api/memories/${uid}?sort=ts&order=asc`)).json();
+  result(s10, 'Sort by oldest', byOldest.count > 0);
+  const byCat = await (await fetch(`${API}/api/memories/${uid}?category=Identity`)).json();
+  result(s10, 'Filter by category', byCat.count >= 0);
+  const byModel = await (await fetch(`${API}/api/memories/${uid}?model=claude`)).json();
+  result(s10, 'Filter by model', byModel.count >= 1);
+
+  // ═══════════════════════════════════════
+  // SUITE 11: LABELS
+  // ═══════════════════════════════════════
+  const s11 = suite('11. Labels');
+  const memId = (await getMems(uid)).memories[0].id;
+  const lblR = await (await fetch(`${API}/api/memories/${uid}/${memId}/labels`, {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({labels:['important','personal']})
+  })).json();
+  result(s11, 'PATCH labels', lblR.ok === true);
+  const withLbl = await getMems(uid);
+  const labeled = withLbl.memories.find(m=>m.id===memId);
+  result(s11, 'Labels persisted', labeled && labeled.labels.includes('important'));
+  const filtLbl = await (await fetch(`${API}/api/memories/${uid}?label=important`)).json();
+  result(s11, 'Filter by label', filtLbl.count >= 1);
+  result(s11, 'available_labels in response', (withLbl.available_labels||[]).includes('important'));
+
+  // ═══════════════════════════════════════
+  // SUITE 12: PAGES LOAD
+  // ═══════════════════════════════════════
+  const s12 = suite('12. All Pages Load');
+  for (const path of ['/ui/index.html','/ui/memory.html','/ui/install.html','/ui/memory-activate.html','/health']) {
+    try {
+      const r = await fetch(API + path);
+      result(s12, `GET ${path}`, r.status === 200, `${r.status}`);
+    } catch(e) {
+      result(s12, `GET ${path}`, false, e.message);
+    }
+  }
+
+  // ═══════════════════════════════════════
+  // SUITE 13: API ENDPOINTS
+  // ═══════════════════════════════════════
+  const s13 = suite('13. API Endpoints');
+  const health = await (await fetch(`${API}/health`)).json();
+  result(s13, '/health', health.status === 'ok');
+  const ctxLog = await (await fetch(`${API}/api/context-log`)).json();
+  result(s13, '/api/context-log', Array.isArray(ctxLog.log));
+  const extDl = await fetch(`${API}/extension/download`);
+  result(s13, '/extension/download', extDl.status === 200);
+  const detect = await (await fetch(`${API}/api/detect-browsers`)).json();
+  result(s13, '/api/detect-browsers', detect.ok !== undefined);
+
+  // Cleanup
+  await del(uid);
+
+  // ═══════════════════════════════════════
+  // SUMMARY
+  // ═══════════════════════════════════════
+  const sum = document.getElementById('summary');
+  sum.style.background = failed === 0 ? 'rgba(93,224,197,.15)' : 'rgba(240,93,154,.15)';
+  sum.style.color = failed === 0 ? '#5de0c5' : '#f05d9a';
+  sum.textContent = `${passed}/${total} PASSED | ${failed} FAILED`;
+}
+
+runAll().catch(e => {
+  document.getElementById('summary').textContent = 'ERROR: ' + e.message;
+  document.getElementById('summary').style.color = '#f05d9a';
+});
+</script>
+</body>
+</html>

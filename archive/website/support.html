@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CLS++ Support</title>
+  <link rel="stylesheet" href="styles.css?v=2"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:transparent;color:#1d1d1f;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif;
+      -webkit-font-smoothing:antialiased;padding:40px 20px;line-height:1.7}
+    .support-container{max-width:720px;margin:80px auto 0;background:rgba(255,255,255,0.92);border-radius:24px;box-shadow:0 4px 40px rgba(0,0,0,0.08);padding:40px;position:relative;z-index:1}
+    h1{font-size:28px;margin-bottom:8px;color:#ff6b35}
+    .sub{font-size:14px;color:#86868b;margin-bottom:32px}
+    h2{font-size:18px;margin:28px 0 12px;color:#ff6b35}
+    p,li{font-size:14px;color:#1d1d1f;margin-bottom:12px}
+    ul{padding-left:24px;margin-bottom:16px}
+    a{color:#ff6b35}
+    code{background:rgba(255,107,53,0.1);padding:2px 6px;border-radius:4px;font-size:13px}
+    .contact{background:rgba(255,107,53,0.06);border:1px solid rgba(255,107,53,0.15);
+      border-radius:12px;padding:20px;margin:20px 0}
+  </style>
+  <script src="posthog.js" defer></script>
+  <script src="variant-loader.js"></script>
+  <script src="feedback-widget.js" defer></script>
+</head>
+<body>
+<div class="video-bg"><video autoplay muted loop playsinline poster="beach-bg.jpg"><source src="sunrise-ocean.mp4" type="video/mp4"></video></div>
+<div class="video-overlay"></div>
+<nav class="nav"><div class="nav-inner"><a href="/" class="logo">CLS<span class="logo-plus">++</span></a><div class="nav-links"><a href="/">Home</a><a href="/docs.html">API</a><a href="/integrate.html">Integrate</a><a href="/#pricing">Pricing</a><div id="nav-auth" class="nav-auth"></div><a href="/getting-started.html" class="nav-cta">Get Started</a></div></div></nav>
+<div class="support-container">
+  <h1>CLS++ Support</h1>
+  <div class="sub">Get help with CLS++ Memory extension and server</div>
+
+  <div class="contact">
+    <strong>Email:</strong> <a href="mailto:rajamohan1950@gmail.com">rajamohan1950@gmail.com</a><br/>
+    <strong>GitHub:</strong> <a href="https://github.com/rajamohan1950/CLSplusplus/issues">Report an issue</a>
+  </div>
+
+  <h2>Frequently Asked Questions</h2>
+
+  <h2>How do I install CLS++?</h2>
+  <p>Load the extension in Chrome via <code>chrome://extensions</code> → Developer mode → Load unpacked. Point it to the extension folder. Then start the local server and you're ready to go.</p>
+
+  <h2>The extension popup says "Server unreachable"</h2>
+  <p>Make sure the CLS++ server is running on port 8080. Check:</p>
+  <ul>
+    <li>Open <code>http://localhost:8080/health</code> in your browser — it should return <code>{"status":"ok"}</code></li>
+    <li>If not running, start it: <code>cd prototype && PYTHONPATH=../src python3 -m uvicorn server:app --host 0.0.0.0 --port 8080</code></li>
+    <li>Make sure "Local mode" is ON in the extension popup</li>
+  </ul>
+
+  <h2>Memories are not being captured</h2>
+  <ul>
+    <li>Check that "Auto-inject" is ON in the extension popup</li>
+    <li>Check that "Local mode" is ON if running locally</li>
+    <li>Open the Chrome DevTools console on the AI site — you should see <code>[CLS++] fetch interceptor active on chatgpt/claude/gemini</code></li>
+    <li>Check <code>http://localhost:8080/ui/memory.html</code> to see if memories appear</li>
+  </ul>
+
+  <h2>How do I delete all my memories?</h2>
+  <p>Delete the file <code>~/.clspp/memories.json</code> and restart the server. Or use the API: <code>curl -X DELETE http://localhost:8080/api/memories/YOUR_UID</code></p>
+
+  <h2>Which AI sites are supported?</h2>
+  <ul>
+    <li><strong>ChatGPT</strong> — chatgpt.com and chat.openai.com</li>
+    <li><strong>Claude</strong> — claude.ai</li>
+    <li><strong>Gemini</strong> — gemini.google.com</li>
+  </ul>
+
+  <h2>Is my data private?</h2>
+  <p>In local mode (default), all data stays on your machine. Nothing is sent to any external server. See our <a href="privacy.html">Privacy Policy</a> for details.</p>
+
+  <h2>The brain icon doesn't appear in the menu bar</h2>
+  <p>The menu bar daemon needs Accessibility permission. Go to <strong>System Settings → Privacy & Security → Accessibility</strong> and enable Python or Terminal.</p>
+
+</div>
+<script src="footer.js?v=2"></script>
+</body>
+</html>

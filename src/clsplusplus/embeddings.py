@@ -3,7 +3,6 @@
 from typing import Optional
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 from clsplusplus.config import Settings
 from clsplusplus.models import MemoryItem
@@ -14,21 +13,29 @@ class EmbeddingService:
 
     def __init__(self, settings: Optional[Settings] = None):
         self.settings = settings or Settings()
-        self._model: Optional[SentenceTransformer] = None
+        self._model = None
 
     @property
-    def model(self) -> SentenceTransformer:
+    def model(self):
         """Lazy load the embedding model."""
         if self._model is None:
-            self._model = SentenceTransformer(self.settings.embedding_model)
+            try:
+                from sentence_transformers import SentenceTransformer
+                self._model = SentenceTransformer(self.settings.embedding_model)
+            except ImportError:
+                self._model = False  # sentinel: unavailable
         return self._model
 
     def embed(self, text: str) -> list[float]:
-        """Embed a single text."""
+        """Embed a single text. Returns empty list if model unavailable."""
+        if self.model is False:
+            return []
         return self.model.encode(text, convert_to_numpy=True).tolist()
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """Embed multiple texts."""
+        """Embed multiple texts. Returns empty lists if model unavailable."""
+        if self.model is False:
+            return [[] for _ in texts]
         return self.model.encode(texts, convert_to_numpy=True).tolist()
 
     def embed_item(self, item: MemoryItem) -> MemoryItem:

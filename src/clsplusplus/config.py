@@ -17,8 +17,8 @@ class Settings(BaseSettings):
     # SaaS: API key auth (comma-separated for multiple keys)
     api_keys: str = ""
 
-    # SaaS: Require auth for memory endpoints (false = open for local/demo)
-    require_api_key: bool = False
+    # SaaS: Require auth for memory endpoints (true = secure default; set CLS_REQUIRE_API_KEY=false for local/demo)
+    require_api_key: bool = True
 
     # SaaS: Rate limit - requests per window per key
     rate_limit_requests: int = 100
@@ -26,6 +26,24 @@ class Settings(BaseSettings):
 
     # SaaS: Usage tracking for billing (marketplace)
     track_usage: bool = False
+
+    # SaaS: Tier and quota enforcement
+    tier: str = "free"                # free | pro | unlimited
+    enforce_quotas: bool = False      # Enable quota enforcement (off for local/demo)
+
+    # User auth (JWT + Google OAuth + GitHub OAuth)
+    jwt_secret: str = ""                  # CLS_JWT_SECRET (required for user auth)
+    google_client_id: str = ""            # CLS_GOOGLE_CLIENT_ID
+    google_client_secret: str = ""        # CLS_GOOGLE_CLIENT_SECRET
+    github_client_id: str = ""            # CLS_GITHUB_CLIENT_ID
+    github_client_secret: str = ""        # CLS_GITHUB_CLIENT_SECRET
+    # Optional explicit redirect URI; if empty, computed from request.base_url
+    github_redirect_uri: str = ""         # CLS_GITHUB_REDIRECT_URI
+
+    # Frontend origin for post-auth redirects. Needed when the API host
+    # (e.g. api.clsplusplus.com) differs from the UI host (www.clsplusplus.com).
+    # Leave empty to use same-origin relative redirects.
+    frontend_url: str = ""                # CLS_FRONTEND_URL
 
     # Idempotency: cache window (seconds)
     idempotency_ttl_seconds: int = 86400  # 24 hours
@@ -44,6 +62,7 @@ class Settings(BaseSettings):
     minio_bucket: str = "cls-l3"
 
     # Embeddings (used by L1/L2/L3 tiers, not by phase engine)
+    embedding_model: str = "all-MiniLM-L6-v2"
     embedding_dim: int = 384
 
     # Plasticity coefficients (α, β, γ, λ, δ)
@@ -82,6 +101,59 @@ class Settings(BaseSettings):
     phase_strength_floor: float = 0.05   # s < floor → gas phase (not retrievable)
     phase_capacity: int = 1000           # Max items per namespace (denominator for ρ)
     phase_beta_retrieval: float = 0.15   # Retrieval reinforcement: s *= (1 + β·ln(1+R))
+
+    # Temporal recency decay
+    # half-life used when query has no temporal signal (fallback)
+    temporal_recency_half_life_days: float = 90.0
+    # blend weight for queries with no temporal signal ("what are my hobbies?")
+    temporal_recency_alpha_default: float = 0.1
+    # blend weight for strong recency signals ("recently", "last week", "yesterday")
+    temporal_recency_alpha_strong: float = 0.5
+
+    # Site
+    site_base_url: str = "https://www.clsplusplus.com"  # CLS_SITE_BASE_URL
+    cookie_secure: bool = True  # CLS_COOKIE_SECURE (False for local dev only)
+    # Cookie Domain attribute. Set to ".clsplusplus.com" in prod so the session
+    # cookie set by api.clsplusplus.com is also sent on www.clsplusplus.com.
+    # Leave empty for same-host dev (cookie stays host-only).
+    cookie_domain: str = ""  # CLS_COOKIE_DOMAIN
+
+    # Razorpay billing (active payment gateway)
+    razorpay_key_id: str = ""               # CLS_RAZORPAY_KEY_ID
+    razorpay_key_secret: str = ""           # CLS_RAZORPAY_KEY_SECRET
+    razorpay_webhook_secret: str = ""       # CLS_RAZORPAY_WEBHOOK_SECRET
+
+    # Stripe billing (parked — not active)
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_price_pro: str = ""            # Stripe Price ID for Pro tier
+    stripe_price_business: str = ""       # Stripe Price ID for Business tier
+    stripe_price_enterprise: str = ""     # Stripe Price ID for Enterprise tier
+    stripe_success_url: str = "/profile.html?billing=success"
+    stripe_cancel_url: str = "/profile.html?billing=cancel"
+
+    # Email (Resend)
+    resend_api_key: str = ""                  # CLS_RESEND_API_KEY
+    email_from: str = "CLS++ <noreply@clsplusplus.com>"  # CLS_EMAIL_FROM
+
+    # ── Launch waitlist / rate-limited rollout ────────────────────────────
+    # Hard cap on users with an active API key. Walk-in signups above this
+    # are redirected to the waitlist. Waitlist-invited users bypass the cap.
+    # Set to 0 to disable the cap entirely.
+    max_active_users: int = 50
+    # Hard upper bound on the waiting queue. When waiting_count >= this,
+    # /v1/waitlist/join refuses new entries and the widget shows "queue full".
+    waitlist_queue_limit: int = 50
+    # DEPRECATED — kept to avoid config crashes on old deploys. The public
+    # stats endpoint no longer applies any seeding or floor to the live
+    # counters, so these values are ignored.
+    waitlist_queue_seed_offset: int = 0
+    waitlist_active_floor: int = 0
+    # Daily promotion loop: promote the oldest N waiting visitors iff DAU is
+    # below the healthy threshold.
+    waitlist_promote_batch: int = 1
+    waitlist_dau_healthy_threshold: int = 5
+    waitlist_promote_interval_seconds: int = 86400  # 24h
 
     # Demo LLM keys (optional; demo uses these for real Claude/OpenAI/Gemini)
     anthropic_api_key: Optional[str] = None

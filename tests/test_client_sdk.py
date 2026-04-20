@@ -17,7 +17,7 @@ class TestCLSClientInit:
 
     def test_default_base_url(self):
         c = CLSClient()
-        assert c.base_url == "http://localhost:8080"
+        assert c.base_url == "https://www.clsplusplus.com"
 
     def test_custom_base_url(self):
         c = CLSClient(base_url="https://api.example.com")

@@ -1,32 +1,42 @@
-# CLS++ - Use your EXISTING free Postgres + Redis (Render allows only 1 free each)
+# CLS++ — Cloud-hosted memory server + Chrome extension download
 # Deploy: https://render.com/deploy?repo=https://github.com/rajamohan1950/CLSplusplus
-# You'll be prompted for CLS_REDIS_URL and CLS_DATABASE_URL - paste from your existing services
-
 services:
   - type: web
-    name: clsplusplus-website
-    runtime: static
-    buildCommand: "true"
-    staticPublishPath: ./website
-    routes:
-      - type: rewrite
-        source: /
-        destination: /index.html
-
-  - type: web
-    name: clsplusplus-api
+    name: clsplusplus
     runtime: docker
     dockerfilePath: ./Dockerfile
     plan: free
-    healthCheckPath: /v1/memory/health
+    healthCheckPath: /health
     envVars:
-      - key: CLS_REDIS_URL
-        sync: false  # Paste from Dashboard → your Redis → Connection String
+      - key: PORT
+        value: "8080"
       - key: CLS_DATABASE_URL
-        sync: false  # Paste from Dashboard → your Postgres → Connection String
+        sync: false
+      - key: CLS_REDIS_URL
+        sync: false
+      - key: CLS_JWT_SECRET
+        sync: false
+      - key: CLS_TRACK_USAGE
+        value: "true"
       - key: CLS_ANTHROPIC_API_KEY
-        sync: false  # For demo: Claude (get from console.anthropic.com)
+        sync: false
       - key: CLS_OPENAI_API_KEY
-        sync: false  # For demo: OpenAI (get from platform.openai.com)
+        sync: false
       - key: CLS_GOOGLE_API_KEY
-        sync: false  # For demo: Gemini (get from aistudio.google.com)
+        sync: false
+      - key: CLS_RAZORPAY_KEY_ID
+        sync: false
+      - key: CLS_RAZORPAY_KEY_SECRET
+        sync: false
+      - key: CLS_RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: CLS_GITHUB_CLIENT_ID
+        sync: false
+      - key: CLS_GITHUB_CLIENT_SECRET
+        sync: false
+      - key: CLS_GITHUB_REDIRECT_URI
+        sync: false
+      - key: CLS_FRONTEND_URL
+        sync: false
+      - key: CLS_COOKIE_DOMAIN
+        sync: false

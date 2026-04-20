@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLS++ | Every AI Remembers You</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#09090b;--surface:#111113;--elevated:#18181b;--card:#1e1e22;--hover:#27272a;
+      --text:#fafafa;--text-2:#a1a1aa;--text-3:#52525b;
+      --accent:#ff6b35;--accent-soft:rgba(255,107,53,0.12);--accent-glow:rgba(255,107,53,0.25);
+      --green:#22c55e;--green-soft:rgba(34,197,94,0.12);
+      --blue:#3b82f6;--blue-soft:rgba(59,130,246,0.12);
+      --purple:#8b5cf6;--purple-soft:rgba(139,92,246,0.12);
+      --border:rgba(255,255,255,0.06);
+      --chatgpt:#10a37f;--claude:#d97757;--gemini:#4285f4;--copilot:#0078d4;--grok:#fff;--deepseek:#4a9eff;
+    }
+    body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;-webkit-font-smoothing:antialiased}
+
+    /* ============ APP SHELL — 3 column like Design A ============ */
+    .app{display:grid;grid-template-columns:72px 280px 1fr;height:100vh}
+
+    /* --- RAIL --- */
+    .rail{background:var(--bg);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:16px 0;gap:4px}
+    .rail-logo{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--accent),#ff8c5a);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:#fff;margin-bottom:20px;box-shadow:0 2px 12px rgba(255,107,53,0.3);letter-spacing:-0.5px}
+    .rail-btn{width:44px;height:44px;border-radius:12px;border:none;background:transparent;color:var(--text-3);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s;position:relative}
+    .rail-btn:hover{background:var(--hover);color:var(--text-2)}
+    .rail-btn.active{background:var(--accent-soft);color:var(--accent)}
+    .rail-btn.active::before{content:'';position:absolute;left:-16px;width:3px;height:20px;background:var(--accent);border-radius:0 3px 3px 0}
+    .rail-btn svg{width:20px;height:20px}
+    .rail-spacer{flex:1}
+    .rail-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--purple),var(--blue));display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;color:#fff;cursor:pointer}
+
+    /* --- SIDEBAR --- */
+    .sidebar{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+    .sb-header{padding:20px 20px 0;display:flex;flex-direction:column;gap:16px}
+    .sb-title{display:flex;align-items:center;justify-content:space-between}
+    .sb-title h2{font-size:0.8rem;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:1px}
+    .sb-new{width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all 0.15s}
+    .sb-new:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+    /* Search */
+    .sb-search{position:relative}
+    .sb-search input{width:100%;padding:9px 12px 9px 34px;background:var(--elevated);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:0.82rem;outline:none;transition:border 0.15s}
+    .sb-search input::placeholder{color:var(--text-3)}
+    .sb-search input:focus{border-color:var(--accent)}
+    .sb-search svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-3);width:16px;height:16px}
+
+    /* Stats ribbon */
+    .sb-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;padding:16px 20px;border-bottom:1px solid var(--border)}
+    .sb-stat{text-align:center;padding:8px 4px;background:var(--elevated);border-radius:0}
+    .sb-stat:first-child{border-radius:8px 0 0 8px}
+    .sb-stat:last-child{border-radius:0 8px 8px 0}
+    .sb-stat .sn{font-size:1.1rem;font-weight:700;line-height:1}
+    .sb-stat .sl{font-size:0.65rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-top:4px}
+
+    /* Session list */
+    .sb-list{flex:1;overflow-y:auto;padding:8px 12px}
+    .sb-list::-webkit-scrollbar{width:4px}
+    .sb-list::-webkit-scrollbar-thumb{background:var(--hover);border-radius:2px}
+    .sb-group{font-size:0.68rem;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:0.8px;padding:16px 8px 6px}
+    .sb-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;cursor:pointer;transition:background 0.15s;position:relative}
+    .sb-item:hover{background:var(--hover)}
+    .sb-item.active{background:var(--accent-soft)}
+    .sb-item.active .si-name{color:var(--accent)}
+    .si-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+    .si-dot.live{box-shadow:0 0 6px rgba(34,197,94,0.4)}
+    .si-info{flex:1;min-width:0}
+    .si-name{font-size:0.85rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .si-meta{font-size:0.7rem;color:var(--text-3);margin-top:2px}
+    .si-count{font-size:0.7rem;color:var(--text-3);background:var(--hover);padding:2px 6px;border-radius:10px;flex-shrink:0}
+
+    /* Sidebar footer */
+    .sb-footer{padding:12px 16px;border-top:1px solid var(--border)}
+    .sb-ns{display:flex;align-items:center;gap:6px;font-size:0.75rem;color:var(--purple);background:var(--purple-soft);padding:6px 10px;border-radius:20px}
+    .sb-ns span{font-family:'JetBrains Mono',monospace;font-size:0.72rem}
+
+    /* ============ MAIN AREA ============ */
+    .main{display:flex;flex-direction:column;background:var(--bg);position:relative;overflow:hidden}
+    .main::before{content:'';position:absolute;top:-200px;right:-200px;width:600px;height:600px;background:radial-gradient(circle,rgba(255,107,53,0.03),transparent 70%);pointer-events:none}
+
+    /* Chat header */
+    .chat-top{padding:14px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;backdrop-filter:blur(12px);background:rgba(9,9,11,0.8);z-index:5}
+    .ct-name{font-weight:600;font-size:0.92rem}
+    .ct-status{display:flex;align-items:center;gap:6px;font-size:0.75rem;color:var(--green)}
+    .ct-status::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+    .ct-badge{font-size:0.68rem;color:var(--accent);background:var(--accent-soft);padding:3px 10px;border-radius:12px;margin-left:auto;font-weight:500}
+
+    /* Messages */
+    .messages{flex:1;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:20px;z-index:2}
+    .messages::-webkit-scrollbar{width:5px}
+    .messages::-webkit-scrollbar-thumb{background:var(--hover);border-radius:3px}
+
+    /* Welcome state inside chat */
+    .chat-welcome{text-align:center;margin:auto;max-width:460px;padding:40px 20px}
+    .cw-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:var(--accent-soft);border:1px solid rgba(255,107,53,0.15);border-radius:16px;font-size:0.72rem;font-weight:600;color:var(--accent);margin-bottom:20px}
+    .cw-badge .cw-dot{width:5px;height:5px;border-radius:50%;background:var(--accent);animation:pulse 1.5s infinite}
+    .chat-welcome h2{font-size:1.8rem;font-weight:700;letter-spacing:-0.5px;margin-bottom:8px;background:linear-gradient(135deg,#fff,var(--text-2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .chat-welcome p{color:var(--text-2);font-size:0.92rem;line-height:1.5}
+
+    /* Message rows */
+    .msg-row{display:flex;gap:12px;max-width:720px;width:100%;margin:0 auto;animation:msg-in 0.4s ease-out}
+    @keyframes msg-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+    .msg-row.user{flex-direction:row-reverse}
+
+    .msg-av{width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+    .msg-av.ai{background:linear-gradient(135deg,var(--accent),var(--purple));box-shadow:0 2px 8px rgba(255,107,53,0.2);color:#fff}
+    .msg-av.ai::after{content:'✦';font-size:13px}
+    .msg-av.user-av{background:var(--hover);border:1px solid var(--border);color:var(--text-2)}
+    .msg-av.user-av::after{content:'P'}
+    .msg-av.chatgpt-av{background:rgba(16,163,127,0.15);border:1px solid rgba(16,163,127,0.2);color:var(--chatgpt)}
+    .msg-av.chatgpt-av::after{content:'G'}
+    .msg-av.claude-av{background:rgba(217,119,87,0.15);border:1px solid rgba(217,119,87,0.2);color:var(--claude)}
+    .msg-av.claude-av::after{content:'C'}
+    .msg-av.gemini-av{background:rgba(66,133,244,0.15);border:1px solid rgba(66,133,244,0.2);color:var(--gemini)}
+    .msg-av.gemini-av::after{content:'G'}
+    .msg-av.grok-av{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);color:#fff}
+    .msg-av.grok-av::after{content:'X'}
+
+    .msg-content{flex:1;min-width:0}
+    .msg-bubble{padding:14px 18px;border-radius:18px;font-size:0.9rem;line-height:1.6;white-space:pre-wrap;word-wrap:break-word}
+    .msg-row.user .msg-bubble{background:var(--accent);color:#fff;border-bottom-right-radius:6px}
+    .msg-row.assistant .msg-bubble{background:var(--elevated);border:1px solid var(--border);color:var(--text);border-bottom-left-radius:6px}
+    .msg-bubble code{background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:0.84em;color:var(--accent)}
+
+    .msg-tag{display:inline-flex;align-items:center;gap:4px;font-size:0.7rem;padding:3px 8px;border-radius:12px;margin-top:6px}
+    .msg-tag.memory{color:var(--green);background:var(--green-soft)}
+    .msg-tag.memory::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--green)}
+    .msg-tag.stored{color:var(--accent);background:var(--accent-soft)}
+    .msg-tag.stored::before{content:'↑';font-weight:700}
+    .msg-time{font-size:0.68rem;color:var(--text-3);margin-top:4px;padding:0 4px}
+
+    /* Transfer line */
+    .transfer{display:flex;align-items:center;gap:10px;max-width:720px;width:100%;margin:0 auto;padding:4px 0;animation:msg-in 0.3s ease}
+    .transfer .tf-line{flex:1;height:1px;background:linear-gradient(to right,var(--accent),transparent)}
+    .transfer .tf-text{font-size:0.7rem;color:var(--text-3);white-space:nowrap;display:flex;align-items:center;gap:5px}
+    .transfer .tf-icon{color:var(--accent)}
+
+    /* Typing */
+    .typing-row{display:flex;gap:12px;max-width:720px;width:100%;margin:0 auto;animation:msg-in 0.3s ease}
+    .typing-dots{display:flex;gap:4px;padding:16px 20px;background:var(--elevated);border:1px solid var(--border);border-radius:18px;border-bottom-left-radius:6px}
+    .td{width:7px;height:7px;border-radius:50%;background:var(--text-3);animation:bounce 1.4s infinite ease-in-out both}
+    .td:nth-child(2){animation-delay:0.16s}.td:nth-child(3){animation-delay:0.32s}
+    @keyframes bounce{0%,80%,100%{transform:scale(0.5);opacity:0.4}40%{transform:scale(1);opacity:1}}
+
+    /* Input area */
+    .input-area{padding:16px 24px 24px;z-index:5}
+    .input-wrap{max-width:720px;margin:0 auto;background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:6px;transition:all 0.2s;box-shadow:0 4px 16px rgba(0,0,0,0.4)}
+    .input-wrap:focus-within{border-color:rgba(255,107,53,0.3);box-shadow:0 4px 20px rgba(0,0,0,0.5),0 0 0 3px var(--accent-soft)}
+    .input-top{display:flex;align-items:flex-end;gap:8px;padding:6px 8px}
+    .input-field{flex:1;background:transparent;border:none;color:var(--text);font-family:'Inter',sans-serif;font-size:0.92rem;resize:none;outline:none;max-height:120px;line-height:1.5;padding:6px 8px}
+    .input-field::placeholder{color:var(--text-3)}
+    .send-btn{width:40px;height:40px;border-radius:50%;border:none;background:var(--accent);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(255,107,53,0.3);transition:all 0.15s}
+    .send-btn:hover{background:#ff8c5a;transform:scale(1.05)}
+    .send-btn svg{width:18px;height:18px}
+    .input-bottom{display:flex;align-items:center;justify-content:space-between;padding:4px 12px 6px}
+    .input-hint{font-size:0.7rem;color:var(--text-3);display:flex;align-items:center;gap:4px}
+    .input-hint kbd{background:var(--hover);padding:1px 5px;border-radius:4px;font-family:inherit;font-size:0.65rem}
+    .model-sel{display:flex;align-items:center;gap:6px;font-size:0.72rem;color:var(--text-3);background:var(--elevated);padding:4px 10px;border-radius:20px}
+    .model-sel::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green)}
+
+    /* Below fold overlay */
+    .below-fold-trigger{max-width:720px;margin:0 auto;padding:24px 0 0;text-align:center;z-index:2;position:relative}
+    .scroll-hint{display:inline-flex;align-items:center;gap:6px;font-size:0.78rem;color:var(--text-3);padding:8px 16px;background:var(--card);border:1px solid var(--border);border-radius:20px;cursor:pointer;transition:all 0.15s;text-decoration:none}
+    .scroll-hint:hover{border-color:var(--accent);color:var(--accent)}
+
+    /* Below fold sections */
+    .below-fold{display:none;padding:0 24px 40px}
+    .below-fold.visible{display:block}
+    .bf-inner{max-width:720px;margin:0 auto}
+    .bf-inner hr{border:none;border-top:1px solid var(--border);margin:48px 0}
+    .bf-inner h2{font-size:1.4rem;font-weight:700;letter-spacing:-0.5px;margin-bottom:32px;text-align:center}
+    .bf-grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:0}
+    .bf-card{padding:24px 20px;background:var(--card);border:1px solid var(--border);border-radius:12px;text-align:center;transition:all 0.2s}
+    .bf-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+    .bf-card .bf-num{width:36px;height:36px;border-radius:50%;background:var(--accent);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:0.95rem}
+    .bf-card h3{font-size:0.9rem;font-weight:700;margin-bottom:6px}
+    .bf-card p{font-size:0.78rem;color:var(--text-2);line-height:1.4}
+
+    .bf-grid4{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .phase-card{padding:20px;background:var(--card);border:1px solid var(--border);border-radius:12px;border-left:3px solid;transition:all 0.2s}
+    .phase-card:hover{transform:translateY(-2px)}
+    .phase-card.gas{border-left-color:#ef4444}
+    .phase-card.liquid{border-left-color:var(--blue)}
+    .phase-card.solid{border-left-color:var(--green)}
+    .phase-card.crystal{border-left-color:var(--accent)}
+    .phase-card .pc-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+    .phase-card .pc-name{font-weight:700;font-size:0.92rem}
+    .phase-card .pc-label{font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--accent);margin-bottom:6px}
+    .phase-card .pc-desc{font-size:0.78rem;color:var(--text-2);line-height:1.4}
+
+    .pr-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    .pr-c{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;display:flex;flex-direction:column;transition:all 0.2s}
+    .pr-c:hover{transform:translateY(-3px)}
+    .pr-c.feat{border-color:rgba(255,107,53,0.3);box-shadow:0 0 24px rgba(255,107,53,0.06);position:relative}
+    .pr-c.feat::before{content:'Popular';position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;font-size:0.6rem;font-weight:700;padding:3px 10px;border-radius:12px;text-transform:uppercase;letter-spacing:0.5px}
+    .pr-c .pr-t{font-size:0.72rem;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+    .pr-c .pr-p{font-size:2rem;font-weight:800;letter-spacing:-1px;margin-bottom:2px}
+    .pr-c .pr-d{font-size:0.75rem;color:var(--text-3);margin-bottom:16px}
+    .pr-c ul{list-style:none;flex:1;margin-bottom:16px}
+    .pr-c ul li{font-size:0.76rem;color:var(--text-2);padding:3px 0;display:flex;align-items:center;gap:6px}
+    .pr-c ul li::before{content:'✓';color:var(--green);font-weight:700;font-size:0.8rem}
+    .pr-c .pr-btn{width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);font-family:inherit;font-size:0.82rem;font-weight:600;cursor:pointer;text-decoration:none;display:block;text-align:center;transition:all 0.15s}
+    .pr-c .pr-btn:hover{border-color:var(--accent);color:var(--accent)}
+    .pr-c.feat .pr-btn{background:var(--accent);border-color:var(--accent);color:#fff}
+    .pr-c.feat .pr-btn:hover{background:#ff8c5a}
+
+    .bf-cta{text-align:center;padding:48px 0}
+    .bf-cta h2{margin-bottom:12px}
+    .bf-cta p{color:var(--text-2);margin-bottom:24px;font-size:0.95rem}
+    .bf-cta a{display:inline-flex;padding:14px 32px;background:var(--accent);color:#fff;border-radius:12px;font-weight:600;font-size:0.95rem;text-decoration:none;box-shadow:0 4px 20px rgba(255,107,53,0.25);transition:all 0.15s}
+    .bf-cta a:hover{background:#ff8c5a;transform:translateY(-2px)}
+
+    @media(max-width:900px){
+      .app{grid-template-columns:1fr}
+      .rail,.sidebar{display:none}
+      .bf-grid3{grid-template-columns:1fr}
+      .bf-grid4{grid-template-columns:1fr}
+      .pr-row{grid-template-columns:1fr 1fr}
+    }
+    @media(max-width:500px){.pr-row{grid-template-columns:1fr}}
+    ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--hover);border-radius:3px}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- ====== RAIL ====== -->
+    <div class="rail">
+      <div class="rail-logo">C+</div>
+      <button class="rail-btn active" title="Chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></button>
+      <button class="rail-btn" title="Memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></button>
+      <button class="rail-btn" title="Usage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg></button>
+      <button class="rail-btn" title="API"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></button>
+      <button class="rail-btn" title="Docs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg></button>
+      <div class="rail-spacer"></div>
+      <button class="rail-btn" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></button>
+      <div class="rail-avatar">P</div>
+    </div>
+
+    <!-- ====== SIDEBAR ====== -->
+    <div class="sidebar">
+      <div class="sb-header">
+        <div class="sb-title"><h2>Chats</h2><button class="sb-new">+</button></div>
+        <div class="sb-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg><input type="text" placeholder="Search chats..."></div>
+      </div>
+      <div class="sb-stats">
+        <div class="sb-stat"><div class="sn" style="color:var(--accent)">247</div><div class="sl">Ops</div></div>
+        <div class="sb-stat"><div class="sn" style="color:var(--green)">83</div><div class="sl">Memories</div></div>
+        <div class="sb-stat"><div class="sn" style="color:var(--blue)">164</div><div class="sl">Queries</div></div>
+      </div>
+      <div class="sb-list">
+        <div class="sb-group">Today</div>
+        <div class="sb-item active"><div class="si-dot live" style="background:var(--green)"></div><div class="si-info"><div class="si-name">CLS++ cross-model demo</div><div class="si-meta">Live &middot; Now</div></div><div class="si-count">●</div></div>
+        <div class="sb-item"><div class="si-dot" style="background:var(--chatgpt)"></div><div class="si-info"><div class="si-name">React component review</div><div class="si-meta">ChatGPT &middot; 1h ago</div></div><div class="si-count">8</div></div>
+        <div class="sb-item"><div class="si-dot" style="background:var(--claude)"></div><div class="si-info"><div class="si-name">Memory API architecture</div><div class="si-meta">Claude &middot; 2h ago</div></div><div class="si-count">24</div></div>
+        <div class="sb-group">Yesterday</div>
+        <div class="sb-item"><div class="si-dot" style="background:var(--gemini)"></div><div class="si-info"><div class="si-name">Database schema design</div><div class="si-meta">Gemini &middot; Yesterday</div></div><div class="si-count">16</div></div>
+        <div class="sb-item"><div class="si-dot" style="background:var(--claude)"></div><div class="si-info"><div class="si-name">Pricing page copy</div><div class="si-meta">Claude &middot; Yesterday</div></div><div class="si-count">6</div></div>
+        <div class="sb-group">This week</div>
+        <div class="sb-item"><div class="si-dot" style="background:var(--chatgpt)"></div><div class="si-info"><div class="si-name">Auth flow design</div><div class="si-meta">ChatGPT &middot; Apr 11</div></div><div class="si-count">31</div></div>
+        <div class="sb-item"><div class="si-dot" style="background:var(--deepseek)"></div><div class="si-info"><div class="si-name">Deployment pipeline</div><div class="si-meta">DeepSeek &middot; Apr 10</div></div><div class="si-count">9</div></div>
+      </div>
+      <div class="sb-footer"><div class="sb-ns">🧠 <span>pratap-brain</span></div></div>
+    </div>
+
+    <!-- ====== MAIN ====== -->
+    <div class="main">
+      <div class="chat-top">
+        <span class="ct-name">CLS++ cross-model demo</span>
+        <span class="ct-status">Memory active</span>
+        <span class="ct-badge">Live demo</span>
+      </div>
+
+      <div class="messages" id="messages">
+        <!-- Welcome -->
+        <div class="chat-welcome" id="welcome">
+          <div class="cw-badge"><span class="cw-dot"></span>Watch memory flow across models</div>
+          <h2>Every AI remembers.</h2>
+          <p>This is what CLS++ feels like. Watch as memory flows between ChatGPT, Claude, Gemini, and Grok — automatically.</p>
+        </div>
+        <!-- Messages injected by JS -->
+      </div>
+
+      <div class="input-area">
+        <div class="input-wrap">
+          <div class="input-top">
+            <textarea class="input-field" placeholder="Try it yourself — sign up free..." rows="1" disabled></textarea>
+            <button class="send-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+          </div>
+          <div class="input-bottom">
+            <span class="input-hint"><kbd>Enter</kbd> Send &nbsp; <kbd>Shift+Enter</kbd> New line</span>
+            <div class="model-sel">Auto-route</div>
+          </div>
+        </div>
+        <!-- Scroll trigger -->
+        <div class="below-fold-trigger" id="bf-trigger" style="display:none">
+          <a href="#below" class="scroll-hint" onclick="document.getElementById('below').classList.add('visible');this.parentElement.style.display='none';return false">↓ See pricing, architecture & more</a>
+        </div>
+      </div>
+
+      <!-- Below fold content -->
+      <div class="below-fold" id="below">
+        <div class="bf-inner">
+          <hr>
+          <h2>Dead simple.</h2>
+          <div class="bf-grid3">
+            <div class="bf-card"><div class="bf-num">1</div><h3>Install</h3><p>One click from Chrome Web Store. Or use the Python Software Development Kit.</p></div>
+            <div class="bf-card"><div class="bf-num">2</div><h3>Use Any AI</h3><p>CLS++ captures context automatically. No workflow changes.</p></div>
+            <div class="bf-card"><div class="bf-num">3</div><h3>Switch Freely</h3><p>Every model remembers your history. Context never gets lost.</p></div>
+          </div>
+          <hr>
+          <h2>Memory as phase transitions.</h2>
+          <div class="bf-grid4">
+            <div class="phase-card gas"><div class="pc-head"><span>💨</span><span class="pc-name">Gas</span></div><div class="pc-label">Raw Experience</div><div class="pc-desc">Immediate episodic capture. High fidelity, fast decay.</div></div>
+            <div class="phase-card liquid"><div class="pc-head"><span>💧</span><span class="pc-name">Liquid</span></div><div class="pc-label">Active Memory</div><div class="pc-desc">Sharp-wave ripple consolidation. Pattern extraction.</div></div>
+            <div class="phase-card solid"><div class="pc-head"><span>🧊</span><span class="pc-name">Solid</span></div><div class="pc-label">Schema</div><div class="pc-desc">100 episodes compressed to 1 abstract knowledge schema.</div></div>
+            <div class="phase-card crystal"><div class="pc-head"><span>💎</span><span class="pc-name">Crystal</span></div><div class="pc-label">Axiom</div><div class="pc-desc">Immutable verified truth. Zero decay.</div></div>
+          </div>
+          <hr>
+          <h2>Start free. Scale when ready.</h2>
+          <div class="pr-row">
+            <div class="pr-c"><div class="pr-t">Free</div><div class="pr-p">$0</div><div class="pr-d">forever</div><ul><li>1,000 ops/month</li><li>500 memories</li><li>1 namespace</li></ul><a href="/getting-started.html" class="pr-btn">Get Started</a></div>
+            <div class="pr-c feat"><div class="pr-t">Pro</div><div class="pr-p">$9</div><div class="pr-d">/month</div><ul><li>50,000 ops/month</li><li>50,000 memories</li><li>10 namespaces</li><li>All 4 layers</li></ul><a href="/signup.html?next=%2Fprofile.html%3Ftier%3Dpro%23billing" class="pr-btn" data-tier="pro">Subscribe</a></div>
+            <div class="pr-c"><div class="pr-t">Business</div><div class="pr-p">$29</div><div class="pr-d">/month</div><ul><li>200,000 ops/month</li><li>200,000 memories</li><li>50 namespaces</li></ul><a href="/signup.html?next=%2Fprofile.html%3Ftier%3Dbusiness%23billing" class="pr-btn" data-tier="business">Subscribe</a></div>
+            <div class="pr-c"><div class="pr-t">Enterprise</div><div class="pr-p">$149</div><div class="pr-d">/month</div><ul><li>1M ops/month</li><li>1M memories</li><li>SSO + SLA</li></ul><a href="/signup.html?next=%2Fprofile.html%3Ftier%3Denterprise%23billing" class="pr-btn" data-tier="enterprise">Subscribe</a></div>
+          </div>
+          <div class="bf-cta"><h2>Stop losing context.</h2><p>One memory layer. Every model. Free to start.</p><a href="/getting-started.html">Get Started →</a></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="posthog.js" defer></script>
+  <script src="variant-loader.js"></script>
+  <script src="feedback-widget.js" defer></script>
+  <script src="auth.js" defer></script>
+  <script>
+  (function(){
+    var msgs = document.getElementById('messages');
+    var welcome = document.getElementById('welcome');
+    var bfTrigger = document.getElementById('bf-trigger');
+
+    function removeWelcome(){ if(welcome&&welcome.parentNode){welcome.style.transition='opacity 0.4s';welcome.style.opacity='0';setTimeout(function(){welcome.remove()},400)} }
+    function scrollDown(){ msgs.scrollTop = msgs.scrollHeight; }
+
+    function addMsg(avClass,bubbleClass,text,tag,delay){
+      return new Promise(function(r){setTimeout(function(){
+        var row=document.createElement('div');row.className='msg-row '+bubbleClass;
+        var tagHtml='';
+        if(tag==='memory') tagHtml='<div class="msg-tag memory">CLS++ recalled memories</div>';
+        if(tag==='stored') tagHtml='<div class="msg-tag stored">Memory stored</div>';
+        row.innerHTML='<div class="msg-av '+avClass+'"></div><div class="msg-content"><div class="msg-bubble">'+text+'</div>'+tagHtml+'</div>';
+        msgs.appendChild(row);scrollDown();r();
+      },delay)});
+    }
+
+    function addTransfer(text,delay){
+      return new Promise(function(r){setTimeout(function(){
+        var div=document.createElement('div');div.className='transfer';
+        div.innerHTML='<span class="tf-text"><span class="tf-icon">⚡</span>'+text+'</span><span class="tf-line"></span>';
+        msgs.appendChild(div);scrollDown();r();
+      },delay)});
+    }
+
+    function showTyping(avClass,delay){
+      return new Promise(function(r){setTimeout(function(){
+        var row=document.createElement('div');row.className='typing-row';row.id='typing';
+        row.innerHTML='<div class="msg-av '+avClass+'"></div><div class="typing-dots"><div class="td"></div><div class="td"></div><div class="td"></div></div>';
+        msgs.appendChild(row);scrollDown();r();
+      },delay)});
+    }
+    function hideTyping(){var el=document.getElementById('typing');if(el)el.remove()}
+
+    async function play(){
+      await new Promise(r=>setTimeout(r,2000));
+      removeWelcome();
+      await new Promise(r=>setTimeout(r,600));
+
+      // 1. User tells ChatGPT
+      await addMsg('user-av','user','My name is Pratap. I\'m building CLS++ with Python and PostgreSQL. I prefer dark mode.',null,0);
+      await showTyping('chatgpt-av',800);
+      await new Promise(r=>setTimeout(r,2000));
+      hideTyping();
+      await addMsg('chatgpt-av','assistant','Got it, Pratap! I\'ll remember: you\'re building <code>CLS++</code> with Python + PostgreSQL, and you prefer dark mode. How can I help?','stored',200);
+
+      // Transfer
+      await addTransfer('Memory synced across all models',2000);
+
+      // 2. Ask Claude
+      await addMsg('user-av','user','Hey Claude — what do you know about me?',null,1500);
+      await showTyping('claude-av',600);
+      await new Promise(r=>setTimeout(r,2200));
+      hideTyping();
+      await addMsg('claude-av','assistant','You\'re Pratap! You\'re building <code>CLS++</code> — a cross-model memory layer using Python and PostgreSQL. You prefer dark mode. Want help with your architecture?','memory',200);
+
+      await addTransfer('Context flows — no copy-paste needed',2500);
+
+      // 3. Ask Gemini
+      await addMsg('user-av','user','Gemini, suggest a caching strategy for my project.',null,1500);
+      await showTyping('gemini-av',600);
+      await new Promise(r=>setTimeout(r,2400));
+      hideTyping();
+      await addMsg('gemini-av','assistant','Since CLS++ uses Python + PostgreSQL, I\'d recommend Redis for your L0 hot cache with <code>pgvector</code> for semantic search on L1-L3. This gives you sub-5ms reads on recent memories.','memory',200);
+
+      await addTransfer('Every model builds on shared context',2500);
+
+      // 4. Grok summarizes
+      await addMsg('user-av','user','Grok — summarize everything you know about me.',null,1500);
+      await showTyping('grok-av',600);
+      await new Promise(r=>setTimeout(r,2000));
+      hideTyping();
+      await addMsg('grok-av','assistant','You\'re Pratap, dark mode enthusiast, building CLS++ (Python + PostgreSQL). Gemini just told you to use Redis + pgvector. Should I roast your stack or actually help? 😄','memory',200);
+
+      // Final CLS++ system message
+      await addMsg('ai','assistant','✨ <strong>That\'s the magic.</strong> One memory, every model. No config, no copy-paste. Your AI just <em>remembers</em>. <a href="/getting-started.html" style="color:var(--accent);text-decoration:underline">Try it free →</a>',null,3000);
+
+      // Show below-fold trigger
+      setTimeout(function(){ bfTrigger.style.display='block'; },1500);
+    }
+
+    play();
+  })();
+  </script>
+  <script src="namespace.js"></script>
+  <script src="toast.js"></script>
+  <script src="billing-ui.js"></script>
+  <script src="waitlist-widget.js?v=1"></script>
+  <script src="footer.js?v=2"></script>
+</body>
+</html>

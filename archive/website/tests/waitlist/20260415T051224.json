@@ -1,0 +1,286 @@
+{
+  "run_id": "20260415T051224",
+  "run_timestamp": "2026-04-15T05:12:24.723651+00:00",
+  "suite": "waitlist_lifecycle",
+  "total": 34,
+  "passed": 34,
+  "failed": 0,
+  "skipped": 0,
+  "pass_rate": 1.0,
+  "total_runtime_ms": 5801.8,
+  "pytest_exit_code": 0,
+  "cases": [
+    {
+      "id": "WL-001",
+      "name": "test_WL_001_stats_empty_returns_seeded_baseline",
+      "category": "Stats",
+      "status": "pass",
+      "runtime_ms": 15.33,
+      "error": ""
+    },
+    {
+      "id": "WL-002",
+      "name": "test_WL_002_stats_respects_active_floor",
+      "category": "Stats",
+      "status": "pass",
+      "runtime_ms": 10.07,
+      "error": ""
+    },
+    {
+      "id": "WL-003",
+      "name": "test_WL_003_stats_passes_through_when_active_above_floor",
+      "category": "Stats",
+      "status": "pass",
+      "runtime_ms": 10.59,
+      "error": ""
+    },
+    {
+      "id": "WL-010",
+      "name": "test_WL_010_join_rejects_invalid_email",
+      "category": "Join",
+      "status": "pass",
+      "runtime_ms": 17.54,
+      "error": ""
+    },
+    {
+      "id": "WL-011",
+      "name": "test_WL_011_join_rejects_disposable_domain",
+      "category": "Join",
+      "status": "pass",
+      "runtime_ms": 9.86,
+      "error": ""
+    },
+    {
+      "id": "WL-012",
+      "name": "test_WL_012_join_valid_email_stores_otp_and_sends",
+      "category": "Join",
+      "status": "pass",
+      "runtime_ms": 9.94,
+      "error": ""
+    },
+    {
+      "id": "WL-013",
+      "name": "test_WL_013_join_cooldown_blocks_rapid_second_call",
+      "category": "Join",
+      "status": "pass",
+      "runtime_ms": 9.92,
+      "error": ""
+    },
+    {
+      "id": "WL-014",
+      "name": "test_WL_014_join_normalises_email_case",
+      "category": "Join",
+      "status": "pass",
+      "runtime_ms": 10.57,
+      "error": ""
+    },
+    {
+      "id": "WL-015",
+      "name": "test_WL_015_join_returns_already_member_for_existing_user",
+      "category": "Join",
+      "status": "pass",
+      "runtime_ms": 10.11,
+      "error": ""
+    },
+    {
+      "id": "WL-016",
+      "name": "test_WL_016_join_returns_position_for_existing_waiter",
+      "category": "Join",
+      "status": "pass",
+      "runtime_ms": 9.77,
+      "error": ""
+    },
+    {
+      "id": "WL-020",
+      "name": "test_WL_020_verify_wrong_otp_fails",
+      "category": "Verify",
+      "status": "pass",
+      "runtime_ms": 10.27,
+      "error": ""
+    },
+    {
+      "id": "WL-021",
+      "name": "test_WL_021_verify_non_numeric_otp_fails",
+      "category": "Verify",
+      "status": "pass",
+      "runtime_ms": 14.86,
+      "error": ""
+    },
+    {
+      "id": "WL-022",
+      "name": "test_WL_022_verify_correct_otp_creates_visitor",
+      "category": "Verify",
+      "status": "pass",
+      "runtime_ms": 12.3,
+      "error": ""
+    },
+    {
+      "id": "WL-023",
+      "name": "test_WL_023_verify_second_visitor_gets_next_position",
+      "category": "Verify",
+      "status": "pass",
+      "runtime_ms": 12.86,
+      "error": ""
+    },
+    {
+      "id": "WL-024",
+      "name": "test_WL_024_verify_stats_with_email_returns_your_position",
+      "category": "Verify",
+      "status": "pass",
+      "runtime_ms": 14.49,
+      "error": ""
+    },
+    {
+      "id": "WL-030",
+      "name": "test_WL_030_cap_not_exceeded_when_empty",
+      "category": "LaunchCap",
+      "status": "pass",
+      "runtime_ms": 10.08,
+      "error": ""
+    },
+    {
+      "id": "WL-031",
+      "name": "test_WL_031_cap_exceeded_when_at_threshold",
+      "category": "LaunchCap",
+      "status": "pass",
+      "runtime_ms": 9.82,
+      "error": ""
+    },
+    {
+      "id": "WL-032",
+      "name": "test_WL_032_cap_zero_means_unlimited",
+      "category": "LaunchCap",
+      "status": "pass",
+      "runtime_ms": 10.0,
+      "error": ""
+    },
+    {
+      "id": "WL-040",
+      "name": "test_WL_040_promote_empty_queue_is_noop",
+      "category": "Promote",
+      "status": "pass",
+      "runtime_ms": 10.28,
+      "error": ""
+    },
+    {
+      "id": "WL-041",
+      "name": "test_WL_041_promote_moves_oldest_waiting_to_invited",
+      "category": "Promote",
+      "status": "pass",
+      "runtime_ms": 101.42,
+      "error": ""
+    },
+    {
+      "id": "WL-042",
+      "name": "test_WL_042_daily_tick_skips_when_dau_healthy",
+      "category": "Promote",
+      "status": "pass",
+      "runtime_ms": 14.27,
+      "error": ""
+    },
+    {
+      "id": "WL-043",
+      "name": "test_WL_043_daily_tick_promotes_when_dau_unhealthy",
+      "category": "Promote",
+      "status": "pass",
+      "runtime_ms": 11.28,
+      "error": ""
+    },
+    {
+      "id": "WL-044",
+      "name": "test_WL_044_stale_invites_expire_back_to_waiting",
+      "category": "Promote",
+      "status": "pass",
+      "runtime_ms": 10.92,
+      "error": ""
+    },
+    {
+      "id": "WL-050",
+      "name": "test_WL_050_activate_with_missing_token_fails",
+      "category": "Activate",
+      "status": "pass",
+      "runtime_ms": 18.64,
+      "error": ""
+    },
+    {
+      "id": "WL-051",
+      "name": "test_WL_051_activate_with_unknown_token_fails",
+      "category": "Activate",
+      "status": "pass",
+      "runtime_ms": 19.33,
+      "error": ""
+    },
+    {
+      "id": "WL-052",
+      "name": "test_WL_052_activate_happy_path_creates_user_and_jwt",
+      "category": "Activate",
+      "status": "pass",
+      "runtime_ms": 425.34,
+      "error": ""
+    },
+    {
+      "id": "WL-053",
+      "name": "test_WL_053_activate_bypasses_launch_cap",
+      "category": "Activate",
+      "status": "pass",
+      "runtime_ms": 567.15,
+      "error": ""
+    },
+    {
+      "id": "WL-054",
+      "name": "test_WL_054_activate_expired_token_fails",
+      "category": "Activate",
+      "status": "pass",
+      "runtime_ms": 10.76,
+      "error": ""
+    },
+    {
+      "id": "WL-060",
+      "name": "test_WL_060_stats_endpoint_returns_seeded_baseline",
+      "category": "HttpEndpoints",
+      "status": "pass",
+      "runtime_ms": 943.38,
+      "error": ""
+    },
+    {
+      "id": "WL-061",
+      "name": "test_WL_061_join_endpoint_sends_otp",
+      "category": "HttpEndpoints",
+      "status": "pass",
+      "runtime_ms": 169.91,
+      "error": ""
+    },
+    {
+      "id": "WL-062",
+      "name": "test_WL_062_verify_endpoint_enters_queue",
+      "category": "HttpEndpoints",
+      "status": "pass",
+      "runtime_ms": 177.05,
+      "error": ""
+    },
+    {
+      "id": "WL-063",
+      "name": "test_WL_063_join_invalid_email_returns_400",
+      "category": "HttpEndpoints",
+      "status": "pass",
+      "runtime_ms": 224.22,
+      "error": ""
+    },
+    {
+      "id": "WL-064",
+      "name": "test_WL_064_register_blocked_when_cap_reached",
+      "category": "HttpEndpoints",
+      "status": "pass",
+      "runtime_ms": 158.5,
+      "error": ""
+    },
+    {
+      "id": "WL-065",
+      "name": "test_WL_065_accept_endpoint_redirects_and_sets_cookie",
+      "category": "HttpEndpoints",
+      "status": "pass",
+      "runtime_ms": 581.24,
+      "error": ""
+    }
+  ]
+}

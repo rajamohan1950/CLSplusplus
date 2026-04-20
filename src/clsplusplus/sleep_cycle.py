@@ -1,134 +1,105 @@
-"""Sleep Cycle - nightly maintenance.
+"""Sleep Cycle - hippocampal replay and schema consolidation.
 
-N1: Rank, N2: Strengthen+Decay, N3: Deduplicate, REM: Consolidate+Dream.
+REM phase only:
+  1. recall_long_tail() — hippocampal replay: keep low-retrieval items alive
+  2. Schema export — write crystallized solid/glass items from PhaseMemoryEngine to L2
 """
 
-import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Optional
 
 from clsplusplus.config import Settings
 from clsplusplus.embeddings import EmbeddingService
+from clsplusplus.memory_phase import PhaseMemoryEngine
 from clsplusplus.models import MemoryItem, StoreLevel
-from clsplusplus.plasticity import PlasticityEngine
-from clsplusplus.stores import L0WorkingBuffer, L1IndexingStore, L2SchemaGraph, L3PostgresStore
+from clsplusplus.stores import L2SchemaGraph, L3PostgresStore
 
 logger = logging.getLogger(__name__)
 
 
 class SleepOrchestrator:
-    """Runs 4-phase sleep cycle. 60-min budget, idempotent."""
+    """Runs REM phase: hippocampal replay + schema persistence."""
 
-    def __init__(self, settings: Optional[Settings] = None):
+    def __init__(self, settings: Optional[Settings] = None, engine: Optional[PhaseMemoryEngine] = None):
         self.settings = settings or Settings()
-        self.plasticity = PlasticityEngine(settings)
         self.embedding_service = EmbeddingService(settings)
-        self.l0 = L0WorkingBuffer(settings)
-        self.l1 = L1IndexingStore(settings)
         self.l2 = L2SchemaGraph(settings)
         self.l3 = L3PostgresStore(settings)
+        # Use shared engine if provided (from MemoryService), else create own
+        self.engine = engine or PhaseMemoryEngine()
 
     async def run(self, namespace: str = "default") -> dict:
-        """Run full sleep cycle. Returns report."""
+        """Run REM sleep cycle. Returns report."""
         report = {
             "namespace": namespace,
             "started_at": datetime.now(timezone.utc).isoformat(),
-            "phases": {},
-            "reinforced": 0,
-            "pruned": 0,
-            "deduped": 0,
-            "engraved": 0,
+            "phase": "REM",
+            "rehearsed": 0,
+            "schemas_exported": 0,
+            "archived_to_l3": 0,
             "error": None,
         }
 
         try:
-            # N1: Rank - score all L1 items
-            items = await self.l1.list_for_sleep(namespace, limit=20000)
-            for item in items:
-                self.plasticity.compute_score(item)
+            # REM-1: Hippocampal replay — rehearse long-tail items to keep them alive
+            rehearsed = self.engine.recall_long_tail(namespace, batch_size=50)
+            report["rehearsed"] = rehearsed
 
-            # N2: Strengthen + Decay
-            top_pct = int(len(items) * 0.2)
-            bottom_pct = int(len(items) * 0.4)
-            items_sorted = sorted(items, key=lambda x: -x.promotion_score)
-
-            # Track deleted IDs to prevent ghost promotions in later phases
-            deleted_ids: set[str] = set()
-
-            for i, item in enumerate(items_sorted[:top_pct]):
-                item.confidence = min(1.0, item.confidence + 0.05)
-                item.salience = min(1.0, item.salience + 0.02)
-                await self.l1.update_scores(
-                    item.id, namespace,
-                    confidence=item.confidence,
-                    salience=item.salience,
-                )
-                report["reinforced"] += 1
-
-            for item in items_sorted[-bottom_pct:]:
-                self.plasticity.apply_decay(item)
-                if self.plasticity.should_prune(item):
-                    await self.l1.delete(item.id, namespace)
-                    deleted_ids.add(item.id)
-                    report["pruned"] += 1
-                else:
-                    await self.l1.update_scores(
-                        item.id, namespace,
-                        salience=item.salience,
-                        confidence=item.confidence,
+            # REM-2: Schema export — write crystallized schemas to L2 for persistence
+            items = self.engine._items.get(namespace, [])
+            for phase_item in items:
+                if phase_item.schema_meta is None:
+                    continue
+                if phase_item.consolidation_strength < self.engine.STRENGTH_FLOOR:
+                    continue
+                try:
+                    mem_item = MemoryItem(
+                        id=phase_item.id,
+                        text=phase_item.fact.raw_text,
+                        namespace=phase_item.namespace,
+                        store_level=StoreLevel.L2,
+                        confidence=min(1.0, phase_item.consolidation_strength),
+                        salience=phase_item.surprise_at_birth,
+                        usage_count=phase_item.retrieval_count,
+                        surprise=phase_item.surprise_at_birth,
+                        subject=phase_item.fact.subject or None,
+                        predicate=phase_item.fact.relation or None,
+                        object=(phase_item.fact.value[:256] if phase_item.fact.value else None),
                     )
+                    mem_item = self.embedding_service.embed_item(mem_item)
+                    await self.l2.write(mem_item)
+                    report["schemas_exported"] += 1
+                except Exception as e:
+                    logger.warning("Schema export to L2 failed for %s: %s", phase_item.id, e)
 
-            # N3: Deduplicate - merge similar items (skip already-deleted)
-            dedup_count = 0
-            seen = []
-            for item in items_sorted:
-                if item.id in deleted_ids:
+            # REM-3: Deep archive — engrave glass-phase items into L3
+            # Glass threshold: consolidation_strength >= 0.85 with a crystallized schema.
+            _GLASS_THRESHOLD = 0.85
+            for phase_item in items:
+                if phase_item.consolidation_strength < _GLASS_THRESHOLD:
                     continue
-                if not item.embedding:
+                if phase_item.schema_meta is None:
                     continue
-                merged = False
-                for other in seen:
-                    if EmbeddingService.cosine_similarity(item.embedding, other.embedding) >= 0.92:
-                        # Merge: keep higher confidence
-                        if item.confidence > other.confidence:
-                            await self.l1.delete(other.id, namespace)
-                            deleted_ids.add(other.id)
-                            seen.remove(other)
-                            seen.append(item)
-                        else:
-                            await self.l1.delete(item.id, namespace)
-                            deleted_ids.add(item.id)
-                        dedup_count += 1
-                        merged = True
-                        break
-                if not merged:
-                    seen.append(item)
-            report["deduped"] = dedup_count
-
-            # REM: Consolidate - promote L1->L2, L2->L3 (skip deleted items)
-            for item in items_sorted:
-                if item.id in deleted_ids:
-                    continue
-                if self.plasticity.should_promote_to_l2(item):
-                    item.store_level = StoreLevel.L2
-                    item = self.embedding_service.embed_item(item)
-                    await self.l2.write(item)
-                    report["engraved"] += 1
-
-            l2_items = await self.l2.list_for_sleep(namespace, limit=5000)
-            for item in l2_items:
-                if self.plasticity.should_promote_to_l3(item):
-                    item.store_level = StoreLevel.L3
-                    await self.l3.write(item)
-                    report["engraved"] += 1
-
-            report["phases"] = {
-                "N1": "complete",
-                "N2": "complete",
-                "N3": "complete",
-                "REM": "complete",
-            }
+                try:
+                    l3_item = MemoryItem(
+                        id=phase_item.id,
+                        text=phase_item.fact.raw_text,
+                        namespace=phase_item.namespace,
+                        store_level=StoreLevel.L3,
+                        confidence=min(1.0, phase_item.consolidation_strength),
+                        salience=phase_item.surprise_at_birth,
+                        usage_count=phase_item.retrieval_count,
+                        surprise=phase_item.surprise_at_birth,
+                        subject=phase_item.fact.subject or None,
+                        predicate=phase_item.fact.relation or None,
+                        object=(phase_item.fact.value[:256] if phase_item.fact.value else None),
+                    )
+                    l3_item = self.embedding_service.embed_item(l3_item)
+                    await self.l3.write(l3_item)
+                    report["archived_to_l3"] += 1
+                except Exception as e:
+                    logger.warning("L3 archival failed for %s: %s", phase_item.id, e)
 
         except Exception as e:
             logger.error("Sleep cycle error for namespace '%s': %s", namespace, e)

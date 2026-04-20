@@ -17,6 +17,7 @@ from uuid import uuid4
 import httpx
 
 from clsplusplus.config import Settings
+from clsplusplus.tracer import tracer
 
 logger = logging.getLogger(__name__)
 
@@ -100,15 +101,23 @@ class WebhookDispatcher:
         subscription: dict,
         event_type: str,
         payload: dict,
+        trace_id: Optional[str] = None,
+        parent_hop_id: Optional[str] = None,
     ) -> dict:
-        """Deliver a webhook event to a subscription URL.
-
-        Signs the payload with HMAC-SHA256, includes standard headers,
-        records the delivery result, and handles failure counting.
-        """
+        """Deliver a webhook event to a subscription URL."""
         delivery_id = str(uuid4())
         event_id = str(uuid4())
         timestamp = _now_iso()
+        url = subscription.get("url", "?")
+
+        # Create a standalone trace for this delivery (fire-and-forget context)
+        tid = trace_id or tracer.new_trace(f"webhook.{event_type}")
+        _span_ctx = (
+            tracer.span(tid, "webhook.deliver", "webhook_dispatcher",
+                        _parent=parent_hop_id,
+                        input=f"event={event_type}  url={url[:80]}  item_id={payload.get('id', '?')[:16]}")
+            if tid else __import__("contextlib").nullcontext()
+        )
 
         envelope = {
             "event": event_type,
@@ -120,10 +129,6 @@ class WebhookDispatcher:
 
         payload_bytes = json.dumps(envelope, default=str).encode("utf-8")
 
-        # Sign with webhook secret (stored as hash — we need the raw secret for signing)
-        # In production, the secret_hash is stored. For signing, we'd need the raw secret.
-        # The dispatcher uses the secret_hash directly as the HMAC key (the subscriber
-        # has the raw secret and can compute the same hash to verify).
         secret_hash = subscription.get("secret_hash", "")
         signature = _sign_payload(secret_hash, payload_bytes)
 
@@ -136,7 +141,6 @@ class WebhookDispatcher:
             "User-Agent": "CLS++/1.0 (Webhook)",
         }
 
-        url = subscription["url"]
         sub_id = subscription["id"]
         start_time = time.monotonic()
         status = "delivered"
@@ -144,41 +148,51 @@ class WebhookDispatcher:
         response_body = None
         error_message = None
 
-        try:
-            client = await self._get_client()
-            resp = await client.post(url, content=payload_bytes, headers=headers)
-            elapsed_ms = int((time.monotonic() - start_time) * 1000)
-            response_status = resp.status_code
-            response_body = resp.text[:4096]  # Truncate to 4KB
+        with _span_ctx as deliver_hop:
+            try:
+                client = await self._get_client()
+                resp = await client.post(url, content=payload_bytes, headers=headers)
+                elapsed_ms = int((time.monotonic() - start_time) * 1000)
+                response_status = resp.status_code
+                response_body = resp.text[:4096]
 
-            if 200 <= resp.status_code < 300:
-                status = "delivered"
-                # Reset failure count on success
-                if self.store:
-                    try:
-                        await self.store.reset_failures(sub_id)
-                    except Exception:
-                        pass
-            else:
+                if 200 <= resp.status_code < 300:
+                    status = "delivered"
+                    if tid and deliver_hop:
+                        tracer.add_metadata(tid, deliver_hop,
+                                            output=f"HTTP {response_status}  {elapsed_ms}ms  delivered")
+                    if self.store:
+                        try:
+                            await self.store.reset_failures(sub_id)
+                        except Exception:
+                            pass
+                else:
+                    status = "failed"
+                    error_message = f"HTTP {resp.status_code}"
+                    if tid and deliver_hop:
+                        tracer.add_metadata(tid, deliver_hop,
+                                            output=f"HTTP {response_status}  {elapsed_ms}ms  FAILED",
+                                            error=error_message)
+                    if self.store:
+                        try:
+                            await self.store.increment_failure(sub_id)
+                        except Exception:
+                            pass
+
+            except Exception as e:
+                elapsed_ms = int((time.monotonic() - start_time) * 1000)
                 status = "failed"
-                error_message = f"HTTP {resp.status_code}"
+                error_message = str(e)
+                if tid and deliver_hop:
+                    tracer.add_metadata(tid, deliver_hop,
+                                        output=f"exception  {elapsed_ms}ms",
+                                        error=error_message[:200])
                 if self.store:
                     try:
                         await self.store.increment_failure(sub_id)
                     except Exception:
                         pass
 
-        except Exception as e:
-            elapsed_ms = int((time.monotonic() - start_time) * 1000)
-            status = "failed"
-            error_message = str(e)
-            if self.store:
-                try:
-                    await self.store.increment_failure(sub_id)
-                except Exception:
-                    pass
-
-        # Record delivery
         result = {
             "delivery_id": delivery_id,
             "subscription_id": sub_id,

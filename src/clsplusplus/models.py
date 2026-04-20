@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
@@ -36,6 +37,22 @@ def _validate_item_id(v: str) -> str:
     return v
 
 
+@dataclass
+class TemporalFilter:
+    """Temporal constraints for a memory read query.
+
+    Produced by ``parse_temporal_filter()`` from the query text, or supplied
+    directly by the caller.  All fields have safe defaults that disable
+    filtering / decay so the object is always safe to pass through.
+    """
+
+    start: Optional[datetime] = None          # inclusive lower bound on event_at
+    end: Optional[datetime] = None            # inclusive upper bound on event_at
+    recency_half_life_days: float = 90.0      # exponential-decay half-life
+    temporal_signal: str = "none"             # "recent"|"historical"|"range"|"none"
+    recency_alpha: float = 0.1               # blend weight: (1-α)·semantic + α·recency
+
+
 class StoreLevel(str, Enum):
     """Memory store level (L0-L3)."""
 
@@ -60,6 +77,10 @@ class MemoryItem(BaseModel):
     version: int = 1
     checksum: Optional[str] = None
     lineage: list[str] = Field(default_factory=list)
+
+    # Temporal provenance
+    event_at: Optional[datetime] = None       # when the event HAPPENED (differs from write timestamp)
+    superseded: bool = False                  # True = a newer fact on the same topic exists
 
     # Plasticity signals
     salience: float = 0.5
@@ -105,6 +126,16 @@ class WriteRequest(BaseModel):
     predicate: Optional[str] = Field(default=None, max_length=256)
     object: Optional[str] = Field(default=None, max_length=256)
 
+    # When the conversation/event occurred. If provided, relative date references
+    # in `text` ("yesterday", "last week", "in 3 days") are resolved to absolute
+    # dates and appended inline so the memory remains queryable forever.
+    # ISO-8601 string or datetime accepted.  Example: "2024-05-08T14:30:00"
+    conversation_date: Optional[datetime] = Field(default=None)
+
+    # Explicit event_at override.  If omitted, extract_event_date() is used to
+    # auto-detect from the resolved text.  If that also fails, event_at is left None.
+    event_at: Optional[datetime] = Field(default=None)
+
     @field_validator("namespace")
     @classmethod
     def ns_valid(cls, v: str) -> str:
@@ -119,6 +150,11 @@ class ReadRequest(BaseModel):
     limit: int = Field(default=10, ge=1, le=MAX_LIMIT)
     store_levels: Optional[list[StoreLevel]] = None
     min_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+    # Temporal filtering. If None, auto-parsed from query text at read time.
+    temporal_filter: Optional[TemporalFilter] = Field(default=None)
+    # When False (default), superseded facts are hidden from results.
+    include_superseded: bool = Field(default=False)
 
     @field_validator("namespace")
     @classmethod
@@ -149,6 +185,7 @@ class ReadResponse(BaseModel):
     items: list[MemoryItem]
     query: str
     namespace: str
+    trace_id: Optional[str] = None
 
 
 class AdjudicateRequest(BaseModel):
@@ -326,6 +363,120 @@ class MemoryCycleRequest(BaseModel):
         min_length=1,
         max_length=MAX_NAMESPACE_LEN,
     )
+
+    @field_validator("namespace")
+    @classmethod
+    def ns_valid(cls, v: str) -> str:
+        return _validate_namespace(v)
+
+
+class UsageResponse(BaseModel):
+    """Tier-aware usage response for /v1/usage and /v1/billing/usage."""
+
+    tier: str = Field(description="Current tier: free, pro, or unlimited")
+    period: str = Field(description="Billing period YYYY-MM")
+    operations: int = Field(description="Total operations this period")
+    operations_limit: int = Field(description="Max operations for tier (-1 = unlimited)")
+    writes: int = Field(description="Write operations this period")
+    reads: int = Field(description="Read operations this period")
+    namespaces_limit: int = Field(description="Max namespaces for tier (-1 = unlimited)")
+    storage_limit: int = Field(description="Max L1 items per namespace for tier")
+    rate_limit: int = Field(description="Requests per minute for tier")
+
+
+# =========================================================================
+# User auth models
+# =========================================================================
+
+class UserRegisterRequest(BaseModel):
+    """Register a new user with email and password."""
+
+    email: str = Field(..., max_length=256)
+    password: str = Field(..., min_length=8, max_length=128)
+    name: str = Field(default="", max_length=128)
+
+
+class UserLoginRequest(BaseModel):
+    """Login with email and password."""
+
+    email: str = Field(..., max_length=256)
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+class UserResponse(BaseModel):
+    """Public user profile (no password_hash)."""
+
+    id: str
+    email: str
+    name: str
+    tier: str
+    is_admin: bool
+    avatar_url: Optional[str] = None
+    created_at: str
+
+
+class TierUpgradeRequest(BaseModel):
+    """Request to change user tier."""
+
+    tier: str = Field(..., pattern="^(free|pro|business|enterprise)$")
+
+
+class RazorpayVerifyRequest(BaseModel):
+    """Request to verify a Razorpay payment after checkout."""
+
+    order_id: str = Field(..., min_length=1, max_length=64)
+    payment_id: str = Field(..., min_length=1, max_length=64)
+    signature: str = Field(..., min_length=1, max_length=128)
+    tier: str = Field(..., pattern="^(pro|business|enterprise)$")
+
+
+class UserProfileUpdateRequest(BaseModel):
+    """Request to update user profile fields."""
+
+    name: Optional[str] = Field(default=None, max_length=128)
+    email: Optional[str] = Field(default=None, max_length=256)
+    password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+    current_password: Optional[str] = Field(default=None, max_length=128)
+
+
+class PasswordResetRequest(BaseModel):
+    """Request a password reset token."""
+
+    email: str = Field(..., max_length=256)
+
+
+class PasswordResetConfirm(BaseModel):
+    """Reset password using a token."""
+
+    token: str = Field(..., min_length=1, max_length=256)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Prompt Ingestion — Cross-LLM Context Pipeline
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class PromptEntryModel(BaseModel):
+    """A single prompt/response in a conversation."""
+    role: str = Field(..., pattern="^(user|assistant|system)$")
+    content: str = Field(..., min_length=1, max_length=MAX_TEXT_LEN)
+    sequence_num: int = Field(default=0, ge=0)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class PromptIngestRequest(BaseModel):
+    """Batch ingest prompts from an LLM session.
+
+    Called by Claude Code hooks, browser extension, SDKs.
+    Supports batch ingestion for efficiency (single HTTP call per hook fire).
+    """
+    session_id: str = Field(..., min_length=1, max_length=128)
+    entries: list[PromptEntryModel] = Field(..., min_length=1, max_length=200)
+    llm_provider: str = Field(default="unknown", max_length=64)
+    llm_model: Optional[str] = Field(default=None, max_length=128)
+    client_type: str = Field(default="hook", max_length=32)
+    namespace: str = Field(default="default", min_length=1, max_length=MAX_NAMESPACE_LEN)
 
     @field_validator("namespace")
     @classmethod

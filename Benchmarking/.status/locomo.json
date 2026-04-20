@@ -1,0 +1,16 @@
+{
+  "status": "complete",
+  "conv_done": 10,
+  "total_convs": 10,
+  "qa_done": 300,
+  "failures": 245,
+  "avg_j1": 0.1098,
+  "by_category": {
+    "SingleHop": 0.0399,
+    "MultiHop": 0.2032,
+    "Temporal": 0.0344,
+    "Adversarial": 0.0,
+    "OpenDomain": 0.0
+  },
+  "last_update": "07:37:52 UTC"
+}

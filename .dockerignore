@@ -1,0 +1,16 @@
+Benchmarking/
+tests/
+docs/
+wiki/
+infrastructure/
+.git/
+.claude/
+prototype/downloads/
+__pycache__/
+*.pyc
+*.pyo
+build_dmg.sh
+build_installer.sh
+*.egg-info/
+dist/
+.pytest_cache/

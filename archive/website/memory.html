@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CLS++ · Memory Viewer</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=2"/>
+  <script src="posthog.js" defer></script>
+  <script src="variant-loader.js"></script>
+  <script src="feedback-widget.js" defer></script>
+  <script src="auth.js"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:transparent;--surface:rgba(255,255,255,0.92);--surface2:rgba(0,0,0,0.03);--surface3:rgba(0,0,0,0.06);
+      --border:rgba(0,0,0,0.08);--border2:rgba(0,0,0,0.12);
+      --accent:#ff6b35;--accent2:#ff8c5a;--text:#1d1d1f;--muted:#86868b;
+      --r:14px;
+      --chatgpt:#19c37d;--claude:#cc785c;--gemini:#4285f4;
+      --copilot:#2564cf;--perplexity:#20b2aa;--grok:#ff6b35;
+    }
+    html,body{background:transparent;color:var(--text);
+      -webkit-font-smoothing:antialiased}
+
+    .layout{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 56px);overflow:hidden;background:rgba(255,255,255,0.92);border-radius:24px;box-shadow:0 4px 40px rgba(0,0,0,0.08);margin-top:60px;max-width:980px;margin-left:auto;margin-right:auto}
+
+    /* ── LEFT SIDEBAR ─────────────────────────────────── */
+    .sidebar{background:var(--surface);border-right:1px solid var(--border);
+      display:flex;flex-direction:column;overflow:hidden}
+    .sidebar-head{padding:20px 20px 16px;border-bottom:1px solid var(--border)}
+    .logo{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;margin-bottom:14px}
+    .logo-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);
+      box-shadow:0 0 6px var(--accent);animation:blink 1.8s ease-in-out infinite}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+    .total-count{font-size:32px;font-weight:600;letter-spacing:-.04em;color:var(--accent)}
+    .total-label{font-size:11px;color:var(--muted);margin-top:2px}
+
+    .sidebar-section{padding:14px 16px 8px}
+    .sec-label{font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;
+      color:var(--muted);margin-bottom:10px}
+
+    .model-list,.cat-list{display:flex;flex-direction:column;gap:4px}
+    .model-item,.cat-item{display:flex;align-items:center;gap:10px;padding:8px 10px;
+      border-radius:9px;cursor:pointer;transition:background .15s;border:1px solid transparent;
+      font-size:12px}
+    .model-item:hover,.cat-item:hover{background:rgba(0,0,0,.03)}
+    .model-item.active,.cat-item.active{background:rgba(255,107,53,.08);border-color:rgba(255,107,53,.15)}
+    .model-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+    .model-name,.cat-name{flex:1;color:var(--muted)}
+    .model-item.active .model-name,.cat-item.active .cat-name{color:var(--text)}
+    .model-cnt,.cat-cnt{font-size:11px;color:var(--muted);font-weight:600;
+      background:rgba(0,0,0,.04);padding:1px 7px;border-radius:10px}
+    .cat-icon{font-size:14px;width:20px;text-align:center}
+
+    .layer-list{display:flex;flex-direction:column;gap:4px}
+    .layer-item{display:flex;align-items:center;gap:10px;padding:8px 10px;
+      border-radius:9px;border:1px solid transparent;font-size:12px;
+      cursor:pointer;transition:background .15s}
+    .layer-item:hover{background:rgba(0,0,0,.03)}
+    .layer-item.active{background:rgba(255,107,53,.08);border-color:rgba(255,107,53,.15)}
+    .layer-bar-wrap{flex:1}
+    .layer-label{font-size:12px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px}
+    .layer-phase{font-size:10px;font-weight:600;opacity:.6;text-transform:uppercase;letter-spacing:.06em}
+    .layer-desc{font-size:10px;color:var(--muted);margin-top:1px}
+    .layer-cnt{font-size:11px;color:var(--muted);font-weight:600;
+      background:rgba(0,0,0,.04);padding:1px 7px;border-radius:10px}
+
+    /* Phase badges on cards */
+    .phase-badge{font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;
+      letter-spacing:.05em;text-transform:uppercase}
+    .phase-gas{background:rgba(255,100,100,.12);color:#dc2626}
+    .phase-liquid{background:rgba(255,107,53,.12);color:#ff6b35}
+    .phase-solid{background:rgba(59,130,246,.12);color:#3b82f6}
+    .phase-glass{background:rgba(139,92,246,.12);color:#8b5cf6}
+
+    /* ── Labels ── */
+    .btn-manage-labels{width:100%;padding:6px;background:transparent;border:1px solid var(--border);
+      border-radius:8px;color:var(--muted);font-size:10px;cursor:pointer;margin-top:8px;transition:all .18s}
+    .btn-manage-labels:hover{color:var(--text);border-color:var(--border2)}
+    .label-pill{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:600;
+      padding:2px 7px;border-radius:12px;background:rgba(255,107,53,.12);color:#ff6b35;
+      border:1px solid rgba(255,107,53,.2);cursor:default;margin-right:3px;margin-bottom:3px}
+    .label-pill .lp-x{cursor:pointer;opacity:.5;font-size:10px;margin-left:2px}
+    .label-pill .lp-x:hover{opacity:1;color:#f05d9a}
+    .label-add{display:inline-flex;align-items:center;font-size:10px;color:var(--muted);
+      cursor:pointer;padding:2px 6px;border-radius:12px;border:1px dashed var(--border);
+      transition:all .15s}
+    .label-add:hover{color:var(--accent);border-color:var(--accent)}
+    .label-row{display:flex;flex-wrap:wrap;align-items:center;gap:2px;margin-bottom:6px}
+    .label-picker{position:absolute;top:100%;left:0;z-index:50;background:var(--surface2);
+      border:1px solid var(--border2);border-radius:10px;padding:8px;min-width:180px;
+      box-shadow:0 8px 24px rgba(0,0,0,.5)}
+    .label-picker input{width:100%;padding:5px 8px;background:rgba(0,0,0,.3);border:1px solid var(--border);
+      border-radius:6px;color:var(--text);font-size:11px;outline:none;margin-bottom:6px}
+    .label-picker-item{padding:4px 8px;font-size:11px;border-radius:6px;cursor:pointer;
+      color:var(--muted);transition:background .1s}
+    .label-picker-item:hover{background:rgba(255,107,53,.1);color:var(--text)}
+    .label-picker-create{padding:4px 8px;font-size:11px;color:var(--accent);cursor:pointer;
+      border-top:1px solid var(--border);margin-top:4px;padding-top:6px}
+    .label-picker-create:hover{color:var(--accent2)}
+
+    /* ── Manage Labels Modal ── */
+    .labels-modal{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);
+      z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px}
+    .labels-modal.hidden{display:none}
+    .labels-modal-box{background:var(--surface);border:1px solid var(--border2);border-radius:16px;
+      width:100%;max-width:400px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.5)}
+    .labels-modal-head{padding:16px 20px;border-bottom:1px solid var(--border);
+      display:flex;align-items:center;justify-content:space-between}
+    .labels-modal-head h3{font-size:14px;font-weight:600}
+    .labels-modal-body{padding:12px 20px;max-height:300px;overflow-y:auto}
+    .label-manage-row{display:flex;align-items:center;gap:8px;padding:8px 0;
+      border-bottom:1px solid var(--border)}
+    .label-manage-row:last-child{border-bottom:none}
+    .label-manage-name{flex:1;font-size:12px;color:var(--text)}
+    .label-manage-cnt{font-size:10px;color:var(--muted);background:rgba(0,0,0,.04);
+      padding:1px 6px;border-radius:8px}
+    .label-manage-btn{background:none;border:none;font-size:10px;cursor:pointer;padding:3px 6px;
+      border-radius:4px;transition:all .15s}
+    .label-manage-rename{color:var(--accent)}
+    .label-manage-rename:hover{background:rgba(255,107,53,.1)}
+    .label-manage-delete{color:#f05d9a}
+    .label-manage-delete:hover{background:rgba(240,93,154,.1)}
+
+    /* ── Sort dropdown ── */
+    .sort-select{background:rgba(0,0,0,.03);border:1px solid var(--border);border-radius:9px;
+      padding:7px 10px;font-size:12px;color:var(--text);outline:none;cursor:pointer}
+    .sort-select:focus{border-color:rgba(255,107,53,.5)}
+
+    /* ── Group header ── */
+    .group-header{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+      color:var(--accent);padding:12px 0 6px;border-bottom:1px solid var(--border);margin-bottom:8px}
+
+    /* ── MAIN CONTENT ─────────────────────────────────── */
+    .main{display:flex;flex-direction:column;overflow:hidden}
+    .main-head{padding:20px 24px;border-bottom:1px solid var(--border);
+      display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+    .main-title{font-size:17px;font-weight:600;letter-spacing:-.02em}
+    .main-sub{font-size:12px;color:var(--muted);margin-top:2px}
+    .search-row{display:flex;gap:10px;align-items:center}
+    #search{background:var(--surface2);border:1px solid var(--border);
+      border-radius:9px;padding:8px 13px;font-size:13px;color:var(--text);
+      outline:none;width:220px;transition:border-color .2s}
+    #search:focus{border-color:rgba(255,107,53,.5)}
+    #search::placeholder{color:var(--muted)}
+    .btn-ctx-log{background:rgba(255,107,53,.08);border:1px solid rgba(255,107,53,.2);
+      border-radius:9px;color:#ff6b35;font-size:12px;font-weight:600;padding:8px 14px;
+      cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px}
+    .btn-ctx-log:hover{background:rgba(255,107,53,.14);border-color:rgba(255,107,53,.35)}
+
+    .mem-grid{flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:10px}
+    .mem-card{background:var(--surface);border:1px solid var(--border);
+      border-radius:var(--r);padding:14px 16px;transition:border-color .18s;
+      animation:card-in .3s ease forwards;opacity:0;transform:translateY(6px)}
+    @keyframes card-in{to{opacity:1;transform:translateY(0)}}
+    @media(prefers-reduced-motion:reduce){.mem-card{animation:none;opacity:1;transform:none}}
+    .mem-card:hover{border-color:var(--border2)}
+    .mem-card-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+    .cat-badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;
+      letter-spacing:.04em;text-transform:uppercase}
+    .model-badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;
+      display:flex;align-items:center;gap:5px;margin-left:auto}
+    .mbdot{width:5px;height:5px;border-radius:50%}
+    .mem-text{font-size:13px;color:var(--text);line-height:1.5;margin-bottom:10px}
+    .mem-footer{display:flex;align-items:center;gap:12px}
+    .mem-ts{font-size:10px;color:var(--muted)}
+    .strength-bar{flex:1;height:3px;background:rgba(0,0,0,.06);border-radius:2px;overflow:hidden}
+    .strength-fill{height:100%;border-radius:2px;transition:width .5s ease}
+    .strength-label{font-size:10px;color:var(--muted)}
+    .fact-pills{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+    .fact-pill{font-size:10px;color:var(--muted);background:rgba(0,0,0,.03);
+      border:1px solid var(--border);border-radius:20px;padding:2px 8px}
+
+    .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;
+      flex:1;gap:12px;color:var(--muted)}
+    .empty-icon{font-size:40px;opacity:.4}
+    .empty-hint{font-size:12px;max-width:300px;text-align:center;line-height:1.6}
+
+    /* Category colours */
+    .cat-Identity   {background:rgba(255,107,53,.12);color:#ff6b35}
+    .cat-Preference {background:rgba(240,160,93,.12);color:#f0a05d}
+    .cat-Work       {background:rgba(22,163,74,.1);color:#16a34a}
+    .cat-Project    {background:rgba(59,130,246,.1);color:#3b82f6}
+    .cat-Relationship{background:rgba(236,72,153,.1);color:#ec4899}
+    .cat-Goal       {background:rgba(255,215,0,.1);color:#ffd700}
+    .cat-Temporal   {background:rgba(139,92,246,.08);color:#8b5cf6}
+    .cat-Context    {background:rgba(107,114,128,.1);color:#6b7280}
+    .cat-General    {background:rgba(0,0,0,.04);color:var(--muted)}
+
+    /* ── CONTEXT LOG MODAL ────────────────────────────── */
+    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);
+      backdrop-filter:blur(4px);z-index:1000;display:flex;align-items:flex-start;
+      justify-content:center;padding:40px 24px;overflow-y:auto}
+    .modal-overlay.hidden{display:none}
+    .modal-box{background:var(--surface);border:1px solid var(--border2);
+      border-radius:18px;width:100%;max-width:740px;display:flex;flex-direction:column;
+      overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.6)}
+    .modal-head{padding:20px 24px;border-bottom:1px solid var(--border);
+      display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+    .modal-title{font-size:15px;font-weight:600;display:flex;align-items:center;gap:10px}
+    .modal-close{background:rgba(0,0,0,.04);border:1px solid var(--border);
+      border-radius:8px;color:var(--muted);font-size:18px;line-height:1;
+      padding:6px 10px;cursor:pointer;transition:all .18s}
+    .modal-close:hover{color:var(--text);border-color:var(--border2)}
+    .ctx-log{padding:16px;display:flex;flex-direction:column;gap:8px;
+      max-height:calc(100vh - 200px);overflow-y:auto}
+    .ctx-entry{background:var(--surface2);border:1px solid var(--border);
+      border-radius:10px;padding:12px 14px}
+    .ctx-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+    .ctx-model{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+    .ctx-ts{font-size:10px;color:var(--muted);margin-left:auto}
+    .ctx-query{font-size:11px;color:var(--muted);margin-bottom:8px;
+      background:rgba(0,0,0,.03);padding:6px 8px;border-radius:6px;
+      border-left:2px solid var(--accent)}
+    .ctx-mems{display:flex;flex-direction:column;gap:4px}
+    .ctx-mem{font-size:10px;color:var(--muted);display:flex;gap:6px;align-items:flex-start}
+    .ctx-dot{width:4px;height:4px;border-radius:50%;background:var(--accent);
+      flex-shrink:0;margin-top:3px}
+    .ctx-empty{font-size:11px;color:var(--muted);font-style:italic;padding:4px 8px}
+  </style>
+</head>
+<body>
+  <div class="video-bg"><video autoplay muted loop playsinline poster="beach-bg.jpg"><source src="sunrise-ocean.mp4" type="video/mp4"></video></div>
+  <div class="video-overlay"></div>
+
+<!-- ── NAVBAR (consistent with all other pages) ──────────── -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+    <div class="nav-links">
+      <a href="/">Home</a>
+      <a href="/docs.html">API</a>
+      <a href="/integrate.html">Integrate</a>
+      <a href="/#pricing">Pricing</a>
+      <div id="nav-auth" class="nav-auth"></div>
+      <a href="/getting-started.html" class="nav-cta">Get Started</a>
+    </div>
+  </div>
+</nav>
+
+<div class="layout">
+
+  <!-- ── LEFT SIDEBAR ──────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <div class="logo"><div class="logo-dot"></div>CLS++ Memory</div>
+      <div class="total-count" id="total-count">0</div>
+      <div class="total-label">memories stored</div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sec-label">By AI Model</div>
+      <div class="model-list" id="model-list">
+        <div class="model-item active" data-model="">
+          <div class="model-dot" style="background:var(--text)"></div>
+          <span class="model-name">All Models</span>
+          <span class="model-cnt" id="cnt-all">0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sec-label">By Category</div>
+      <div class="cat-list" id="cat-list">
+        <div class="cat-item active" data-cat="">
+          <span class="cat-icon">🗂️</span>
+          <span class="cat-name">All Categories</span>
+          <span class="cat-cnt" id="cnt-cat-all">0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sec-label">Memory Layers</div>
+      <div class="layer-list" id="layer-list">
+        <div class="layer-item active" data-layer="">
+          <div class="layer-bar-wrap"><div class="layer-label">All Layers</div></div>
+          <span class="layer-cnt" id="cnt-layer-all">0</span>
+        </div>
+        <div class="layer-item" data-layer="L0">
+          <div class="layer-bar-wrap">
+            <div class="layer-label">L0 <span class="layer-phase">Gas</span></div>
+            <div class="layer-desc">Volatile · short-term buffer</div>
+          </div>
+          <span class="layer-cnt" id="cnt-L0">0</span>
+        </div>
+        <div class="layer-item" data-layer="L1">
+          <div class="layer-bar-wrap">
+            <div class="layer-label">L1 <span class="layer-phase">Liquid</span></div>
+            <div class="layer-desc">Episodic · indexed memories</div>
+          </div>
+          <span class="layer-cnt" id="cnt-L1">0</span>
+        </div>
+        <div class="layer-item" data-layer="L2">
+          <div class="layer-bar-wrap">
+            <div class="layer-label">L2 <span class="layer-phase">Solid</span></div>
+            <div class="layer-desc">Crystallized schemas</div>
+          </div>
+          <span class="layer-cnt" id="cnt-L2">0</span>
+        </div>
+        <div class="layer-item" data-layer="L3">
+          <div class="layer-bar-wrap">
+            <div class="layer-label">L3 <span class="layer-phase">Glass</span></div>
+            <div class="layer-desc">Converged · permanent</div>
+          </div>
+          <span class="layer-cnt" id="cnt-L3">0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Labels section -->
+    <div class="sidebar-section">
+      <div class="sec-label">By Label</div>
+      <div class="label-list" id="label-list">
+        <div class="cat-item active" data-label="">
+          <span class="cat-icon">🏷️</span>
+          <span class="cat-name">All Labels</span>
+          <span class="cat-cnt" id="cnt-label-all">0</span>
+        </div>
+      </div>
+      <button class="btn-manage-labels" id="btn-manage-labels">Manage Labels</button>
+    </div>
+  </aside>
+
+  <!-- ── MAIN: MEMORY CARDS ─────────────────────────────── -->
+  <main class="main">
+    <div class="main-head">
+      <div>
+        <div class="main-title" id="main-title">All Memories</div>
+        <div class="main-sub" id="main-sub">Listening for conversations…</div>
+      </div>
+      <div class="search-row">
+        <input id="search" type="text" placeholder="Search memories…" autocomplete="off"/>
+        <select class="sort-select" id="sort-select">
+          <option value="recent">Sort: Recent</option>
+          <option value="strength">Sort: Strength</option>
+          <option value="label">Sort: Label</option>
+        </select>
+        <button class="btn-ctx-log" id="btn-ctx-log">
+          <span style="width:6px;height:6px;border-radius:50%;background:#ff6b35;box-shadow:0 0 6px #ff6b35;display:inline-block;animation:blink 1.8s ease-in-out infinite"></span>
+          Context Log
+        </button>
+      </div>
+    </div>
+    <div class="mem-grid" id="mem-grid">
+      <div class="empty">
+        <div class="empty-icon">🧠</div>
+        <div style="font-size:15px;font-weight:600">Waiting for conversations…</div>
+        <div class="empty-hint">
+          Open ChatGPT, Claude, or Gemini in another tab and start chatting.
+          Memories will appear here automatically.
+        </div>
+      </div>
+    </div>
+  </main>
+
+</div>
+
+<!-- ── CONTEXT LOG MODAL ──────────────────────────────── -->
+<div class="modal-overlay hidden" id="ctx-modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div class="modal-title">
+        <span style="width:7px;height:7px;border-radius:50%;background:#ff6b35;box-shadow:0 0 6px #ff6b35;display:inline-block"></span>
+        Context Log — memories sent to each AI
+      </div>
+      <button class="modal-close" id="modal-close">✕</button>
+    </div>
+    <div class="ctx-log" id="ctx-log"></div>
+  </div>
+</div>
+
+<!-- ── MANAGE LABELS MODAL ────────────────────────────────── -->
+<div class="labels-modal hidden" id="labels-modal">
+  <div class="labels-modal-box">
+    <div class="labels-modal-head">
+      <h3>Manage Labels</h3>
+      <button class="modal-close" id="labels-modal-close">✕</button>
+    </div>
+    <div class="labels-modal-body" id="labels-modal-body">
+      <div style="font-size:12px;color:var(--muted);padding:12px;text-align:center">No labels yet</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+
+let allMemories = [];
+let activeModel = '';
+let activeCat   = '';
+let activeLabel = '';
+let activeSort  = 'recent';
+let activeLayer = '';
+let allLabels   = {}; // label → count
+
+const CAT_META = {
+  'Identity':     {icon:'👤',color:'#a89cf7'},
+  'Preference':   {icon:'❤️',color:'#f0a05d'},
+  'Work':         {icon:'💼',color:'#5de0c5'},
+  'Project':      {icon:'🚀',color:'#5da0f0'},
+  'Relationship': {icon:'👥',color:'#f05d9a'},
+  'Goal':         {icon:'🎯',color:'#ffd700'},
+  'Temporal':     {icon:'⏱️',color:'#c8c8ff'},
+  'Context':      {icon:'📌',color:'#b0b0c8'},
+  'General':      {icon:'💬',color:'#888'},
+};
+
+const MODEL_META = {
+  'claude-code':     {label:'Claude Code',  color:'#e88c6a'},
+  'claude-code-hook':{label:'Claude Code',  color:'#e88c6a'},
+  'claude-haiku-4-5':{label:'Claude Haiku', color:'#cc785c'},
+  'claude':          {label:'Claude',       color:'#cc785c'},
+  'gpt-4o-mini':     {label:'GPT-4o mini',  color:'#19c37d'},
+  'gpt-4o':          {label:'GPT-4o',       color:'#19c37d'},
+  'chatgpt':         {label:'ChatGPT',      color:'#19c37d'},
+  'openai':          {label:'OpenAI',       color:'#19c37d'},
+  'gemini':          {label:'Gemini',       color:'#4285f4'},
+  'copilot':         {label:'Copilot',      color:'#2564cf'},
+};
+
+function modelMeta(m) {
+  if (MODEL_META[m]) return MODEL_META[m];
+  for (const [k,v] of Object.entries(MODEL_META))
+    if (m && m.toLowerCase().includes(k)) return v;
+  return {label: m || 'AI', color:'var(--muted)'};
+}
+
+async function loadMemories() {
+  try {
+    // Try authenticated API first (for logged-in users with persisted memories)
+    var user = (typeof CLSAuth !== 'undefined') ? await CLSAuth.getUser() : null;
+    if (user) {
+      var ns = 'user-' + user.id.slice(0, 8);
+      var authResp = await fetch(API + '/v1/memory/list?limit=200&namespace=' + encodeURIComponent(ns), {
+        credentials: 'same-origin',
+      });
+      if (authResp.ok) {
+        var authData = await authResp.json();
+        var items = authData.items || [];
+        // Convert to memory viewer format
+        var converted = items.map(function(item) {
+          // Detect Claude Code hook source from text prefix or source field
+          var isCCHook = item.source === 'claude-code-hook'
+            || (item.text && (item.text.startsWith('[User prompt]') || item.text.startsWith('[Assistant]')));
+          var model = isCCHook ? 'claude-code' : (item.source || 'api');
+          var ts = item.timestamp || item.event_at || '';
+          // Use current time if no timestamp (prevents "Invalid Date")
+          if (!ts || ts === 'None' || ts === '') ts = new Date().toISOString();
+          return {
+            id: item.id,
+            text: item.text,
+            fact: item.text,
+            category: (item.metadata && item.metadata.category) || classify_simple(item.text),
+            source_model: model,
+            source: isCCHook ? 'claude-code' : (item.source || 'user'),
+            labels: (item.metadata && item.metadata.labels) || [],
+            strength: item.confidence || 0.5,
+            phase: (item.store_level === 'L0') ? 'gas' : (item.store_level === 'L2') ? 'solid' : (item.store_level === 'L3') ? 'glass' : 'liquid',
+            layer: item.store_level || 'L1',
+            ts: ts,
+          };
+        });
+        // Merge with extension memories (if any)
+        try {
+          var extResp = await fetch(API + '/api/memories');
+          if (extResp.ok) {
+            var extData = await extResp.json();
+            var extMems = extData.memories || [];
+            // Deduplicate by text
+            var seen = new Set(converted.map(function(m) { return m.text; }));
+            extMems.forEach(function(m) {
+              if (!seen.has(m.text || m.fact)) converted.push(m);
+            });
+          }
+        } catch(e) { /* extension API not available */ }
+        allMemories = converted;
+        renderMemories();
+        buildSidebar({
+          count: converted.length,
+          memories: converted,
+          available_models: [...new Set(converted.map(function(m) { return m.source_model; }))],
+          available_categories: [...new Set(converted.map(function(m) { return m.category; }))],
+          layers: converted.reduce(function(acc, m) { acc[m.layer] = (acc[m.layer] || 0) + 1; return acc; }, {L0:0,L1:0,L2:0,L3:0}),
+        });
+        return;
+      }
+    }
+
+    // Fallback: extension local API (anonymous user)
+    let url = `${API}/api/memories`;
+    const p = [];
+    if (activeModel) p.push('model='+encodeURIComponent(activeModel));
+    if (activeCat)   p.push('category='+encodeURIComponent(activeCat));
+    if (p.length) url += '?'+p.join('&');
+    const r = await fetch(url);
+    const d = await r.json();
+    allMemories = d.memories || [];
+    renderMemories();
+    buildSidebar(d);
+  } catch(e) { console.error('Server not reachable', e); }
+}
+
+function classify_simple(text) {
+  if (!text) return 'General';
+  var t = text.toLowerCase();
+  if (t.includes('prefer') || t.includes('like') || t.includes('love') || t.includes('favorite')) return 'Preference';
+  if (t.includes('name is') || t.includes('i am') || t.includes("i'm")) return 'Identity';
+  if (t.includes('work') || t.includes('job') || t.includes('company')) return 'Work';
+  if (t.includes('project') || t.includes('building') || t.includes('develop')) return 'Project';
+  if (t.includes('goal') || t.includes('want to') || t.includes('plan')) return 'Goal';
+  return 'General';
+}
+
+function renderMemories() {
+  const q = document.getElementById('search').value.toLowerCase();
+  let mems = q ? allMemories.filter(m => (m.fact||m.text).toLowerCase().includes(q)) : [...allMemories];
+
+  // Label filter
+  if (activeLabel) {
+    mems = mems.filter(m => (m.labels || []).includes(activeLabel));
+  }
+  // Model filter
+  if (activeModel) {
+    mems = mems.filter(m => m.source_model === activeModel);
+  }
+  // Category filter
+  if (activeCat) {
+    mems = mems.filter(m => m.category === activeCat);
+  }
+  // Layer filter
+  if (activeLayer) {
+    mems = mems.filter(m => (m.memory_layer || m.layer) === activeLayer);
+  }
+
+  const grid = document.getElementById('mem-grid');
+
+  if (!mems.length) {
+    grid.innerHTML = `<div class="empty">
+      <div class="empty-icon">🧠</div>
+      <div style="font-size:15px;font-weight:600">${activeLabel ? 'No memories with label "'+esc(activeLabel)+'"' : 'Waiting for conversations…'}</div>
+      <div class="empty-hint">${activeLabel ? 'Assign this label to memories to see them here.' : 'Open ChatGPT, Claude, or Gemini in another tab and start chatting. Memories will appear here automatically.'}</div>
+    </div>`;
+    document.getElementById('main-sub').textContent = activeLabel ? 'Label: '+activeLabel : 'Listening for conversations…';
+    return;
+  }
+
+  // Sort
+  if (activeSort === 'strength') {
+    mems.sort((a, b) => b.strength - a.strength);
+  } else if (activeSort === 'label') {
+    mems.sort((a, b) => {
+      const aL = (a.labels || []).join(',') || 'zzz';
+      const bL = (b.labels || []).join(',') || 'zzz';
+      return aL.localeCompare(bL);
+    });
+  }
+  // 'recent' is default sort from server
+
+  const filterDesc = [
+    activeModel ? modelMeta(activeModel).label : '',
+    activeCat || '',
+    activeLayer || '',
+    activeLabel ? '🏷️ ' + activeLabel : '',
+  ].filter(Boolean).join(' · ');
+  document.getElementById('main-sub').textContent =
+    `${mems.length} memor${mems.length===1?'y':'ies'}${filterDesc ? ' · '+filterDesc : ''}`;
+
+  grid.innerHTML = '';
+
+  // Group by label if sort=label
+  if (activeSort === 'label') {
+    const groups = {};
+    const ungrouped = [];
+    mems.forEach(m => {
+      if (m.labels && m.labels.length) {
+        m.labels.forEach(l => {
+          if (!groups[l]) groups[l] = [];
+          groups[l].push(m);
+        });
+      } else {
+        ungrouped.push(m);
+      }
+    });
+    Object.keys(groups).sort().forEach(label => {
+      const h = document.createElement('div');
+      h.className = 'group-header';
+      h.textContent = '🏷️ ' + label + ' (' + groups[label].length + ')';
+      grid.appendChild(h);
+      groups[label].forEach((m, i) => grid.appendChild(createMemCard(m, i)));
+    });
+    if (ungrouped.length) {
+      const h = document.createElement('div');
+      h.className = 'group-header';
+      h.textContent = 'Unlabeled (' + ungrouped.length + ')';
+      grid.appendChild(h);
+      ungrouped.forEach((m, i) => grid.appendChild(createMemCard(m, i)));
+    }
+  } else {
+    mems.forEach((m, i) => grid.appendChild(createMemCard(m, i)));
+  }
+
+  // Rebuild label counts
+  buildLabelSidebar();
+}
+
+function createMemCard(m, i) {
+  const mm  = modelMeta(m.source_model);
+  const cm  = CAT_META[m.category] || CAT_META['General'];
+  const pct = Math.round(m.strength * 100);
+  const ts  = new Date(m.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const dt  = new Date(m.ts).toLocaleDateString([],{year:'numeric',month:'short',day:'numeric'});
+  const card = document.createElement('div');
+  card.className = 'mem-card';
+  card.style.animationDelay = (i * 0.04) + 's';
+  card.style.position = 'relative';
+  const phase = m.phase || 'liquid';
+  const phaseLabels = {gas:'L0 Gas',liquid:'L1 Liquid',solid:'L2 Solid',glass:'L3 Glass'};
+
+  // Label pills HTML
+  const labels = m.labels || [];
+  let labelHtml = '<div class="label-row">';
+  labels.forEach(l => {
+    labelHtml += `<span class="label-pill">${esc(l)}<span class="lp-x" data-id="${m.id}" data-label="${esc(l)}">×</span></span>`;
+  });
+  labelHtml += `<span class="label-add" data-id="${m.id}">+ label</span></div>`;
+
+  card.innerHTML = `
+    <div class="mem-card-head">
+      <span class="cat-badge cat-${m.category}">${cm.icon} ${m.category}</span>
+      <span class="phase-badge phase-${phase}">${phaseLabels[phase]||phase}</span>
+      <span style="font-size:10px;color:var(--muted)">${m.source==='user'?'you said':'AI said'}</span>
+      <span class="model-badge" style="background:${mm.color}18;border:1px solid ${mm.color}33;color:${mm.color}">
+        <span class="mbdot" style="background:${mm.color}"></span>${mm.label}
+      </span>
+    </div>
+    ${labelHtml}
+    <div class="mem-text">${esc(m.fact || m.text)}</div>
+    <div class="mem-footer">
+      <span class="mem-ts">${dt} ${ts}</span>
+      <div class="strength-bar" title="${pct}%">
+        <div class="strength-fill" style="width:${pct}%;background:${mm.color}"></div>
+      </div>
+      <span class="strength-label">${pct}%</span>
+    </div>`;
+
+  // Label pill remove handler
+  card.querySelectorAll('.lp-x').forEach(x => {
+    x.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = x.dataset.id;
+      const label = x.dataset.label;
+      await removeLabel(id, label);
+    });
+  });
+
+  // Label add handler
+  card.querySelector('.label-add').addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    showLabelPicker(e.target, m.id);
+  });
+
+  return card;
+}
+
+// ── Label picker ────────────────────────────────────────────────────────
+let _activePicker = null;
+
+function showLabelPicker(anchor, memId) {
+  closeLabelPicker();
+  const picker = document.createElement('div');
+  picker.className = 'label-picker';
+  picker.style.position = 'absolute';
+
+  const existingLabels = Object.keys(allLabels).sort();
+  const mem = allMemories.find(m => m.id === memId);
+  const memLabels = new Set(mem ? (mem.labels || []) : []);
+
+  let html = '<input type="text" placeholder="Search or create label..." id="lp-search"/>';
+  existingLabels.forEach(l => {
+    if (!memLabels.has(l)) {
+      html += `<div class="label-picker-item" data-label="${esc(l)}">${esc(l)}</div>`;
+    }
+  });
+  html += '<div class="label-picker-create" id="lp-create" style="display:none">+ Create "<span id="lp-new-name"></span>"</div>';
+  picker.innerHTML = html;
+
+  // Position near anchor
+  const card = anchor.closest('.mem-card');
+  card.style.position = 'relative';
+  card.appendChild(picker);
+  _activePicker = picker;
+
+  const searchInput = picker.querySelector('#lp-search');
+  searchInput.focus();
+
+  // Click existing label
+  picker.querySelectorAll('.label-picker-item').forEach(item => {
+    item.addEventListener('click', async () => {
+      await addLabel(memId, item.dataset.label);
+      closeLabelPicker();
+    });
+  });
+
+  // Search/create
+  searchInput.addEventListener('input', () => {
+    const val = searchInput.value.trim().toLowerCase();
+    picker.querySelectorAll('.label-picker-item').forEach(item => {
+      item.style.display = item.dataset.label.toLowerCase().includes(val) ? '' : 'none';
+    });
+    const createEl = picker.querySelector('#lp-create');
+    if (val && !existingLabels.some(l => l.toLowerCase() === val) && !memLabels.has(val)) {
+      createEl.style.display = '';
+      picker.querySelector('#lp-new-name').textContent = searchInput.value.trim();
+    } else {
+      createEl.style.display = 'none';
+    }
+  });
+
+  // Create new label
+  picker.querySelector('#lp-create').addEventListener('click', async () => {
+    const name = searchInput.value.trim();
+    if (name) {
+      await addLabel(memId, name);
+      closeLabelPicker();
+    }
+  });
+
+  // Enter key to create
+  searchInput.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter') {
+      const name = searchInput.value.trim();
+      if (name) {
+        await addLabel(memId, name);
+        closeLabelPicker();
+      }
+    }
+    if (e.key === 'Escape') closeLabelPicker();
+  });
+
+  // Close on outside click — delay 300ms so the opening click doesn't immediately close it
+  setTimeout(() => {
+    document.addEventListener('click', _outsidePickerClick);
+  }, 300);
+}
+
+function _outsidePickerClick(e) {
+  if (_activePicker && !_activePicker.contains(e.target) && !e.target.classList.contains('label-add')) {
+    closeLabelPicker();
+  }
+}
+
+function closeLabelPicker() {
+  if (_activePicker) {
+    _activePicker.remove();
+    _activePicker = null;
+  }
+  document.removeEventListener('click', _outsidePickerClick);
+}
+
+// ── Label CRUD (client-side for now, persists via metadata) ─────────────
+async function addLabel(memId, label) {
+  const mem = allMemories.find(m => m.id === memId);
+  if (!mem) return;
+  if (!mem.labels) mem.labels = [];
+  if (mem.labels.includes(label)) return;
+  mem.labels.push(label);
+  // Persist to server
+  try {
+    await fetch(`${API}/api/memories/${memId}/labels`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label }),
+    });
+  } catch (e) {}
+  renderMemories();
+}
+
+async function removeLabel(memId, label) {
+  const mem = allMemories.find(m => m.id === memId);
+  if (!mem || !mem.labels) return;
+  mem.labels = mem.labels.filter(l => l !== label);
+  try {
+    await fetch(`${API}/api/memories/${memId}/labels/${encodeURIComponent(label)}`, { method: 'DELETE' });
+  } catch (e) {}
+  renderMemories();
+}
+
+function buildLabelSidebar() {
+  allLabels = {};
+  allMemories.forEach(m => {
+    (m.labels || []).forEach(l => { allLabels[l] = (allLabels[l] || 0) + 1; });
+  });
+  const list = document.getElementById('label-list');
+  const allItem = list.querySelector('[data-label=""]');
+  list.innerHTML = '';
+  list.appendChild(allItem);
+  document.getElementById('cnt-label-all').textContent = allMemories.length;
+
+  Object.keys(allLabels).sort().forEach(label => {
+    const el = document.createElement('div');
+    el.className = 'cat-item' + (activeLabel === label ? ' active' : '');
+    el.dataset.label = label;
+    el.innerHTML = `<span class="cat-icon">🏷️</span>
+      <span class="cat-name">${esc(label)}</span>
+      <span class="cat-cnt">${allLabels[label]}</span>`;
+    el.addEventListener('click', () => { activeLabel = label; refreshFilters(); });
+    list.appendChild(el);
+  });
+}
+
+// ── Manage Labels modal ─────────────────────────────────────────────────
+function openManageLabels() {
+  const body = document.getElementById('labels-modal-body');
+  const labels = Object.keys(allLabels).sort();
+  if (!labels.length) {
+    body.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:12px;text-align:center">No labels yet. Click "+ label" on any memory to create one.</div>';
+  } else {
+    body.innerHTML = '';
+    labels.forEach(label => {
+      const row = document.createElement('div');
+      row.className = 'label-manage-row';
+      row.innerHTML = `
+        <span class="label-manage-name">🏷️ ${esc(label)}</span>
+        <span class="label-manage-cnt">${allLabels[label]}</span>
+        <button class="label-manage-btn label-manage-rename" data-label="${esc(label)}">Rename</button>
+        <button class="label-manage-btn label-manage-delete" data-label="${esc(label)}">Delete</button>`;
+
+      row.querySelector('.label-manage-rename').addEventListener('click', () => {
+        const newName = prompt('Rename label "' + label + '" to:', label);
+        if (newName && newName.trim() && newName.trim() !== label) {
+          renameLabel(label, newName.trim());
+        }
+      });
+
+      row.querySelector('.label-manage-delete').addEventListener('click', () => {
+        if (confirm('Delete label "' + label + '" from all memories?')) {
+          deleteLabel(label);
+        }
+      });
+
+      body.appendChild(row);
+    });
+  }
+  document.getElementById('labels-modal').classList.remove('hidden');
+}
+
+async function renameLabel(oldName, newName) {
+  allMemories.forEach(m => {
+    if (m.labels && m.labels.includes(oldName)) {
+      m.labels = m.labels.map(l => l === oldName ? newName : l);
+    }
+  });
+  try {
+    const uid = await getViewerUID();
+    await fetch(`${API}/api/labels/${uid}/${encodeURIComponent(oldName)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ new_label: newName }),
+    });
+  } catch (e) {}
+  renderMemories();
+  openManageLabels(); // refresh modal
+}
+
+async function deleteLabel(label) {
+  allMemories.forEach(m => {
+    if (m.labels) m.labels = m.labels.filter(l => l !== label);
+  });
+  try {
+    const uid = await getViewerUID();
+    await fetch(`${API}/api/labels/${uid}/${encodeURIComponent(label)}`, { method: 'DELETE' });
+  } catch (e) {}
+  if (activeLabel === label) activeLabel = '';
+  renderMemories();
+  openManageLabels();
+}
+
+async function getViewerUID() {
+  try {
+    const r = await fetch(`${API}/api/uid`);
+    const d = await r.json();
+    return d.uid || 'anonymous';
+  } catch (e) { return 'anonymous'; }
+}
+
+function buildSidebar(d) {
+  document.getElementById('total-count').textContent = d.count;
+  document.getElementById('cnt-all').textContent = d.count;
+  document.getElementById('cnt-cat-all').textContent = d.count;
+
+  const ml = document.getElementById('model-list');
+  const allItem = ml.querySelector('[data-model=""]');
+  ml.innerHTML = ''; ml.appendChild(allItem);
+  (d.available_models || []).forEach(m => {
+    const mm = modelMeta(m);
+    const cnt = allMemories.filter(x => x.source_model === m).length;
+    const el = document.createElement('div');
+    el.className = 'model-item'+(activeModel===m?' active':'');
+    el.dataset.model = m;
+    el.innerHTML = `<div class="model-dot" style="background:${mm.color};box-shadow:0 0 5px ${mm.color}"></div>
+      <span class="model-name">${mm.label}</span><span class="model-cnt">${cnt}</span>`;
+    el.addEventListener('click', () => { activeModel=m; refreshFilters(); });
+    ml.appendChild(el);
+  });
+
+  const cl = document.getElementById('cat-list');
+  const allCat = cl.querySelector('[data-cat=""]');
+  cl.innerHTML = ''; cl.appendChild(allCat);
+  (d.available_categories || []).forEach(cat => {
+    const cm = CAT_META[cat] || CAT_META['General'];
+    const cnt = allMemories.filter(x => x.category === cat).length;
+    const el = document.createElement('div');
+    el.className = 'cat-item'+(activeCat===cat?' active':'');
+    el.dataset.cat = cat;
+    el.innerHTML = `<span class="cat-icon">${cm.icon}</span>
+      <span class="cat-name">${cat}</span><span class="cat-cnt">${cnt}</span>`;
+    el.addEventListener('click', () => { activeCat=cat; refreshFilters(); });
+    cl.appendChild(el);
+  });
+
+  // Layer counts
+  const layers = d.layers || {L0:0,L1:0,L2:0,L3:0};
+  ['L0','L1','L2','L3'].forEach(l => {
+    const el = document.getElementById('cnt-'+l);
+    if (el) el.textContent = layers[l] || 0;
+  });
+}
+
+function refreshFilters() {
+  document.querySelectorAll('.model-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.model === activeModel));
+  document.querySelectorAll('[data-cat]').forEach(el =>
+    el.classList.toggle('active', el.dataset.cat === activeCat));
+  document.querySelectorAll('.layer-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.layer === activeLayer));
+  document.querySelectorAll('[data-label]').forEach(el =>
+    el.classList.toggle('active', el.dataset.label === activeLabel));
+  const parts = [];
+  if (activeModel) parts.push(modelMeta(activeModel).label);
+  parts.push(activeCat || 'All Categories');
+  if (activeLayer) parts.push(activeLayer);
+  if (activeLabel) parts.push('🏷️ ' + activeLabel);
+  document.getElementById('main-title').textContent = parts.join(' · ');
+  loadMemories();
+}
+
+document.querySelector('.model-item[data-model=""]').addEventListener('click', () => {
+  activeModel=''; refreshFilters();
+});
+document.querySelector('.cat-item[data-cat=""]').addEventListener('click', () => {
+  activeCat=''; refreshFilters();
+});
+document.querySelector('[data-label=""]').addEventListener('click', () => {
+  activeLabel=''; refreshFilters();
+});
+document.querySelector('.layer-item[data-layer=""]').addEventListener('click', () => {
+  activeLayer=''; refreshFilters();
+});
+document.querySelectorAll('.layer-item[data-layer]').forEach(el => {
+  if (el.dataset.layer) el.addEventListener('click', () => { activeLayer=el.dataset.layer; refreshFilters(); });
+});
+document.getElementById('search').addEventListener('input', renderMemories);
+document.getElementById('sort-select').addEventListener('change', (e) => {
+  activeSort = e.target.value; renderMemories();
+});
+document.getElementById('btn-manage-labels').addEventListener('click', openManageLabels);
+document.getElementById('labels-modal-close').addEventListener('click', () => {
+  document.getElementById('labels-modal').classList.add('hidden');
+});
+document.getElementById('labels-modal').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('labels-modal'))
+    document.getElementById('labels-modal').classList.add('hidden');
+});
+
+// ── Context log modal ──────────────────────────────────────
+async function loadContextLog() {
+  try {
+    // Fetch from both extension local API and authenticated API (Claude Code hooks)
+    const [extResp, apiResp] = await Promise.allSettled([
+      fetch(`${API}/api/context-log`),
+      fetch(`${API}/v1/context-log`),
+    ]);
+
+    let log = [];
+    if (extResp.status === 'fulfilled' && extResp.value.ok) {
+      const d = await extResp.value.json();
+      (d.log || []).forEach(e => { e._src = 'extension'; log.push(e); });
+    }
+    if (apiResp.status === 'fulfilled' && apiResp.value.ok) {
+      const d = await apiResp.value.json();
+      (d.log || []).forEach(e => { e._src = 'api'; log.push(e); });
+    }
+
+    // Sort by timestamp descending
+    log.sort((a, b) => new Date(b.ts) - new Date(a.ts));
+
+    const el = document.getElementById('ctx-log');
+    if (!log.length) {
+      el.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:20px;text-align:center">
+        No context bridges yet. Chat in Claude Code or another tab to see memory injection logs.</div>`;
+      return;
+    }
+    el.innerHTML = '';
+    log.forEach(entry => {
+      const mm = modelMeta(entry.model);
+      const ts = new Date(entry.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      const dt = new Date(entry.ts).toLocaleDateString([],{year:'numeric',month:'short',day:'numeric'});
+      const srcBadge = entry._src === 'api'
+        ? '<span style="font-size:9px;background:rgba(232,140,106,.12);color:#e88c6a;padding:2px 6px;border-radius:8px;margin-left:4px">Claude Code</span>'
+        : '';
+      const div = document.createElement('div');
+      div.className = 'ctx-entry';
+      div.innerHTML = `
+        <div class="ctx-head">
+          <div class="model-dot" style="background:${mm.color};width:8px;height:8px;border-radius:50%"></div>
+          <span class="ctx-model" style="color:${mm.color}">${mm.label}</span>
+          ${srcBadge}
+          <span style="font-size:10px;background:${mm.color}18;color:${mm.color};padding:2px 7px;
+            border-radius:10px">${entry.count} memor${entry.count===1?'y':'ies'} injected</span>
+          <span class="ctx-ts">${dt} ${ts}</span>
+        </div>
+        <div class="ctx-query">Query: "${esc(entry.query)}"</div>
+        <div class="ctx-mems">
+          ${entry.memories_sent.length
+            ? entry.memories_sent.map(m =>
+                `<div class="ctx-mem"><div class="ctx-dot"></div><span>${esc(m.slice(0,150))}</span></div>`
+              ).join('')
+            : '<div class="ctx-empty">No memories for this request</div>'}
+        </div>`;
+      el.appendChild(div);
+    });
+  } catch(e) { console.error('Context log load error', e); }
+}
+
+document.getElementById('btn-ctx-log').addEventListener('click', async () => {
+  await loadContextLog();
+  document.getElementById('ctx-modal').classList.remove('hidden');
+});
+document.getElementById('modal-close').addEventListener('click', () => {
+  document.getElementById('ctx-modal').classList.add('hidden');
+});
+document.getElementById('ctx-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('ctx-modal'))
+    document.getElementById('ctx-modal').classList.add('hidden');
+});
+
+// ── WebSocket live push ────────────────────────────────────
+function connectWS() {
+  try {
+    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${wsProto}//${window.location.host}/ws/memories`);
+    ws.onmessage = () => loadMemories();
+    ws.onclose = () => setTimeout(connectWS, 3000);
+  } catch(_) {}
+}
+
+function esc(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+loadMemories();
+connectWS();
+setInterval(loadMemories, 30000);
+</script>
+<script src="footer.js?v=2"></script>
+</body>
+</html>

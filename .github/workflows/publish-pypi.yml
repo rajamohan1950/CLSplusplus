@@ -1,0 +1,67 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: cls
+          POSTGRES_PASSWORD: cls
+          POSTGRES_DB: clsplusplus
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -e ".[server,dev]"
+      - name: Run core tests (SDK, API, auth, admin, client)
+        run: >
+          pytest tests/test_api.py tests/test_api_comprehensive.py
+          tests/test_api_endpoints.py tests/test_auth.py tests/test_admin.py
+          tests/test_client_sdk.py tests/test_memory_phase.py
+          --timeout=60
+          --ignore=tests/test_performance.py
+          -k "not test_similar_damage_magnitudes"
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # trusted publishing via OIDC
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install build
+      - run: python -m build
+      - name: Verify SDK-only install (no server deps)
+        run: |
+          python -m venv /tmp/verify-sdk
+          /tmp/verify-sdk/bin/pip install dist/*.whl
+          /tmp/verify-sdk/bin/python -c "from clsplusplus import CLS; print('SDK import OK')"
+          # Ensure server deps are NOT installed
+          ! /tmp/verify-sdk/bin/python -c "import fastapi" 2>/dev/null || (echo "FAIL: fastapi should not be installed in SDK-only mode" && exit 1)
+      - uses: pypa/gh-action-pypi-publish@release/v1

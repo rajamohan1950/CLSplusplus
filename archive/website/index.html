@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="CLS++ — Every AI remembers you. Cross-model memory for ChatGPT, Claude, Gemini.">
+  <title>CLS++ | Every AI Remembers You</title>
+  <link rel="stylesheet" href="styles.css?v=2">
+  <script src="posthog.js" defer></script>
+  <script src="variant-loader.js"></script>
+  <script src="feedback-widget.js" defer></script>
+  <script src="auth.js" defer></script>
+  <style>
+    /* index.html — layout only. Typography comes from styles.css */
+    html, body { background: transparent; }
+
+    /* ── Content wrapper — frosted glass over video ── */
+    .content-wrap {
+      position: relative; z-index: 1;
+      max-width: 980px; margin: 0 auto;
+      background: rgba(255,255,255,0.92);
+      border-radius: 24px; margin-bottom: 20px;
+      box-shadow: 0 4px 40px rgba(0,0,0,0.08);
+    }
+    .content-dark { background: #1d1d1f; color: #fff; margin-top: 60px; }
+
+    /* ── Shared section ── */
+    .section { max-width: 980px; margin: 0 auto; padding: 100px 22px; }
+
+    /* ── Frosted Glass Card ── */
+    .glass {
+      background: rgba(255,255,255,0.45);
+      backdrop-filter: blur(40px) saturate(1.8);
+      -webkit-backdrop-filter: blur(40px) saturate(1.8);
+      border: 1px solid rgba(255,255,255,0.6);
+      border-radius: 20px;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .glass:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.08); }
+    .glass-dark {
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(40px) saturate(1.8);
+      -webkit-backdrop-filter: blur(40px) saturate(1.8);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 20px;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .glass-dark:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.2); }
+
+    /* ── Hero — clear sunset, sun visible, chat below sun ── */
+    .hero {
+      min-height: 100vh; display: flex; flex-direction: column; justify-content: flex-end;
+      align-items: stretch !important;
+      padding: 0 !important; position: relative; overflow: visible !important;
+    }
+
+    /* Tagline — above the sun */
+    .hero-tagline {
+      position: relative; text-align: center; z-index: 2;
+      padding: 0 24px 20px; flex-shrink: 0; margin-top: auto;
+    }
+    .hero-tagline h1 {
+      font-size: clamp(40px, 6vw, 64px); color: #fff; letter-spacing: -0.03em;
+      text-shadow: 0 2px 20px rgba(0,0,0,0.4);
+    }
+    .hero-tagline h1 em { font-style: normal; color: #ff6b35; }
+
+    /* Dock — transparent, chat floats over the sunset */
+    .hero-dock {
+      position: relative; z-index: 2;
+      padding: 12px 0 28px;
+    }
+    .hero-dock-inner {
+      max-width: 1400px; margin: 0 auto; padding: 0 16px;
+    }
+
+    /* Cross-model memory showcase — 3-column layout */
+    .memory-hub {
+      display: flex; align-items: center; padding: 6px 0; gap: 8px;
+      margin-bottom: 10px;
+    }
+    .hub-line {
+      flex: 1; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,107,53,0.3), transparent);
+    }
+    .hub-node {
+      background: rgba(255,107,53,0.12); border: 1px solid rgba(255,107,53,0.25);
+      border-radius: 12px; padding: 4px 14px;
+      font-size: 10px; font-weight: 700; color: #ff6b35;
+      letter-spacing: 0.06em; white-space: nowrap;
+      font-family: var(--font-sans);
+    }
+    .hub-status {
+      font-size: 10px; color: rgba(255,255,255,0.2);
+      font-family: var(--font-sans); transition: color 0.3s;
+      white-space: nowrap; position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+    }
+    .hub-status.active { color: #ff6b35; }
+
+    /* All panels in one row — scrolls horizontally if needed */
+    .showcase-grid {
+      display: flex; gap: 10px; overflow-x: auto;
+      scrollbar-width: none; -ms-overflow-style: none;
+    }
+    .showcase-grid::-webkit-scrollbar { display: none; }
+    .showcase-grid .showcase-panel { flex: 1 1 0; min-width: 180px; }
+
+    /* Individual chat panel — bigger, rectangular, attractive */
+    .showcase-panel {
+      background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 16px; overflow: hidden; display: flex; flex-direction: column;
+      transition: border-color 0.3s;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    .showcase-panel.panel-active {
+      border-color: rgba(255,255,255,0.15);
+    }
+
+    /* Panel header */
+    .panel-header {
+      display: flex; align-items: center; gap: 7px;
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.02);
+    }
+    .panel-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+    }
+    .panel-name {
+      font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.7);
+      font-family: var(--font-sans); letter-spacing: 0.01em;
+    }
+    .panel-header[data-model="chatgpt"] .panel-name { color: #10a37f; }
+    .panel-header[data-model="claude"] .panel-name { color: #d97757; }
+    .panel-header[data-model="gemini"] .panel-name { color: rgba(255,255,255,0.75); }
+    .panel-header[data-model="copilot"] .panel-name { color: #0078d4; }
+    .panel-header[data-model="grok"] .panel-name { color: #fff; }
+    .panel-header[data-model="deepseek"] .panel-name { color: #4a9eff; }
+
+    /* Messages area */
+    .showcase-messages {
+      height: 280px; overflow-y: auto; padding: 12px 14px;
+      display: flex; flex-direction: column; gap: 8px;
+      scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.08) transparent;
+    }
+    .showcase-messages::-webkit-scrollbar { width: 3px; }
+    .showcase-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+
+    /* Message bubbles */
+    .showcase-msg {
+      max-width: 92%; padding: 9px 13px; border-radius: 10px;
+      font-size: 14px; line-height: 1.45; font-family: var(--font-sans);
+      animation: msgIn 0.3s ease;
+    }
+    @keyframes msgIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .showcase-msg-user {
+      align-self: flex-end; color: #fff;
+      border-bottom-right-radius: 3px;
+    }
+    .showcase-msg-user[data-model="chatgpt"] { background: #10a37f; }
+    .showcase-msg-user[data-model="claude"] { background: #d97757; }
+    .showcase-msg-user[data-model="gemini"] { background: rgba(255,255,255,0.18); color: #fff; }
+    .showcase-msg-user[data-model="copilot"] { background: #0078d4; }
+    .showcase-msg-user[data-model="grok"] { background: rgba(255,255,255,0.22); color: #fff; }
+    .showcase-msg-user[data-model="deepseek"] { background: #4a9eff; }
+    .showcase-msg-ai {
+      align-self: flex-start; color: rgba(255,255,255,0.85);
+      background: rgba(255,255,255,0.06); border-bottom-left-radius: 3px;
+    }
+    .showcase-msg-memory {
+      align-self: flex-start; max-width: 100%;
+      background: rgba(255,107,53,0.06); border-left: 2px solid #ff6b35;
+      border-radius: 0 6px 6px 0; padding: 5px 10px;
+      font-size: 12px; color: rgba(255,255,255,0.4);
+      font-family: var(--font-sans);
+    }
+    .memory-tag {
+      font-weight: 700; color: #ff6b35; font-size: 8px;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      margin-right: 3px;
+    }
+    .showcase-msg-typing {
+      align-self: flex-start; color: rgba(255,255,255,0.3);
+      background: rgba(255,255,255,0.04); padding: 7px 12px;
+      border-radius: 10px; border-bottom-left-radius: 3px;
+      font-size: 16px; letter-spacing: 3px;
+    }
+    @keyframes dotPulse {
+      0%, 60%, 100% { opacity: 0.2; }
+      30% { opacity: 1; }
+    }
+    .typing-dot { animation: dotPulse 1.4s ease-in-out infinite; }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+    /* Input bar per panel — prominent, rectangular */
+    .showcase-input-bar {
+      display: flex; gap: 8px; padding: 10px 12px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      background: rgba(0,0,0,0.25);
+    }
+    .showcase-input {
+      flex: 1; min-width: 0; background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12); border-radius: 10px;
+      padding: 10px 14px; color: #fff; font-size: 14px;
+      font-family: var(--font-sans); outline: none;
+      transition: border-color 0.2s;
+    }
+    .showcase-input::placeholder { color: rgba(255,255,255,0.25); font-size: 13px; }
+    .showcase-input:focus { border-color: rgba(255,107,53,0.4); }
+    .showcase-send {
+      width: 36px; height: 36px; background: #ff6b35; border: none;
+      border-radius: 10px; color: #fff; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s, transform 0.1s;
+      flex-shrink: 0;
+    }
+    .showcase-send:hover { background: #ff8c5a; }
+    .showcase-send:active { transform: scale(0.95); }
+    .showcase-send:disabled { opacity: 0.4; cursor: not-allowed; }
+    .showcase-send svg { width: 14px; height: 14px; }
+
+    /* ── Demo/Live Toggle ── */
+    .showcase-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .showcase-header-left {
+      font-size: 13px; color: rgba(255,255,255,0.35);
+      font-family: var(--font-sans); letter-spacing: 0.04em;
+    }
+    .mode-toggle {
+      display: flex; gap: 0; background: rgba(255,255,255,0.06);
+      border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08);
+    }
+    .mode-btn {
+      padding: 6px 18px; font-size: 12px; font-weight: 500;
+      font-family: var(--font-sans); color: rgba(255,255,255,0.4);
+      background: transparent; border: none; cursor: pointer;
+      transition: all 0.25s ease; letter-spacing: 0.02em;
+    }
+    .mode-btn.active {
+      background: #ff6b35; color: #fff;
+    }
+    .mode-btn:hover:not(.active) { color: rgba(255,255,255,0.7); }
+
+    /* ── Architecture ── */
+    .phases { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 60px; }
+    .phase-card { padding: 28px 20px; border-top: 2px solid #ff6b35; background: rgba(255,255,255,0.05); border-radius: 0 0 16px 16px; }
+    .phase-name { font-size: 28px; color: #fff; margin-bottom: 4px; }
+    .phase-label { font-size: 13px; font-weight: 600; color: #ff6b35; margin-bottom: 8px; }
+    .phase-desc { font-size: 13px; line-height: 1.47; color: rgba(255,255,255,0.45); }
+
+    /* ── Pricing ── */
+    .pricing-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 60px; }
+    .price-card {
+      padding: 32px 24px; display: flex; flex-direction: column; gap: 20px;
+      background: rgba(255,255,255,0.05); border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .price-name { font-size: 13px; color: rgba(255,255,255,0.45); font-weight: 500; }
+    .price-amt { font-size: 44px; color: #fff; letter-spacing: -0.02em; }
+    .price-per { font-size: 14px; color: rgba(255,255,255,0.3); }
+    .price-feat { font-size: 14px; color: rgba(255,255,255,0.56); line-height: 1.8; padding-left: 14px; position: relative; }
+    .price-feat::before { content: ''; position: absolute; left: 0; top: 10px; width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,0.25); }
+    .price-btn {
+      margin-top: auto; padding: 12px; border-radius: 980px;
+      font-size: 14px; font-weight: 500; cursor: pointer;
+      text-align: center; text-decoration: none; display: block; transition: opacity 0.2s;
+    }
+    .price-btn-fill { background: #ff6b35; color: #fff; border: none; }
+    .price-btn-fill:hover { opacity: 0.85; }
+    .price-btn-outline { background: transparent; color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.15); }
+    .price-btn-outline:hover { background: rgba(255,255,255,0.05); }
+    .price-card.featured { border: 1px solid rgba(255,107,53,0.4); }
+
+    /* Title variants */
+    .t-dark { color: #1d1d1f; }
+    .t-light { color: #fff; }
+    .t-sub { font-size: 19px; line-height: 1.47; max-width: 500px; }
+    .t-sub-dark { color: #86868b; }
+    .t-sub-light { color: rgba(255,255,255,0.56); }
+
+    .section-title {
+      font-size: clamp(36px, 5vw, 52px);
+      line-height: 1.08; letter-spacing: -0.009em; margin-bottom: 16px;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 900px) {
+      .showcase-grid .showcase-panel { min-width: 160px; }
+      .showcase-messages { height: 220px; }
+      .showcase-header { flex-direction: column; gap: 10px; align-items: flex-start; }
+    }
+    @media (max-width: 768px) {
+      .hero-tagline h1 { font-size: clamp(36px, 8vw, 52px); }
+      .phases { grid-template-columns: 1fr 1fr; }
+      .pricing-grid { grid-template-columns: 1fr 1fr; }
+      .nav-links { display: none; }
+    }
+    @media (max-width: 480px) {
+      .phases { grid-template-columns: 1fr; }
+      .pricing-grid { grid-template-columns: 1fr; }
+      .showcase-grid .showcase-panel { min-width: 140px; }
+      .showcase-messages { height: 180px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Animated Video Background -->
+  <div class="video-bg">
+    <video autoplay muted loop playsinline poster="beach-bg.jpg">
+      <source src="sunrise-ocean.mp4" type="video/mp4">
+    </video>
+  </div>
+  <div class="video-overlay"></div>
+
+  <!-- Frosted Nav -->
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs.html">API</a>
+        <a href="/integrate.html">Integrate</a>
+        <a href="/#pricing">Pricing</a>
+        <div id="nav-auth" class="nav-auth"></div>
+        <a href="/getting-started.html" class="nav-cta">Get Started</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ═══════ HERO ═══════ -->
+  <section class="hero">
+    <!-- Floating headline over sunrise -->
+    <div class="hero-tagline">
+      <h1>Every AI <em>remembers.</em></h1>
+    </div>
+
+    <!-- Bottom dock: text above, 3 panels below -->
+    <div class="hero-dock">
+      <div class="hero-dock-inner">
+        <!-- Hub status (hidden, used by JS) -->
+        <span class="hub-status" id="hub-status" style="display:none;">Connected</span>
+
+        <!-- Mode toggle — top right -->
+        <div class="showcase-header">
+          <span class="showcase-header-left"></span>
+          <div class="mode-toggle">
+            <button class="mode-btn active" id="mode-demo" onclick="switchMode('demo')">Demo</button>
+            <button class="mode-btn" id="mode-live" onclick="switchMode('live')">Live</button>
+          </div>
+        </div>
+
+        <!-- 3 independent chat panels -->
+        <div class="showcase-grid" id="memory-showcase">
+          <!-- ChatGPT -->
+          <div class="showcase-panel panel-active" data-panel="chatgpt">
+            <div class="panel-header" data-model="chatgpt">
+              <span class="panel-dot" style="background:#10a37f"></span>
+              <span class="panel-name">ChatGPT</span>
+            </div>
+            <div class="showcase-messages" id="msgs-chatgpt"></div>
+            <div class="showcase-input-bar">
+              <input type="text" class="showcase-input" data-model="chatgpt"
+                     placeholder="Tell ChatGPT a fact..." maxlength="200" disabled />
+              <button class="showcase-send" data-model="chatgpt" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Claude -->
+          <div class="showcase-panel" data-panel="claude">
+            <div class="panel-header" data-model="claude">
+              <span class="panel-dot" style="background:#d97757"></span>
+              <span class="panel-name">Claude</span>
+            </div>
+            <div class="showcase-messages" id="msgs-claude"></div>
+            <div class="showcase-input-bar">
+              <input type="text" class="showcase-input" data-model="claude"
+                     placeholder="Ask Claude..." maxlength="200" disabled />
+              <button class="showcase-send" data-model="claude" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Gemini -->
+          <div class="showcase-panel" data-panel="gemini">
+            <div class="panel-header" data-model="gemini">
+              <span class="panel-dot" style="background:rgba(255,255,255,0.6)"></span>
+              <span class="panel-name">Gemini</span>
+            </div>
+            <div class="showcase-messages" id="msgs-gemini"></div>
+            <div class="showcase-input-bar">
+              <input type="text" class="showcase-input" data-model="gemini"
+                     placeholder="Ask Gemini..." maxlength="200" disabled />
+              <button class="showcase-send" data-model="gemini" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Copilot -->
+          <div class="showcase-panel" data-panel="copilot">
+            <div class="panel-header" data-model="copilot">
+              <span class="panel-dot" style="background:#0078d4"></span>
+              <span class="panel-name">Copilot</span>
+            </div>
+            <div class="showcase-messages" id="msgs-copilot"></div>
+            <div class="showcase-input-bar">
+              <input type="text" class="showcase-input" data-model="copilot"
+                     placeholder="Ask Copilot..." maxlength="200" disabled />
+              <button class="showcase-send" data-model="copilot" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Grok -->
+          <div class="showcase-panel" data-panel="grok">
+            <div class="panel-header" data-model="grok">
+              <span class="panel-dot" style="background:#fff"></span>
+              <span class="panel-name">Grok</span>
+            </div>
+            <div class="showcase-messages" id="msgs-grok"></div>
+            <div class="showcase-input-bar">
+              <input type="text" class="showcase-input" data-model="grok"
+                     placeholder="Ask Grok..." maxlength="200" disabled />
+              <button class="showcase-send" data-model="grok" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- DeepSeek -->
+          <div class="showcase-panel" data-panel="deepseek">
+            <div class="panel-header" data-model="deepseek">
+              <span class="panel-dot" style="background:#4a9eff"></span>
+              <span class="panel-name">DeepSeek</span>
+            </div>
+            <div class="showcase-messages" id="msgs-deepseek"></div>
+            <div class="showcase-input-bar">
+              <input type="text" class="showcase-input" data-model="deepseek"
+                     placeholder="Ask DeepSeek..." maxlength="200" disabled />
+              <button class="showcase-send" data-model="deepseek" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script>
+  /* ── Cross-Model Memory Showcase — 3 Independent Panels ── */
+  var _showcaseMode = 'demo';   // 'demo' or 'live'
+  var _autoplayTimers = [];
+
+  function switchMode(mode) {
+    _showcaseMode = mode;
+    document.getElementById('mode-demo').classList.toggle('active', mode === 'demo');
+    document.getElementById('mode-live').classList.toggle('active', mode === 'live');
+
+    // Clear any running autoplay timers
+    _autoplayTimers.forEach(function(t){ clearTimeout(t); });
+    _autoplayTimers = [];
+
+    // Clear all panels
+    ['chatgpt','claude','gemini','copilot','grok','deepseek'].forEach(function(m){
+      document.getElementById('msgs-' + m).innerHTML = '';
+      var inp = document.querySelector('.showcase-input[data-model="' + m + '"]');
+      var btn = document.querySelector('.showcase-send[data-model="' + m + '"]');
+      var label = m.charAt(0).toUpperCase() + m.slice(1);
+      if (mode === 'live') {
+        inp.disabled = false; btn.disabled = false;
+        inp.placeholder = 'Ask ' + label + '\u2026';
+      } else {
+        inp.disabled = true; btn.disabled = true;
+        inp.placeholder = 'Ask ' + label + '\u2026';
+      }
+    });
+
+    if (mode === 'demo') { _runAutoPlay(); }
+  }
+
+  (function(){
+    var NAMESPACE = window.CLS_USER_NAMESPACE || 'demo-showcase';
+    var MODEL_API = { chatgpt: 'openai', claude: 'claude', gemini: 'gemini', copilot: 'openai', grok: 'grok', deepseek: 'deepseek' };
+    var ALL_MODELS = ['chatgpt','claude','gemini','copilot','grok','deepseek'];
+    var hubStat   = document.getElementById('hub-status');
+
+    /* ── Helpers ── */
+    function addMsg(model, text, type) {
+      var box = document.getElementById('msgs-' + model);
+      var el  = document.createElement('div');
+      el.className = 'showcase-msg showcase-msg-' + type;
+
+      if (type === 'user') {
+        el.setAttribute('data-model', model);
+        el.textContent = text;
+      } else if (type === 'memory') {
+        el.innerHTML = '<span class="memory-tag">CLS++</span>' + text;
+      } else if (type === 'typing') {
+        el.innerHTML = '<span class="typing-dot">\u2022</span><span class="typing-dot">\u2022</span><span class="typing-dot">\u2022</span>';
+      } else {
+        el.textContent = text;
+      }
+      box.appendChild(el);
+      box.scrollTop = box.scrollHeight;
+      return el;
+    }
+
+    function removeTyping(model) {
+      var box = document.getElementById('msgs-' + model);
+      var dots = box.querySelector('.showcase-msg-typing');
+      if (dots) dots.remove();
+    }
+
+    function flashHub(text) {
+      hubStat.textContent = text;
+      hubStat.classList.add('active');
+      setTimeout(function(){
+        hubStat.classList.remove('active');
+        hubStat.textContent = 'Connected';
+      }, 2500);
+    }
+
+    function highlightPanel(model) {
+      var p = document.querySelector('[data-panel="' + model + '"]');
+      p.classList.add('panel-active');
+      setTimeout(function(){ p.classList.remove('panel-active'); }, 3000);
+    }
+
+    /* ── Type into input box like a human, then "press enter" ── */
+    function typeIntoInput(model, text, cb) {
+      var inp = document.querySelector('.showcase-input[data-model="' + model + '"]');
+      inp.value = '';
+      inp.focus();
+
+      var i = 0;
+      var speed = 35 + Math.random() * 20;
+      function tick() {
+        if (i < text.length) {
+          inp.value += text[i]; i++;
+          setTimeout(tick, speed + (Math.random() * 15));
+        } else {
+          /* Pause briefly then "press enter" — move text to chat bubble */
+          setTimeout(function(){
+            var msg = inp.value;
+            inp.value = '';
+            inp.blur();
+            addMsg(model, msg, 'user');
+            if (cb) cb();
+          }, 300);
+        }
+      }
+      tick();
+    }
+
+    /* Legacy typeText for AI responses (types directly in chat) */
+    function typeText(model, text, type, cb) {
+      var box = document.getElementById('msgs-' + model);
+      var el  = document.createElement('div');
+      el.className = 'showcase-msg showcase-msg-' + type;
+      if (type === 'user') el.setAttribute('data-model', model);
+      el.textContent = '';
+      box.appendChild(el);
+      box.scrollTop = box.scrollHeight;
+
+      var i = 0;
+      var speed = 30 + Math.random() * 15;
+      function tick() {
+        if (i < text.length) {
+          el.textContent += text[i]; i++;
+          box.scrollTop = box.scrollHeight;
+          setTimeout(tick, speed + (Math.random() * 12));
+        } else if (cb) { cb(); }
+      }
+      tick();
+    }
+
+    function enablePanel(model) {
+      var inp = document.querySelector('.showcase-input[data-model="' + model + '"]');
+      var btn = document.querySelector('.showcase-send[data-model="' + model + '"]');
+      inp.disabled = false;
+      btn.disabled = false;
+    }
+
+    /* ── Auto-play: all 3 panels animate in sequence ── */
+    /* Demo scenarios — loops like a movie */
+    var DEMO_SCENES = [
+      {
+        store: { model: 'chatgpt', msg: 'My name is Alex and I prefer dark mode.' },
+        storeReply: 'Got it, Alex! I\u2019ll remember your preferences.',
+        recalls: [
+          { model: 'claude', ask: 'What\u2019s my name?', reply: 'Your name is Alex, and you prefer dark mode!' },
+          { model: 'gemini', ask: 'Do you know me?', reply: 'You\u2019re Alex! Dark mode is your thing.' },
+          { model: 'copilot', ask: 'What theme do I like?', reply: 'You prefer dark mode, Alex!' },
+          { model: 'grok', ask: 'Who am I?', reply: 'You\u2019re Alex \u2014 a dark mode fan!' },
+          { model: 'deepseek', ask: 'Remember my name?', reply: 'Of course, Alex! Dark mode noted.' }
+        ]
+      },
+      {
+        store: { model: 'claude', msg: 'I\u2019m a Python developer working on a FastAPI project.' },
+        storeReply: 'Noted! I\u2019ll keep your dev context in mind.',
+        recalls: [
+          { model: 'gemini', ask: 'What language do I code in?', reply: 'You\u2019re a Python developer, working on FastAPI!' },
+          { model: 'chatgpt', ask: 'What am I building?', reply: 'You\u2019re building a FastAPI project in Python.' },
+          { model: 'deepseek', ask: 'What\u2019s my tech stack?', reply: 'Python with FastAPI \u2014 great choice!' },
+          { model: 'grok', ask: 'What do I code in?', reply: 'Python! You\u2019re working on FastAPI.' },
+          { model: 'copilot', ask: 'What\u2019s my project?', reply: 'A FastAPI project in Python!' }
+        ]
+      },
+      {
+        store: { model: 'gemini', msg: 'My favorite food is sushi and I live in San Francisco.' },
+        storeReply: 'I\u2019ll remember that \u2014 sushi in SF!',
+        recalls: [
+          { model: 'chatgpt', ask: 'Where do I live?', reply: 'You live in San Francisco, and you love sushi!' },
+          { model: 'claude', ask: 'What\u2019s my favorite food?', reply: 'Sushi! You\u2019re based in San Francisco.' },
+          { model: 'copilot', ask: 'What city am I in?', reply: 'San Francisco! And you love sushi.' },
+          { model: 'grok', ask: 'What do I eat?', reply: 'Sushi is your go-to! SF resident.' },
+          { model: 'deepseek', ask: 'Know my location?', reply: 'San Francisco \u2014 sushi lover!' }
+        ]
+      },
+      {
+        store: { model: 'copilot', msg: 'I speak Spanish and English fluently.' },
+        storeReply: 'Bilingual \u2014 got it! I\u2019ll remember that.',
+        recalls: [
+          { model: 'chatgpt', ask: 'What languages do I speak?', reply: 'You\u2019re fluent in Spanish and English!' },
+          { model: 'claude', ask: 'Do I speak Spanish?', reply: 'Yes! You\u2019re fluent in both Spanish and English.' },
+          { model: 'gemini', ask: 'Am I bilingual?', reply: 'You are! Spanish and English.' },
+          { model: 'grok', ask: 'What languages do I know?', reply: 'Spanish and English \u2014 fluently!' },
+          { model: 'deepseek', ask: 'Can I speak Spanish?', reply: 'Absolutely \u2014 fluent in Spanish and English!' }
+        ]
+      },
+      {
+        store: { model: 'grok', msg: 'I\u2019m training for a marathon in October.' },
+        storeReply: 'Marathon in October \u2014 I\u2019ll keep that in mind!',
+        recalls: [
+          { model: 'chatgpt', ask: 'Am I training for something?', reply: 'Yes! A marathon this October.' },
+          { model: 'claude', ask: 'What\u2019s my fitness goal?', reply: 'You\u2019re training for an October marathon!' },
+          { model: 'gemini', ask: 'When\u2019s my marathon?', reply: 'October \u2014 you\u2019re in training mode!' },
+          { model: 'copilot', ask: 'What\u2019s happening in October?', reply: 'Your marathon! Training is on track.' },
+          { model: 'deepseek', ask: 'Am I a runner?', reply: 'You\u2019re marathon-training for October!' }
+        ]
+      },
+      {
+        store: { model: 'deepseek', msg: 'My dog\u2019s name is Luna and she\u2019s a golden retriever.' },
+        storeReply: 'Luna the golden retriever \u2014 adorable!',
+        recalls: [
+          { model: 'chatgpt', ask: 'Do I have a pet?', reply: 'Yes! Luna, a golden retriever.' },
+          { model: 'claude', ask: 'What\u2019s my dog\u2019s name?', reply: 'Luna! She\u2019s a golden retriever.' },
+          { model: 'gemini', ask: 'What breed is my dog?', reply: 'Golden retriever \u2014 her name is Luna!' },
+          { model: 'copilot', ask: 'Tell me about my pet.', reply: 'Luna, your golden retriever!' },
+          { model: 'grok', ask: 'Do you know Luna?', reply: 'Your golden retriever! Great name.' }
+        ]
+      }
+    ];
+
+    var _sceneIndex = 0;
+
+    window._runAutoPlay = function() {
+      /* Clear old timers and all panels */
+      _autoplayTimers.forEach(function(t){ clearTimeout(t); });
+      _autoplayTimers = [];
+      ALL_MODELS.forEach(function(m){
+        document.getElementById('msgs-' + m).innerHTML = '';
+        var inp = document.querySelector('.showcase-input[data-model="' + m + '"]');
+        inp.value = '';
+      });
+      var scene = DEMO_SCENES[_sceneIndex % DEMO_SCENES.length];
+      _sceneIndex++;
+      var t = 600;
+
+      /* Step 1: Type fact into input box, then "send" */
+      _autoplayTimers.push(setTimeout(function(){
+        highlightPanel(scene.store.model);
+        typeIntoInput(scene.store.model, scene.store.msg, function(){
+          _autoplayTimers.push(setTimeout(function(){ addMsg(scene.store.model, '', 'typing'); }, 300));
+          _autoplayTimers.push(setTimeout(function(){
+            removeTyping(scene.store.model);
+            addMsg(scene.store.model, scene.storeReply, 'ai');
+            flashHub('\u2728 Memory stored');
+          }, 1400));
+        });
+      }, t));
+
+      /* Step 2+: Recalls — each recall panel types and gets a response */
+      scene.recalls.forEach(function(recall, idx) {
+        var delay = t + 4500 + (idx * 3500);
+        _autoplayTimers.push(setTimeout(function(){
+          highlightPanel(recall.model);
+          typeIntoInput(recall.model, recall.ask, function(){
+            _autoplayTimers.push(setTimeout(function(){ addMsg(recall.model, '', 'typing'); }, 300));
+            _autoplayTimers.push(setTimeout(function(){
+              removeTyping(recall.model);
+              addMsg(recall.model, 'recalled via shared memory', 'memory');
+              addMsg(recall.model, recall.reply, 'ai');
+              flashHub('\u26a1 Recalled');
+            }, 1200));
+          });
+        }, delay));
+      });
+
+      /* Final step: Pause to let user read, then clear and loop */
+      var totalTime = t + 4500 + (scene.recalls.length * 3500) + 4000;
+      _autoplayTimers.push(setTimeout(function(){
+        ALL_MODELS.forEach(function(m){
+          document.getElementById('msgs-' + m).innerHTML = '';
+        });
+        if (_showcaseMode === 'demo') { _runAutoPlay(); }
+      }, totalTime));
+    };
+
+    /* ── Interactive: each panel sends to its own model ── */
+    window._sendShowcaseMsg = function(model) {
+      var inp = document.querySelector('.showcase-input[data-model="' + model + '"]');
+      var btn = document.querySelector('.showcase-send[data-model="' + model + '"]');
+      var text = inp.value.trim();
+      if (!text) return;
+      inp.value = '';
+      btn.disabled = true;
+
+      addMsg(model, text, 'user');
+      addMsg(model, '', 'typing');
+      flashHub('Processing\u2026');
+
+      fetch('/v1/demo/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: MODEL_API[model], message: text, namespace: NAMESPACE })
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        removeTyping(model);
+        addMsg(model, data.reply || 'No response.', 'ai');
+        flashHub('\u2728 Synced');
+        btn.disabled = false;
+      })
+      .catch(function(){
+        removeTyping(model);
+        addMsg(model, 'Server warming up\u2026 try again.', 'ai');
+        btn.disabled = false;
+      });
+    };
+
+    /* ── Wire up all 3 panels ── */
+    document.querySelectorAll('.showcase-send').forEach(function(btn){
+      btn.addEventListener('click', function(){ window._sendShowcaseMsg(btn.dataset.model); });
+    });
+    document.querySelectorAll('.showcase-input').forEach(function(inp){
+      inp.addEventListener('keydown', function(e){
+        if (e.key === 'Enter') { e.preventDefault(); window._sendShowcaseMsg(inp.dataset.model); }
+      });
+    });
+
+    /* Start in demo mode by default */
+    _runAutoPlay();
+  })();
+  </script>
+
+  <!-- end hero, straight to dark content -->
+
+  <!-- Dark content area -->
+  <div class="content-wrap content-dark">
+
+  <!-- ═══════ ARCHITECTURE ═══════ -->
+  <section class="section">
+    <p class="label" style="color:#fff">Architecture</p>
+    <h2 class="section-title t-light">Memory as<br>phase transitions.</h2>
+    <p class="t-sub t-sub-light">Inspired by neuroscience. Built for production.</p>
+    <div class="phases">
+      <div class="phase-card">
+        <div class="phase-name">Gas</div>
+        <div class="phase-label">Raw Experience</div>
+        <div class="phase-desc">Immediate episodic capture. High fidelity, fast decay.</div>
+      </div>
+      <div class="phase-card">
+        <div class="phase-name">Liquid</div>
+        <div class="phase-label">Active Memory</div>
+        <div class="phase-desc">Sharp-wave ripple consolidation. Pattern extraction.</div>
+      </div>
+      <div class="phase-card">
+        <div class="phase-name">Solid</div>
+        <div class="phase-label">Schema</div>
+        <div class="phase-desc">100 episodes compressed to 1 abstract knowledge schema.</div>
+      </div>
+      <div class="phase-card">
+        <div class="phase-name">Crystal</div>
+        <div class="phase-label">Axiom</div>
+        <div class="phase-desc">Immutable verified truth. Zero decay.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════ PRICING ═══════ -->
+  <section id="pricing" class="section">
+    <p class="label" style="color:#fff">Pricing</p>
+    <h2 class="section-title t-light">Start free. Scale when ready.</h2>
+    <p class="t-sub t-sub-light">Every plan includes the Chrome extension and Python SDK.</p>
+    <div class="pricing-grid">
+      <div class="price-card">
+        <div>
+          <div class="price-name">Free</div>
+          <span class="price-amt">$0</span><span class="price-per">/forever</span>
+        </div>
+        <div>
+          <div class="price-feat">1,000 operations/month</div>
+          <div class="price-feat">500 stored memories</div>
+          <div class="price-feat">1 namespace</div>
+          <div class="price-feat">Chrome extension</div>
+        </div>
+        <a href="/getting-started.html" class="price-btn price-btn-outline">Get Started</a>
+      </div>
+      <div class="price-card featured">
+        <div>
+          <div class="price-name">Pro</div>
+          <span class="price-amt">$9</span><span class="price-per">/month</span>
+        </div>
+        <div>
+          <div class="price-feat">50,000 operations/month</div>
+          <div class="price-feat">50,000 memories</div>
+          <div class="price-feat">10 namespaces</div>
+          <div class="price-feat">All 4 memory layers</div>
+        </div>
+        <a href="/signup.html?next=%2Fprofile.html%3Ftier%3Dpro%23billing" class="price-btn price-btn-fill" data-tier="pro">Subscribe</a>
+      </div>
+      <div class="price-card">
+        <div>
+          <div class="price-name">Business</div>
+          <span class="price-amt">$29</span><span class="price-per">/month</span>
+        </div>
+        <div>
+          <div class="price-feat">200,000 operations/month</div>
+          <div class="price-feat">200,000 memories</div>
+          <div class="price-feat">50 namespaces</div>
+          <div class="price-feat">Webhook events</div>
+        </div>
+        <a href="/signup.html?next=%2Fprofile.html%3Ftier%3Dbusiness%23billing" class="price-btn price-btn-fill" data-tier="business">Subscribe</a>
+      </div>
+      <div class="price-card">
+        <div>
+          <div class="price-name">Enterprise</div>
+          <span class="price-amt">$149</span><span class="price-per">/month</span>
+        </div>
+        <div>
+          <div class="price-feat">1,000,000 operations/month</div>
+          <div class="price-feat">1,000,000 memories</div>
+          <div class="price-feat">SSO, RBAC, audit logs</div>
+          <div class="price-feat">Dedicated support + SLA</div>
+        </div>
+        <a href="/signup.html?next=%2Fprofile.html%3Ftier%3Denterprise%23billing" class="price-btn price-btn-fill" data-tier="enterprise">Subscribe</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════ CTA ═══════ -->
+  <section class="section" style="text-align: center;">
+    <h2 class="section-title t-light" style="max-width: 600px; margin: 0 auto 16px;">Stop losing context.</h2>
+    <p class="t-sub t-sub-light" style="margin: 0 auto 36px;">One memory layer. Every model. Free to start.</p>
+    <a href="/getting-started.html" class="hero-link" style="color: #ff6b35; font-size: 19px;">Get started &rarr;</a>
+  </section>
+
+  </div><!-- end content-dark -->
+
+  <script src="script.js"></script>
+  <script src="namespace.js"></script>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script src="toast.js"></script>
+  <script src="billing-ui.js"></script>
+  <script>
+  // If user is already logged in, Subscribe buttons go straight to profile billing
+  document.addEventListener('DOMContentLoaded', function () {
+    var token = localStorage.getItem('cls_token') || (document.cookie.match(/cls_token=([^;]+)/) || [])[1];
+    if (!token) return;
+    document.querySelectorAll('.price-btn[data-tier]').forEach(function (btn) {
+      var tier = btn.dataset.tier;
+      btn.href = '/profile.html?tier=' + tier + '#billing';
+    });
+  });
+  </script>
+  <script src="waitlist-widget.js?v=1"></script>
+  <script src="footer.js?v=2"></script>
+</body>
+</html>

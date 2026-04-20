@@ -1,0 +1,16 @@
+{
+  "name": "cls-memory",
+  "version": "1.0.0",
+  "description": "Persistent cross-session memory for Claude Code powered by CLS++. Every session remembers what happened in previous sessions.",
+  "author": "AlphaForge AI Labs",
+  "homepage": "https://github.com/rajamohan1950/CLSplusplus",
+  "license": "Apache-2.0",
+  "keywords": ["memory", "persistent", "context", "cross-session"],
+  "minClaudeCodeVersion": "1.0.0",
+  "environmentVariables": {
+    "CLS_API_KEY": {
+      "description": "Your CLS++ API key from clsplusplus.com/profile.html",
+      "required": true
+    }
+  }
+}

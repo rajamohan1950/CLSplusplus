@@ -1,0 +1,224 @@
+/* ══════════════════════════════════════════════════════════════════════════════
+   THEME B — "Command Center"
+   Dark, developer-focused, inspired by Linear/Vercel/Stripe.
+   Overrides styles.css for ALL pages when variant B is active.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --bg: #09090b;
+  --bg-elevated: rgba(24, 24, 27, 0.95);
+  --text: #fafafa;
+  --text-muted: #a1a1aa;
+  --accent: #ff6b35;
+  --accent-light: #ff8c5a;
+  --accent-dark: #e55a2b;
+  --success: #22c55e;
+  --border: rgba(255, 255, 255, 0.06);
+  --radius: 12px;
+  --radius-lg: 20px;
+}
+
+/* ── Kill video background, replace with solid dark ── */
+.video-bg { display: none !important; }
+.video-overlay { background: var(--bg) !important; }
+
+body {
+  background: var(--bg) !important;
+  color: var(--text) !important;
+}
+
+/* ── Navigation — dark glass ── */
+.nav {
+  background: rgba(9, 9, 11, 0.8) !important;
+  border-bottom: 1px solid var(--border) !important;
+  backdrop-filter: blur(20px) saturate(1.8) !important;
+}
+
+.nav-links a { color: var(--text-muted) !important; }
+.nav-links a:hover { color: #fff !important; }
+.logo { color: #fff !important; }
+.nav-cta { background: var(--accent) !important; color: #fff !important; }
+.nav-cta:hover { background: var(--accent-light) !important; }
+
+/* ── Container ── */
+.container {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* ── Cards & surfaces ── */
+.dash-card, .usage-card, .plan-card, .quick-link, .chart-section,
+.profile-section, .auth-card, .gs-card, .bf-card {
+  background: rgba(24, 24, 27, 0.9) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  backdrop-filter: blur(12px) !important;
+}
+
+.dash-card h3, .usage-card h3 { color: var(--text-muted) !important; }
+.dash-card .value, .usage-value { color: var(--text) !important; }
+.dash-card .sub, .usage-sub { color: var(--text-muted) !important; }
+
+.quick-link { border: 1px solid var(--border) !important; }
+.quick-link:hover { border-color: var(--accent) !important; background: rgba(255, 107, 53, 0.04) !important; }
+.quick-link .ql-icon { background: rgba(255, 107, 53, 0.1) !important; }
+.quick-link .ql-text h4 { color: var(--text) !important; }
+.quick-link .ql-text p { color: var(--text-muted) !important; }
+
+/* ── Progress bars ── */
+.progress-bar, .usage-progress { background: rgba(255, 255, 255, 0.06) !important; }
+
+/* ── Tables ── */
+.int-table th { color: var(--text-muted) !important; border-bottom-color: var(--border) !important; }
+.int-table td { border-bottom-color: var(--border) !important; color: var(--text) !important; }
+
+/* ── Inputs ── */
+input[type="text"], input[type="email"], input[type="password"], textarea, select {
+  background: rgba(24, 24, 27, 0.8) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+}
+
+input::placeholder, textarea::placeholder { color: var(--text-muted) !important; }
+input:focus, textarea:focus, select:focus { border-color: var(--accent) !important; }
+
+/* ── Buttons ── */
+.btn, .btn-outline {
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+}
+.btn:hover, .btn-outline:hover {
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+.btn-primary { background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important; }
+
+/* ── Auth pages (login/signup) ── */
+.auth-page { background: var(--bg) !important; }
+.auth-card {
+  background: rgba(24, 24, 27, 0.95) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5) !important;
+}
+.auth-card h1 { color: var(--text) !important; }
+.auth-card .subtitle { color: var(--text-muted) !important; }
+.auth-input {
+  background: var(--bg) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+}
+.auth-input:focus { border-color: var(--accent) !important; }
+.auth-btn { background: var(--accent) !important; }
+.auth-btn:hover { background: var(--accent-light) !important; }
+.google-btn {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+}
+.google-btn:hover { background: rgba(255, 255, 255, 0.1) !important; }
+.auth-divider { color: var(--text-muted) !important; }
+.auth-divider::before, .auth-divider::after { background: var(--border) !important; }
+.auth-footer { color: var(--text-muted) !important; }
+.auth-footer a { color: var(--accent) !important; }
+
+/* ── Tier badges ── */
+.tier-badge { border: 1px solid var(--border) !important; }
+.tier-free { background: rgba(161, 161, 170, 0.1) !important; color: var(--text-muted) !important; }
+.tier-pro { background: rgba(99, 102, 241, 0.15) !important; }
+.tier-business { background: rgba(234, 179, 8, 0.15) !important; }
+.tier-enterprise { background: rgba(236, 72, 153, 0.15) !important; }
+
+/* ── Chat page — already dark-ish, just deepen ── */
+.chat-body { background: var(--bg) !important; }
+.chat-layout { background: var(--bg) !important; }
+.chat-sidebar { background: #111113 !important; border-right-color: var(--border) !important; }
+.chat-sidebar-header { border-bottom-color: var(--border) !important; }
+.chat-main { background: var(--bg) !important; }
+.chat-header { border-bottom-color: var(--border) !important; }
+.chat-input-area { border-top-color: var(--border) !important; }
+.chat-input-wrap { background: #111113 !important; border-color: var(--border) !important; }
+.chat-input { color: var(--text) !important; }
+.chat-msg-assistant .chat-msg-bubble { background: #18181b !important; border-color: var(--border) !important; color: var(--text) !important; }
+.chat-session-item.active { background: rgba(255, 107, 53, 0.1) !important; }
+.chat-welcome h2 { color: var(--text) !important; }
+
+/* ── Memory viewer ── */
+.layout { background: var(--bg) !important; }
+
+/* ── Docs page ── */
+.docs-hero { color: var(--text) !important; }
+.docs-hero h1 { color: var(--text) !important; text-shadow: none !important; }
+.docs-hero p { color: var(--text-muted) !important; }
+.docs-nav { background: rgba(9, 9, 11, 0.9) !important; backdrop-filter: blur(20px) !important; border-bottom: 1px solid var(--border) !important; }
+.docs-nav a { color: var(--text-muted) !important; }
+.docs-nav a:hover { color: var(--accent) !important; }
+.docs-sidebar { background: #111113 !important; border-right: 1px solid var(--border) !important; }
+.docs-sidebar a { color: var(--text-muted) !important; }
+.docs-sidebar a:hover { color: var(--accent) !important; }
+.docs-section { color: var(--text) !important; }
+.docs-section h2 { color: var(--text) !important; }
+.docs-section h3 { color: var(--text) !important; }
+.code-block { background: #0d0d10 !important; border: 1px solid var(--border) !important; color: var(--text) !important; }
+.endpoint { background: #111113 !important; border: 1px solid var(--border) !important; }
+.param-table th { color: var(--text-muted) !important; border-bottom-color: var(--border) !important; }
+.param-table td { color: var(--text) !important; border-bottom-color: var(--border) !important; }
+
+/* ── Getting started ── */
+.gs-hero h1 { color: var(--text) !important; }
+.gs-hero p { color: var(--text-muted) !important; }
+.gs-search { background: #111113 !important; border: 1px solid var(--border) !important; color: var(--text) !important; }
+.gs-section { background: transparent !important; }
+.gs-section-dark { background: rgba(17, 17, 19, 0.9) !important; }
+.gs-cat { color: var(--text-muted) !important; }
+.gs-card { background: #111113 !important; border: 1px solid var(--border) !important; color: var(--text) !important; }
+.gs-card:hover { border-color: var(--accent) !important; }
+.gs-card.active { border-color: var(--accent) !important; background: rgba(255, 107, 53, 0.04) !important; }
+
+/* ── Admin dashboard ── */
+.admin-container { background: var(--bg) !important; color: var(--text) !important; }
+.kpi-card { background: #111113 !important; border: 1px solid var(--border) !important; }
+.kpi-label { color: var(--text-muted) !important; }
+.kpi-value { color: var(--text) !important; }
+.admin-sidebar { background: #111113 !important; border-right: 1px solid var(--border) !important; }
+.sidebar-item { color: var(--text-muted) !important; }
+.sidebar-item.active { color: var(--accent) !important; background: rgba(255, 107, 53, 0.08) !important; }
+
+/* ── Pricing cards ── */
+.plan-card {
+  background: rgba(24, 24, 27, 0.9) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+}
+.plan-card.featured { border-color: rgba(255, 107, 53, 0.3) !important; }
+
+/* ── Debug panel (already dark) ── */
+.debug-panel { background: #0d0d15 !important; }
+
+/* ── Footer overrides ── */
+footer, .footer-wrap {
+  background: rgba(17, 17, 19, 0.95) !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+/* ── Profile section ── */
+.profile-section {
+  background: rgba(24, 24, 27, 0.9) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+}
+.profile-section h2, .profile-section h3 { color: var(--text) !important; }
+.profile-label { color: var(--text-muted) !important; }
+.profile-value { color: var(--text) !important; }
+
+/* ── Headings on all pages ── */
+h1, h2, h3, h4, h5, h6 { color: var(--text); }
+
+/* ── Links ── */
+a { color: var(--accent); }
+
+/* ── Scrollbars ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: #27272a; border-radius: 3px; }

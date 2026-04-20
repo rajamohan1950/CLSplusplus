@@ -16,8 +16,10 @@
 </p>
 
 <p align="center">
-  <a href="https://render.com/deploy?repo=https://github.com/rajamohan1950/CLSplusplus"><img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render" height="32" /></a>
-  <a href="https://clsplusplus-api.onrender.com/docs"><img src="https://img.shields.io/badge/API-Live-22c55e?style=flat-square" alt="API" /></a>
+  <a href="https://pypi.org/project/clsplusplus/"><img src="https://img.shields.io/pypi/v/clsplusplus?style=flat-square&label=PyPI&color=6366f1" alt="PyPI" /></a>
+  <a href="https://www.npmjs.com/package/clsplusplus"><img src="https://img.shields.io/npm/v/clsplusplus?style=flat-square&label=npm&color=cb3837" alt="npm" /></a>
+  <a href="https://pypi.org/project/clsplusplus/"><img src="https://img.shields.io/pypi/pyversions/clsplusplus?style=flat-square" alt="Python" /></a>
+  <a href="https://www.clsplusplus.com/docs"><img src="https://img.shields.io/badge/API-Live-22c55e?style=flat-square" alt="API" /></a>
   <a href="https://github.com/rajamohan1950/CLSplusplus/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat-square" alt="License" /></a>
   <a href="https://github.com/rajamohan1950/CLSplusplus"><img src="https://img.shields.io/badge/Patent-Oct%202025-blue?style=flat-square" alt="Patent" /></a>
 </p>
@@ -44,57 +46,93 @@ Memory is **external** to the model. **Switch models anytime.** No reset.
 
 ## Quick Start
 
-### 1. Install
+### Install
 
 ```bash
-pip install clsplusplus
-# or from source: pip install -e .
+pip install clsplusplus          # Python (lightweight: only httpx + pydantic)
+npm install clsplusplus          # JavaScript / TypeScript (zero dependencies)
 ```
 
-### 2. Run locally
-
-```bash
-# Start infrastructure (Redis, PostgreSQL, MinIO)
-docker compose up -d redis postgres minio
-
-# Start the API
-uvicorn clsplusplus.api:app --host 0.0.0.0 --port 8080
-```
-
-### 3. Use the API
-
-```bash
-# Write a memory
-curl -X POST http://localhost:8080/v1/memory/write \
-  -H "Content-Type: application/json" \
-  -d '{"text": "User prefers dark mode", "namespace": "user:123"}'
-
-# Read memories
-curl -X POST http://localhost:8080/v1/memory/read \
-  -H "Content-Type: application/json" \
-  -d '{"query": "user preferences", "namespace": "user:123"}'
-```
-
-### 4. Python SDK (3-line integration)
+### Python SDK
 
 ```python
-from clsplusplus import CLS
+from clsplusplus import Brain
 
-client = CLS(api_key="cls_live_xxx")
-client.memories.encode(content="User prefers dark mode", agent_id="a1")
-results = client.memories.retrieve(query="user preferences", agent_id="a1")
+brain = Brain("alice")
+
+# Teach it anything in natural language
+brain.learn("I work at Google as a senior engineer")
+brain.learn("I prefer Python over JavaScript")
+
+# Ask it anything — semantic recall, not keyword matching
+brain.ask("What's my job?")           # ["I work at Google as a senior engineer"]
+
+# Get LLM-ready context for any prompt
+brain.context("coding help")
+# "Known facts about this user:\n- I work at Google..."
+
+# Forget (GDPR right to be forgotten)
+brain.forget("I work at Google as a senior engineer")
 ```
 
-Or use the full client:
+### JavaScript / TypeScript SDK
+
+```typescript
+import { Brain } from "clsplusplus";
+
+const brain = new Brain("alice");
+
+await brain.learn("I work at Google as a senior engineer");
+const facts = await brain.ask("What's my job?");
+const context = await brain.context("coding help");
+await brain.forget("I work at Google as a senior engineer");
+```
+
+### Use with OpenAI
 
 ```python
-from clsplusplus import CLSClient
+from clsplusplus import Brain
 
-with CLSClient("http://localhost:8080", api_key="cls_live_xxx") as client:
-    client.write("User prefers dark mode", namespace="user:123")
-    results = client.read("user preferences", namespace="user:123")
-    for item in results.items:
-        print(item.text, item.confidence)
+brain = Brain("alice")
+
+# Wrap any LLM function — auto-injects memory, auto-learns
+@brain.wrap
+def chat(system_prompt, user_message):
+    return openai.chat(system=system_prompt, user=user_message)
+
+response = chat("You are a helpful assistant", "Help me with Python")
+# Brain auto-recalls relevant memory, injects into prompt,
+# calls your LLM, learns from the exchange, returns response.
+```
+
+### Full API
+
+| Method | Description |
+|--------|-------------|
+| `brain.learn(fact)` | Teach a fact. Returns memory ID. |
+| `brain.ask(question)` | Query for relevant facts. Returns list. |
+| `brain.context(topic)` | Get LLM-ready context string. |
+| `brain.forget(fact)` | Forget by text or ID. |
+| `brain.absorb(text)` | Bulk-learn from document or conversation. |
+| `brain.who()` | Auto-generated user profile. |
+| `brain.correct(old, new)` | Update a belief. |
+| `brain.chat(message, llm)` | Full conversation handler with memory. |
+| `brain.teach(dict)` | Learn from structured data. |
+| `brain.watch(messages)` | Learn from chat message history. |
+| `brain.wrap(fn)` | Wrap any LLM function with auto-memory. |
+
+### Run the Full Server Locally
+
+```bash
+git clone https://github.com/rajamohan1950/CLSplusplus.git
+cd CLSplusplus
+pip install -e ".[server]"
+
+# Start infrastructure (Redis + PostgreSQL)
+docker compose up -d redis postgres
+
+# Start the API server
+uvicorn clsplusplus.api:create_app --factory --host 0.0.0.0 --port 8080
 ```
 
 ---

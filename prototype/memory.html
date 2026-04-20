@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CLS++ · Memory Viewer</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#06060c;--surface:#0d0d18;--surface2:#131325;--surface3:#1a1a2e;
+      --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
+      --accent:#7c6ef0;--accent2:#5de0c5;--text:#f0f0f8;--muted:rgba(240,240,248,0.42);
+      --r:14px;
+      --chatgpt:#19c37d;--claude:#cc785c;--gemini:#4285f4;
+      --copilot:#2564cf;--perplexity:#20b2aa;--grok:#ff6b35;
+    }
+    html,body{height:100%;background:var(--bg);color:var(--text);
+      font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;
+      -webkit-font-smoothing:antialiased}
+
+    .layout{display:grid;grid-template-columns:260px 1fr;height:100vh;overflow:hidden}
+
+    /* ── LEFT SIDEBAR ─────────────────────────────────── */
+    .sidebar{background:var(--surface);border-right:1px solid var(--border);
+      display:flex;flex-direction:column;overflow:hidden}
+    .sidebar-head{padding:20px 20px 16px;border-bottom:1px solid var(--border)}
+    .logo{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;margin-bottom:14px}
+    .logo-dot{width:7px;height:7px;border-radius:50%;background:var(--accent2);
+      box-shadow:0 0 6px var(--accent2);animation:blink 1.8s ease-in-out infinite}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+    .total-count{font-size:32px;font-weight:800;letter-spacing:-.04em;color:var(--accent)}
+    .total-label{font-size:11px;color:var(--muted);margin-top:2px}
+
+    .sidebar-section{padding:14px 16px 8px}
+    .sec-label{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+      color:var(--muted);margin-bottom:10px}
+
+    .model-list,.cat-list{display:flex;flex-direction:column;gap:4px}
+    .model-item,.cat-item{display:flex;align-items:center;gap:10px;padding:8px 10px;
+      border-radius:9px;cursor:pointer;transition:background .15s;border:1px solid transparent;
+      font-size:12px}
+    .model-item:hover,.cat-item:hover{background:rgba(255,255,255,.04)}
+    .model-item.active,.cat-item.active{background:rgba(124,110,240,.1);border-color:rgba(124,110,240,.2)}
+    .model-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+    .model-name,.cat-name{flex:1;color:var(--muted)}
+    .model-item.active .model-name,.cat-item.active .cat-name{color:var(--text)}
+    .model-cnt,.cat-cnt{font-size:11px;color:var(--muted);font-weight:600;
+      background:rgba(255,255,255,.06);padding:1px 7px;border-radius:10px}
+    .cat-icon{font-size:14px;width:20px;text-align:center}
+
+    .layer-list{display:flex;flex-direction:column;gap:4px}
+    .layer-item{display:flex;align-items:center;gap:10px;padding:8px 10px;
+      border-radius:9px;border:1px solid transparent;font-size:12px;
+      cursor:pointer;transition:background .15s}
+    .layer-item:hover{background:rgba(255,255,255,.04)}
+    .layer-item.active{background:rgba(124,110,240,.1);border-color:rgba(124,110,240,.2)}
+    .layer-bar-wrap{flex:1}
+    .layer-label{font-size:12px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px}
+    .layer-phase{font-size:10px;font-weight:600;opacity:.6;text-transform:uppercase;letter-spacing:.06em}
+    .layer-desc{font-size:10px;color:var(--muted);margin-top:1px}
+    .layer-cnt{font-size:11px;color:var(--muted);font-weight:600;
+      background:rgba(255,255,255,.06);padding:1px 7px;border-radius:10px}
+
+    /* Phase badges on cards */
+    .phase-badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;
+      letter-spacing:.05em;text-transform:uppercase}
+    .phase-gas{background:rgba(255,100,100,.12);color:#ff7070}
+    .phase-liquid{background:rgba(93,224,197,.12);color:#5de0c5}
+    .phase-solid{background:rgba(124,110,240,.15);color:#a89cf7}
+    .phase-glass{background:rgba(200,200,255,.12);color:#c8c8ff}
+
+    .sidebar-footer{margin-top:auto;padding:16px;border-top:1px solid var(--border)}
+    .btn-back{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);
+      text-decoration:none;padding:8px 12px;border-radius:8px;
+      border:1px solid var(--border);background:var(--surface2);transition:all .18s;
+      justify-content:center}
+    .btn-back:hover{color:var(--text);border-color:var(--border2)}
+
+    /* ── MAIN CONTENT ─────────────────────────────────── */
+    .main{display:flex;flex-direction:column;overflow:hidden}
+    .main-head{padding:20px 24px;border-bottom:1px solid var(--border);
+      display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+    .main-title{font-size:17px;font-weight:700;letter-spacing:-.02em}
+    .main-sub{font-size:12px;color:var(--muted);margin-top:2px}
+    .search-row{display:flex;gap:10px;align-items:center}
+    #search{background:var(--surface2);border:1px solid var(--border);
+      border-radius:9px;padding:8px 13px;font-size:13px;color:var(--text);
+      outline:none;width:220px;transition:border-color .2s}
+    #search:focus{border-color:rgba(124,110,240,.5)}
+    #search::placeholder{color:var(--muted)}
+    .btn-ctx-log{background:rgba(93,224,197,.08);border:1px solid rgba(93,224,197,.2);
+      border-radius:9px;color:#5de0c5;font-size:12px;font-weight:600;padding:8px 14px;
+      cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px}
+    .btn-ctx-log:hover{background:rgba(93,224,197,.14);border-color:rgba(93,224,197,.35)}
+
+    .mem-grid{flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:10px}
+    .mem-card{background:var(--surface);border:1px solid var(--border);
+      border-radius:var(--r);padding:14px 16px;transition:border-color .18s;
+      animation:card-in .3s ease forwards;opacity:0;transform:translateY(6px)}
+    @keyframes card-in{to{opacity:1;transform:translateY(0)}}
+    @media(prefers-reduced-motion:reduce){.mem-card{animation:none;opacity:1;transform:none}}
+    .mem-card:hover{border-color:var(--border2)}
+    .mem-card-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+    .cat-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;
+      letter-spacing:.04em;text-transform:uppercase}
+    .model-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;
+      display:flex;align-items:center;gap:5px;margin-left:auto}
+    .mbdot{width:5px;height:5px;border-radius:50%}
+    .mem-text{font-size:13px;color:var(--text);line-height:1.5;margin-bottom:10px}
+    .label-row{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+    .label-pill{font-size:9px;font-weight:600;padding:2px 8px;border-radius:12px;
+      background:rgba(124,110,240,.12);color:#a89cf7;border:1px solid rgba(124,110,240,.2);
+      cursor:pointer;transition:all .15s}
+    .label-pill:hover{background:rgba(124,110,240,.25)}
+    .label-add{font-size:9px;padding:2px 8px;border-radius:12px;cursor:pointer;
+      background:rgba(255,255,255,.05);color:var(--muted);border:1px dashed rgba(255,255,255,.15);
+      transition:all .15s}
+    .label-add:hover{background:rgba(255,255,255,.1);color:var(--text)}
+    #sort-select{background:var(--surface2);border:1px solid var(--border);
+      border-radius:9px;padding:8px 10px;font-size:12px;color:var(--text);
+      outline:none;cursor:pointer}
+    #sort-select:focus{border-color:rgba(124,110,240,.5)}
+    .mem-footer{display:flex;align-items:center;gap:12px}
+    .mem-ts{font-size:10px;color:var(--muted)}
+    .strength-bar{flex:1;height:3px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden}
+    .strength-fill{height:100%;border-radius:2px;transition:width .5s ease}
+    .strength-label{font-size:10px;color:var(--muted)}
+    .fact-pills{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+    .fact-pill{font-size:10px;color:var(--muted);background:rgba(255,255,255,.05);
+      border:1px solid var(--border);border-radius:20px;padding:2px 8px}
+
+    .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;
+      flex:1;gap:12px;color:var(--muted)}
+    .empty-icon{font-size:40px;opacity:.4}
+    .empty-hint{font-size:12px;max-width:300px;text-align:center;line-height:1.6}
+
+    /* Category colours */
+    .cat-Identity   {background:rgba(124,110,240,.15);color:#a89cf7}
+    .cat-Preference {background:rgba(240,160,93,.12);color:#f0a05d}
+    .cat-Work       {background:rgba(93,224,197,.12);color:#5de0c5}
+    .cat-Project    {background:rgba(93,160,240,.12);color:#5da0f0}
+    .cat-Relationship{background:rgba(240,93,154,.12);color:#f05d9a}
+    .cat-Goal       {background:rgba(255,215,0,.1);color:#ffd700}
+    .cat-Temporal   {background:rgba(200,200,255,.08);color:#c8c8ff}
+    .cat-Context    {background:rgba(180,180,180,.1);color:#b0b0c8}
+    .cat-General    {background:rgba(255,255,255,.06);color:var(--muted)}
+
+    /* ── CONTEXT LOG MODAL ────────────────────────────── */
+    .modal-overlay{position:fixed;inset:0;background:rgba(6,6,12,.85);
+      backdrop-filter:blur(4px);z-index:1000;display:flex;align-items:flex-start;
+      justify-content:center;padding:40px 24px;overflow-y:auto}
+    .modal-overlay.hidden{display:none}
+    .modal-box{background:var(--surface);border:1px solid var(--border2);
+      border-radius:18px;width:100%;max-width:740px;display:flex;flex-direction:column;
+      overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.6)}
+    .modal-head{padding:20px 24px;border-bottom:1px solid var(--border);
+      display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+    .modal-title{font-size:15px;font-weight:700;display:flex;align-items:center;gap:10px}
+    .modal-close{background:rgba(255,255,255,.06);border:1px solid var(--border);
+      border-radius:8px;color:var(--muted);font-size:18px;line-height:1;
+      padding:6px 10px;cursor:pointer;transition:all .18s}
+    .modal-close:hover{color:var(--text);border-color:var(--border2)}
+    .ctx-log{padding:16px;display:flex;flex-direction:column;gap:8px;
+      max-height:calc(100vh - 200px);overflow-y:auto}
+    .ctx-entry{background:var(--surface2);border:1px solid var(--border);
+      border-radius:10px;padding:12px 14px}
+    .ctx-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+    .ctx-model{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+    .ctx-ts{font-size:10px;color:var(--muted);margin-left:auto}
+    .ctx-query{font-size:11px;color:var(--muted);margin-bottom:8px;
+      background:rgba(255,255,255,.03);padding:6px 8px;border-radius:6px;
+      border-left:2px solid var(--accent)}
+    .ctx-mems{display:flex;flex-direction:column;gap:4px}
+    .ctx-mem{font-size:10px;color:var(--muted);display:flex;gap:6px;align-items:flex-start}
+    .ctx-dot{width:4px;height:4px;border-radius:50%;background:var(--accent2);
+      flex-shrink:0;margin-top:3px}
+    .ctx-empty{font-size:11px;color:var(--muted);font-style:italic;padding:4px 8px}
+  </style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- ── LEFT SIDEBAR ──────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <div class="logo"><span style="font-size:18px">🧠</span> CLS++ Memory</div>
+      <div class="total-count" id="total-count">0</div>
+      <div class="total-label">memories stored</div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sec-label">By AI Model</div>
+      <div class="model-list" id="model-list">
+        <div class="model-item active" data-model="">
+          <div class="model-dot" style="background:var(--text)"></div>
+          <span class="model-name">All Models</span>
+          <span class="model-cnt" id="cnt-all">0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sec-label">By Category</div>
+      <div class="cat-list" id="cat-list">
+        <div class="cat-item active" data-cat="">
+          <span class="cat-icon">🗂️</span>
+          <span class="cat-name">All Categories</span>
+          <span class="cat-cnt" id="cnt-cat-all">0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sec-label">Memory Layers</div>
+      <div class="layer-list" id="layer-list">
+        <div class="layer-item" data-layer="L0">
+          <div class="layer-bar-wrap">
+            <div class="layer-label">L0 <span class="layer-phase">Gas</span></div>
+            <div class="layer-desc">Volatile · short-term buffer</div>
+          </div>
+          <span class="layer-cnt" id="cnt-L0">0</span>
+        </div>
+        <div class="layer-item" data-layer="L1">
+          <div class="layer-bar-wrap">
+            <div class="layer-label">L1 <span class="layer-phase">Liquid</span></div>
+            <div class="layer-desc">Episodic · indexed memories</div>
+          </div>
+          <span class="layer-cnt" id="cnt-L1">0</span>
+        </div>
+        <div class="layer-item" data-layer="L2">
+          <div class="layer-bar-wrap">
+            <div class="layer-label">L2 <span class="layer-phase">Solid</span></div>
+            <div class="layer-desc">Crystallized schemas</div>
+          </div>
+          <span class="layer-cnt" id="cnt-L2">0</span>
+        </div>
+        <div class="layer-item" data-layer="L3">
+          <div class="layer-bar-wrap">
+            <div class="layer-label">L3 <span class="layer-phase">Glass</span></div>
+            <div class="layer-desc">Converged · permanent</div>
+          </div>
+          <span class="layer-cnt" id="cnt-L3">0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-footer">
+      <a href="index.html" class="btn-back">← Back to launcher</a>
+    </div>
+  </aside>
+
+  <!-- ── MAIN: MEMORY CARDS ─────────────────────────────── -->
+  <main class="main">
+    <div class="main-head">
+      <div>
+        <div class="main-title" id="main-title">All Memories</div>
+        <div class="main-sub" id="main-sub">Listening for conversations…</div>
+      </div>
+      <div class="search-row">
+        <input id="search" type="text" placeholder="Search memories…" autocomplete="off"/>
+        <select id="sort-select">
+          <option value="ts-desc">Newest</option>
+          <option value="ts-asc">Oldest</option>
+          <option value="strength-desc">Strongest</option>
+          <option value="category-asc">Category</option>
+          <option value="phase-desc">Phase</option>
+        </select>
+        <button class="btn-ctx-log" id="btn-ctx-log">
+          <span style="width:6px;height:6px;border-radius:50%;background:#5de0c5;box-shadow:0 0 6px #5de0c5;display:inline-block;animation:blink 1.8s ease-in-out infinite"></span>
+          Context Log
+        </button>
+      </div>
+    </div>
+    <div class="mem-grid" id="mem-grid">
+      <div class="empty">
+        <div class="empty-icon">🧠</div>
+        <div style="font-size:15px;font-weight:600">Waiting for conversations…</div>
+        <div class="empty-hint">
+          Open ChatGPT, Claude, or Gemini in another tab and start chatting.
+          Memories will appear here automatically.
+        </div>
+      </div>
+    </div>
+  </main>
+
+</div>
+
+<!-- ── CONTEXT LOG MODAL ──────────────────────────────── -->
+<div class="modal-overlay hidden" id="ctx-modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div class="modal-title">
+        <span style="width:7px;height:7px;border-radius:50%;background:#5de0c5;box-shadow:0 0 6px #5de0c5;display:inline-block"></span>
+        Context Log — memories sent to each AI
+      </div>
+      <button class="modal-close" id="modal-close">✕</button>
+    </div>
+    <div class="ctx-log" id="ctx-log"></div>
+  </div>
+</div>
+
+<script>
+const API = localStorage.getItem('clspp_api_base') || `${location.protocol}//${location.host}`;
+
+let allMemories = [];
+let activeModel = '';
+let activeCat   = '';
+let activeLabel = '';
+let activeLayer = '';
+let currentUid  = '';
+
+const CAT_META = {
+  'Identity':     {icon:'👤',color:'#a89cf7'},
+  'Preference':   {icon:'❤️',color:'#f0a05d'},
+  'Work':         {icon:'💼',color:'#5de0c5'},
+  'Project':      {icon:'🚀',color:'#5da0f0'},
+  'Relationship': {icon:'👥',color:'#f05d9a'},
+  'Goal':         {icon:'🎯',color:'#ffd700'},
+  'Temporal':     {icon:'⏱️',color:'#c8c8ff'},
+  'Context':      {icon:'📌',color:'#b0b0c8'},
+  'General':      {icon:'💬',color:'#888'},
+};
+
+const MODEL_META = {
+  'claude-haiku-4-5':{label:'Claude Haiku',color:'#cc785c'},
+  'claude':          {label:'Claude',      color:'#cc785c'},
+  'gpt-4o-mini':     {label:'GPT-4o mini', color:'#19c37d'},
+  'gpt-4o':          {label:'GPT-4o',      color:'#19c37d'},
+  'chatgpt':         {label:'ChatGPT',     color:'#19c37d'},
+  'openai':          {label:'OpenAI',      color:'#19c37d'},
+  'gemini':          {label:'Gemini',      color:'#4285f4'},
+  'copilot':         {label:'Copilot',     color:'#2564cf'},
+};
+
+function modelMeta(m) {
+  if (MODEL_META[m]) return MODEL_META[m];
+  for (const [k,v] of Object.entries(MODEL_META))
+    if (m && m.toLowerCase().includes(k)) return v;
+  return {label: m || 'AI', color:'var(--muted)'};
+}
+
+async function loadMemories() {
+  try {
+    let url = `${API}/api/memories`;
+    const p = [];
+    if (activeModel) p.push('model='+encodeURIComponent(activeModel));
+    if (activeCat)   p.push('category='+encodeURIComponent(activeCat));
+    if (activeLabel) p.push('label='+encodeURIComponent(activeLabel));
+    if (activeLayer) p.push('layer='+encodeURIComponent(activeLayer));
+    const sortVal = document.getElementById('sort-select').value;
+    const [sortKey, sortOrder] = sortVal.split('-');
+    p.push('sort='+sortKey, 'order='+sortOrder);
+    if (p.length) url += '?'+p.join('&');
+    const r = await fetch(url);
+    const d = await r.json();
+    currentUid = d.uid || '';
+    allMemories = d.memories || [];
+    renderMemories();
+    buildSidebar(d);
+  } catch(e) { console.error('Server not reachable', e); }
+}
+
+function renderMemories() {
+  const q = document.getElementById('search').value.toLowerCase();
+  const mems = q ? allMemories.filter(m => (m.fact||m.text).toLowerCase().includes(q)) : allMemories;
+  const grid = document.getElementById('mem-grid');
+
+  if (!mems.length) {
+    grid.innerHTML = `<div class="empty">
+      <div class="empty-icon">🧠</div>
+      <div style="font-size:15px;font-weight:600">Waiting for conversations…</div>
+      <div class="empty-hint">Open ChatGPT, Claude, or Gemini in another tab and start chatting.
+        Memories will appear here automatically.</div>
+    </div>`;
+    document.getElementById('main-sub').textContent = 'Listening for conversations…';
+    return;
+  }
+
+  document.getElementById('main-sub').textContent =
+    `${mems.length} memor${mems.length===1?'y':'ies'}${activeModel?' · '+modelMeta(activeModel).label:''}${activeCat?' · '+activeCat:''}`;
+
+  grid.innerHTML = '';
+  mems.forEach((m, i) => {
+    const mm  = modelMeta(m.source_model);
+    const cm  = CAT_META[m.category] || CAT_META['General'];
+    const pct = Math.round(m.strength * 100);
+    const ts  = new Date(m.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    const dt  = new Date(m.ts).toLocaleDateString([],{month:'short',day:'numeric'});
+    const card = document.createElement('div');
+    card.className = 'mem-card';
+    card.style.animationDelay = (i * 0.04) + 's';
+    const phase = m.phase || 'liquid';
+    const phaseLabels = {gas:'L0 Gas',liquid:'L1 Liquid',solid:'L2 Solid',glass:'L3 Glass'};
+    const lblHtml = (m.labels||[]).map(l =>
+      `<span class="label-pill" onclick="filterLabel('${esc(l)}')">${esc(l)}</span>`).join('') +
+      `<span class="label-add" onclick="addLabel('${m.id}')">+ label</span>`;
+    card.innerHTML = `
+      <div class="mem-card-head">
+        <span class="cat-badge cat-${m.category}">${cm.icon} ${m.category}</span>
+        <span class="phase-badge phase-${phase}">${phaseLabels[phase]||phase}</span>
+        <span style="font-size:10px;color:var(--muted)">${m.source==='user'?'you said':'AI said'}</span>
+        <span class="model-badge" style="background:${mm.color}18;border:1px solid ${mm.color}33;color:${mm.color}">
+          <span class="mbdot" style="background:${mm.color}"></span>${mm.label}
+        </span>
+      </div>
+      <div class="label-row">${lblHtml}</div>
+      <div class="mem-text">${esc(m.fact || m.text)}</div>
+      <div class="mem-footer">
+        <span class="mem-ts">${dt} ${ts}</span>
+        <div class="strength-bar" title="${pct}%">
+          <div class="strength-fill" style="width:${pct}%;background:${mm.color}"></div>
+        </div>
+        <span class="strength-label">${pct}%</span>
+      </div>`;
+    grid.appendChild(card);
+  });
+}
+
+function buildSidebar(d) {
+  document.getElementById('total-count').textContent = d.count;
+  document.getElementById('cnt-all').textContent = d.count;
+  document.getElementById('cnt-cat-all').textContent = d.count;
+
+  const ml = document.getElementById('model-list');
+  const allItem = ml.querySelector('[data-model=""]');
+  ml.innerHTML = ''; ml.appendChild(allItem);
+  (d.available_models || []).forEach(m => {
+    const mm = modelMeta(m);
+    const cnt = allMemories.filter(x => x.source_model === m).length;
+    const el = document.createElement('div');
+    el.className = 'model-item'+(activeModel===m?' active':'');
+    el.dataset.model = m;
+    el.innerHTML = `<div class="model-dot" style="background:${mm.color};box-shadow:0 0 5px ${mm.color}"></div>
+      <span class="model-name">${mm.label}</span><span class="model-cnt">${cnt}</span>`;
+    el.addEventListener('click', () => { activeModel=m; refreshFilters(); });
+    ml.appendChild(el);
+  });
+
+  const cl = document.getElementById('cat-list');
+  const allCat = cl.querySelector('[data-cat=""]');
+  cl.innerHTML = ''; cl.appendChild(allCat);
+  (d.available_categories || []).forEach(cat => {
+    const cm = CAT_META[cat] || CAT_META['General'];
+    const cnt = allMemories.filter(x => x.category === cat).length;
+    const el = document.createElement('div');
+    el.className = 'cat-item'+(activeCat===cat?' active':'');
+    el.dataset.cat = cat;
+    el.innerHTML = `<span class="cat-icon">${cm.icon}</span>
+      <span class="cat-name">${cat}</span><span class="cat-cnt">${cnt}</span>`;
+    el.addEventListener('click', () => { activeCat=cat; refreshFilters(); });
+    cl.appendChild(el);
+  });
+
+  // Layer counts
+  const layers = d.layers || {L0:0,L1:0,L2:0,L3:0};
+  ['L0','L1','L2','L3'].forEach(l => {
+    const el = document.getElementById('cnt-'+l);
+    if (el) el.textContent = layers[l] || 0;
+  });
+
+  // Labels section (dynamic)
+  const lbls = d.available_labels || [];
+  let lblSection = document.getElementById('label-section');
+  if (!lblSection) {
+    lblSection = document.createElement('div');
+    lblSection.id = 'label-section';
+    lblSection.className = 'sidebar-section';
+    const layerSection = document.querySelector('.sidebar-section:last-of-type');
+    if (layerSection && layerSection.parentNode) {
+      layerSection.parentNode.insertBefore(lblSection, layerSection);
+    }
+  }
+  if (lbls.length) {
+    lblSection.innerHTML = '<div class="sec-label">Labels</div><div class="cat-list">' +
+      `<div class="cat-item${!activeLabel?' active':''}" onclick="activeLabel='';loadMemories();">
+        <span class="cat-icon">🏷️</span><span class="cat-name">All Labels</span>
+        <span class="cat-cnt">${d.count}</span></div>` +
+      lbls.map(l => {
+        const cnt = allMemories.filter(m => (m.labels||[]).includes(l)).length;
+        return `<div class="cat-item${activeLabel===l?' active':''}" onclick="filterLabel('${esc(l)}')">
+          <span class="cat-icon">🏷️</span><span class="cat-name">${esc(l)}</span>
+          <span class="cat-cnt">${cnt}</span></div>`;
+      }).join('') + '</div>';
+  } else {
+    lblSection.innerHTML = '';
+  }
+}
+
+function refreshFilters() {
+  document.querySelectorAll('.model-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.model === activeModel));
+  document.querySelectorAll('.cat-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.cat === activeCat));
+  document.getElementById('main-title').textContent =
+    (activeModel ? modelMeta(activeModel).label : 'All') + ' · ' + (activeCat || 'All Categories');
+  loadMemories();
+}
+
+document.querySelector('.model-item[data-model=""]').addEventListener('click', () => {
+  activeModel=''; refreshFilters();
+});
+document.querySelector('.cat-item[data-cat=""]').addEventListener('click', () => {
+  activeCat=''; refreshFilters();
+});
+document.getElementById('search').addEventListener('input', renderMemories);
+document.getElementById('sort-select').addEventListener('change', loadMemories);
+
+// ── Labels ──────────────────────────────────────────────
+async function addLabel(memId) {
+  const label = prompt('Enter label:');
+  if (!label || !label.trim()) return;
+  const mem = allMemories.find(m => m.id === memId);
+  const labels = [...new Set([...(mem.labels || []), label.trim()])];
+  const uid = currentUid || 'all';
+  // Try all UIDs since we may have merged namespaces
+  for (const u of (uid === 'all' ? Object.keys(window._allUids || {[uid]:1}) : [uid])) {
+    await fetch(`${API}/api/memories/${u}/${memId}/labels`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({labels})
+    });
+  }
+  // Also try without UID prefix for each known namespace
+  await fetch(`${API}/api/memories/_/${memId}/labels`, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({labels})
+  }).catch(() => {});
+  loadMemories();
+}
+
+function filterLabel(lbl) {
+  activeLabel = activeLabel === lbl ? '' : lbl;
+  loadMemories();
+}
+
+// ── Layer click filtering ────────────────────────────────
+document.querySelectorAll('.layer-item').forEach(el => {
+  el.addEventListener('click', () => {
+    const l = el.dataset.layer;
+    activeLayer = activeLayer === l ? '' : l;
+    document.querySelectorAll('.layer-item').forEach(x =>
+      x.classList.toggle('active', x.dataset.layer === activeLayer));
+    loadMemories();
+  });
+});
+
+// ── Context log modal ──────────────────────────────────────
+async function loadContextLog() {
+  try {
+    const r = await fetch(`${API}/api/context-log`);
+    const d = await r.json();
+    const log = d.log || [];
+    const el = document.getElementById('ctx-log');
+    if (!log.length) {
+      el.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:20px;text-align:center">
+        No context bridges yet. Chat in another tab to see memory injection logs.</div>`;
+      return;
+    }
+    el.innerHTML = '';
+    log.forEach(entry => {
+      const mm = modelMeta(entry.model);
+      const ts = new Date(entry.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      const div = document.createElement('div');
+      div.className = 'ctx-entry';
+      div.innerHTML = `
+        <div class="ctx-head">
+          <div class="model-dot" style="background:${mm.color};width:8px;height:8px;border-radius:50%"></div>
+          <span class="ctx-model" style="color:${mm.color}">${mm.label}</span>
+          <span style="font-size:10px;background:${mm.color}18;color:${mm.color};padding:2px 7px;
+            border-radius:10px">${entry.count} memor${entry.count===1?'y':'ies'} injected</span>
+          <span class="ctx-ts">${ts}</span>
+        </div>
+        <div class="ctx-query">You: "${esc(entry.query)}"</div>
+        <div class="ctx-mems">
+          ${entry.memories_sent.length
+            ? entry.memories_sent.map(m =>
+                `<div class="ctx-mem"><div class="ctx-dot"></div><span>${esc(m.slice(0,100))}</span></div>`
+              ).join('')
+            : '<div class="ctx-empty">No memories for this request</div>'}
+        </div>`;
+      el.appendChild(div);
+    });
+  } catch(e) {}
+}
+
+document.getElementById('btn-ctx-log').addEventListener('click', async () => {
+  await loadContextLog();
+  document.getElementById('ctx-modal').classList.remove('hidden');
+});
+document.getElementById('modal-close').addEventListener('click', () => {
+  document.getElementById('ctx-modal').classList.add('hidden');
+});
+document.getElementById('ctx-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('ctx-modal'))
+    document.getElementById('ctx-modal').classList.add('hidden');
+});
+
+// ── WebSocket live push ────────────────────────────────────
+function connectWS() {
+  try {
+    const ws = new WebSocket(`ws://localhost:8080/ws/memories`);
+    ws.onmessage = () => loadMemories();
+    ws.onclose = () => setTimeout(connectWS, 3000);
+  } catch(_) {}
+}
+
+function esc(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+loadMemories();
+connectWS();
+setInterval(loadMemories, 5000);
+</script>
+</body>
+</html>

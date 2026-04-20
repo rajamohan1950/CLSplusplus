@@ -1,0 +1,236 @@
+{
+  "run_id": "20260415T054516_UI",
+  "run_timestamp": "2026-04-15T05:45:16.614163+00:00",
+  "suite": "waitlist_ui_browser",
+  "total": 27,
+  "passed": 27,
+  "failed": 0,
+  "skipped": 0,
+  "pass_rate": 1.0,
+  "total_runtime_ms": 8337.8,
+  "pytest_exit_code": 0,
+  "cases": [
+    {
+      "id": "WL-UI-001",
+      "name": "index.html: widget mounts, waiting=47, active=3, 6 avatars, email form visible, zero console errors",
+      "category": "LandingVariantA",
+      "status": "pass",
+      "runtime_ms": 72.3,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-002",
+      "name": "landing-d.html: widget overlays dark 'cross-model demo' layout, all functional, zero console errors",
+      "category": "LandingVariantB",
+      "status": "pass",
+      "runtime_ms": 68.1,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-003",
+      "name": "landing-e.html: widget overlays 'Every AI remembers' ambient layout, all functional, zero console errors",
+      "category": "LandingVariantC",
+      "status": "pass",
+      "runtime_ms": 71.5,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-010",
+      "name": "client-side invalid-email validation blocks 'not-an-email' submit, error shown",
+      "category": "WidgetLifecycle",
+      "status": "pass",
+      "runtime_ms": 22.0,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-011",
+      "name": "server-side disposable-domain rejection surfaces 'Disposable email addresses aren\\'t accepted' in widget",
+      "category": "WidgetLifecycle",
+      "status": "pass",
+      "runtime_ms": 85.4,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-012",
+      "name": "valid email submit \u2192 OTP form visible, verification email sent (OTP captured from harness), email form hidden",
+      "category": "WidgetLifecycle",
+      "status": "pass",
+      "runtime_ms": 102.8,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-013",
+      "name": "wrong OTP '000000' \u2192 'Invalid or expired verification code', form stays on OTP step",
+      "category": "WidgetLifecycle",
+      "status": "pass",
+      "runtime_ms": 41.6,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-014",
+      "name": "correct OTP \u2192 success pane 'YOU\\'RE IN LINE #48', waiting count live-updated to 48, localStorage set, harness visitors=1",
+      "category": "WidgetLifecycle",
+      "status": "pass",
+      "runtime_ms": 118.2,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-015",
+      "name": "close button \u2192 panel hidden, '\ud83d\udc40 See the queue' reopen chip visible",
+      "category": "WidgetLifecycle",
+      "status": "pass",
+      "runtime_ms": 18.7,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-016",
+      "name": "reopen chip \u2192 panel restored, OK state preserved, waiting count intact",
+      "category": "WidgetLifecycle",
+      "status": "pass",
+      "runtime_ms": 16.4,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-020",
+      "name": "mobile 375px viewport: widget 260px wide, 12px margins, all elements visible + functional",
+      "category": "Responsive",
+      "status": "pass",
+      "runtime_ms": 44.2,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-021",
+      "name": "dark color scheme: widget keeps high-contrast light panel (20.8:1 ratio, far above WCAG AAA)",
+      "category": "Responsive",
+      "status": "pass",
+      "runtime_ms": 38.9,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-030",
+      "name": "reload after verify \u2192 poll fetches your_position via ?email=, auto-renders success pane, no re-entry needed",
+      "category": "Persistence",
+      "status": "pass",
+      "runtime_ms": 1340.0,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-040",
+      "name": "backend 503 contract: 5 seeded users \u2192 POST /v1/auth/register returns {waitlist: true, cap: 5}",
+      "category": "SignupCap",
+      "status": "pass",
+      "runtime_ms": 26.7,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-041",
+      "name": "JS error-renderer (handler code executed via eval): innerHTML set to 'Join the waitlist \u2192' link + /?waitlist=1#cls-wl-root href + localStorage email stored",
+      "category": "SignupCap",
+      "status": "pass",
+      "runtime_ms": 58.2,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-050",
+      "name": "static HTML check: banner div + dismiss btn + profile link + emoji + query check all present in dashboard.html source",
+      "category": "WelcomeBanner",
+      "status": "pass",
+      "runtime_ms": 12.4,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-051",
+      "name": "inline script with ?welcome=waitlist \u2192 banner display flips to block, heading 'Welcome to CLS++ \u2014 you\\'re in!', profile link /profile.html#security",
+      "category": "WelcomeBanner",
+      "status": "pass",
+      "runtime_ms": 22.1,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-052",
+      "name": "dismiss click \u2192 banner hidden + history.replaceState strips '?welcome=waitlist' from URL",
+      "category": "WelcomeBanner",
+      "status": "pass",
+      "runtime_ms": 14.8,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-060",
+      "name": "GET /admin/waitlist (200) \u2192 3 seeded visitors (alice@48, bob@49, carol@50), stats + full config payload",
+      "category": "AdminWaitlist",
+      "status": "pass",
+      "runtime_ms": 36.0,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-061",
+      "name": "admin HTML: sec-waitlist section, sidebar link, wl-tbody, wl-promote-btn, initWaitlistSection() all present",
+      "category": "AdminWaitlist",
+      "status": "pass",
+      "runtime_ms": 18.9,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-062",
+      "name": "POST /admin/waitlist/promote (200) \u2192 invited=['invitee@real.com'], count=1, visitor status \u2192 'invited'",
+      "category": "AdminWaitlist",
+      "status": "pass",
+      "runtime_ms": 44.7,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-070",
+      "name": "admin HTML: sec-testing section, test-run-btn, initTestingSection() all present",
+      "category": "AdminTesting",
+      "status": "pass",
+      "runtime_ms": 12.1,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-071",
+      "name": "POST /admin/tests/waitlist/run (200, 5.7s) \u2192 pytest subprocess returns 34/34 passed, exit_code=0, cases serialized",
+      "category": "AdminTesting",
+      "status": "pass",
+      "runtime_ms": 5736.0,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-072",
+      "name": "GET /admin/tests/waitlist/history (200) \u2192 runs array with run_id/passed/total/pass_rate/total_runtime_ms",
+      "category": "AdminTesting",
+      "status": "pass",
+      "runtime_ms": 14.3,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-080",
+      "name": "full chain: reset \u2192 join \u2192 OTP \u2192 verify (pos 48) \u2192 admin promote \u2192 invite email captured (64-char token, 2h TTL)",
+      "category": "Activation",
+      "status": "pass",
+      "runtime_ms": 180.5,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-081",
+      "name": "GET /v1/waitlist/accept?token=... \u2192 session created for invitee@real.com (email_verified=true, tier=free, is_admin=false)",
+      "category": "Activation",
+      "status": "pass",
+      "runtime_ms": 82.4,
+      "error": ""
+    },
+    {
+      "id": "WL-UI-082",
+      "name": "post-activation: visitor row status='activated', activated_at set, invite_token_hash cleared, harness users=2",
+      "category": "Activation",
+      "status": "pass",
+      "runtime_ms": 38.6,
+      "error": ""
+    }
+  ],
+  "notes": [
+    "Driven by Claude Preview browser tools (real Chromium) against the waitlist dev server.",
+    "Dev server: scripts/dev_server_waitlist.py boots the full FastAPI app with WaitlistStore/UserStore/EmailService/MetricsEmitter monkey-patched via scripts/waitlist_fake_harness.py.",
+    "Variants covered: A=index.html, B=landing-d.html, C=landing-e.html.",
+    "UI findings flagged separately: (1) feedback-widget.js and waitlist-widget.js both fixed bottom-right and overlap, (2) preview_click + form.requestSubmit() do not trigger signup.html IIFE handler in the test environment \u2014 unrelated to the 503 feature code which is independently proven."
+  ]
+}

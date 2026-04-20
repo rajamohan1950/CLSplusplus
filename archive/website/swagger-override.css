@@ -1,0 +1,102 @@
+/* CLS++ Swagger UI Theme Override — Sunrise Theme */
+
+/* Font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+html, body {
+  background: transparent !important;
+}
+
+#swagger-ui {
+  background: transparent !important;
+}
+
+.swagger-ui {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  background: transparent !important;
+}
+
+/* Top bar — frosted dark nav */
+.swagger-ui .topbar {
+  background: rgba(0,0,0,0.4) !important;
+  backdrop-filter: blur(20px) saturate(1.8);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  padding: 8px 0;
+}
+
+.swagger-ui .topbar .download-url-wrapper .select-label span {
+  color: #fff !important;
+}
+
+.swagger-ui .topbar a {
+  color: #fff !important;
+}
+
+/* Main wrapper */
+.swagger-ui .wrapper {
+  max-width: 980px !important;
+  background: rgba(255,255,255,0.92);
+  border-radius: 24px;
+  box-shadow: 0 4px 40px rgba(0,0,0,0.08);
+  margin: 20px auto;
+  padding: 24px;
+}
+
+/* Orange accent for buttons */
+.swagger-ui .btn.execute {
+  background: #ff6b35 !important;
+  border-color: #ff6b35 !important;
+  color: #fff !important;
+}
+
+.swagger-ui .btn.authorize {
+  color: #ff6b35 !important;
+  border-color: #ff6b35 !important;
+}
+
+.swagger-ui .btn.authorize svg {
+  fill: #ff6b35 !important;
+}
+
+/* Operation block accents */
+.swagger-ui .opblock.opblock-post .opblock-summary-method {
+  background: #ff6b35 !important;
+}
+
+.swagger-ui .opblock.opblock-post {
+  border-color: #ff6b35 !important;
+  background: rgba(255,107,53,0.05) !important;
+}
+
+.swagger-ui .opblock.opblock-get .opblock-summary-method {
+  background: #1d1d1f !important;
+}
+
+.swagger-ui .opblock.opblock-delete .opblock-summary-method {
+  background: #ef4444 !important;
+}
+
+/* Info section */
+.swagger-ui .info .title {
+  color: #1d1d1f !important;
+  font-family: 'Inter', sans-serif !important;
+}
+
+.swagger-ui .info a {
+  color: #ff6b35 !important;
+}
+
+/* Try it out button */
+.swagger-ui .try-out__btn {
+  color: #ff6b35 !important;
+  border-color: #ff6b35 !important;
+}
+
+/* Model/schema tabs */
+.swagger-ui .model-box {
+  background: rgba(0,0,0,0.02) !important;
+}
+
+.swagger-ui section.models {
+  border-color: rgba(0,0,0,0.08) !important;
+}

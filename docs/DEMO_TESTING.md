@@ -45,13 +45,13 @@ Each user: tells 6 facts across Claude/Gemini/OpenAI, then asks 5 criss-cross qu
 ### Demo status (which keys are set)
 
 ```bash
-curl https://clsplusplus-api.onrender.com/v1/demo/status
+curl https://www.clsplusplus.com/v1/demo/status
 ```
 
 ### Test single LLM
 
 ```bash
-curl --max-time 120 -X POST https://clsplusplus-api.onrender.com/v1/demo/chat \
+curl --max-time 120 -X POST https://www.clsplusplus.com/v1/demo/chat \
   -H "Content-Type: application/json" \
   -d '{"model":"claude","message":"Say hi","namespace":"test"}'
 ```

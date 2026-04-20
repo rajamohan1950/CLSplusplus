@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Usage | CLS++</title>
+  <link rel="stylesheet" href="styles.css?v=2">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="posthog.js" defer></script>
+  <script src="variant-loader.js"></script>
+  <script src="feedback-widget.js" defer></script>
+  <script src="auth.js" defer></script>
+</head>
+<body>
+  <div class="video-bg"><video autoplay muted loop playsinline poster="beach-bg.jpg"><source src="sunrise-ocean.mp4" type="video/mp4"></video></div>
+  <div class="video-overlay"></div>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs.html">API</a>
+        <a href="/integrate.html">Integrate</a>
+        <a href="/#pricing">Pricing</a>
+        <div id="nav-auth" class="nav-auth"></div>
+        <a href="/getting-started.html" class="nav-cta">Get Started</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container" style="margin-top:100px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;flex-wrap:wrap;gap:12px;">
+      <h1 style="font-size:1.6rem;">Usage</h1>
+      <span class="tier-badge" id="tier-badge">Loading...</span>
+    </div>
+
+      <!-- Usage Cards (#overview) -->
+      <div id="overview"></div>
+      <div class="usage-grid">
+        <div class="usage-card">
+          <h3>Operations This Month</h3>
+          <div class="usage-value" id="ops-value">--</div>
+          <div class="usage-sub" id="ops-sub">of -- limit</div>
+          <div class="usage-progress"><div class="usage-progress-fill" id="ops-bar" style="width:0%"></div></div>
+        </div>
+        <div class="usage-card">
+          <h3>Writes</h3>
+          <div class="usage-value" id="writes-value">--</div>
+          <div class="usage-sub">Memories stored</div>
+        </div>
+        <div class="usage-card">
+          <h3>Reads</h3>
+          <div class="usage-value" id="reads-value">--</div>
+          <div class="usage-sub">Queries answered</div>
+        </div>
+      </div>
+
+      <!-- Limits -->
+      <div class="usage-grid">
+        <div class="usage-card">
+          <h3>Billing Period</h3>
+          <div class="usage-value" id="billing-period">--</div>
+          <div class="usage-sub" id="billing-price">--</div>
+        </div>
+        <div class="usage-card">
+          <h3>Storage Limit</h3>
+          <div class="usage-value" id="storage-limit">--</div>
+          <div class="usage-sub">L1 items per namespace</div>
+        </div>
+        <div class="usage-card">
+          <h3>Namespaces</h3>
+          <div class="usage-value" id="ns-limit">--</div>
+          <div class="usage-sub">Max namespaces allowed</div>
+        </div>
+      </div>
+
+      <!-- Rate Limit -->
+      <div class="usage-grid" style="margin-bottom:8px;">
+        <div class="usage-card">
+          <h3>Rate Limit</h3>
+          <div class="usage-value" id="rate-limit">--</div>
+          <div class="usage-sub">Requests per minute</div>
+        </div>
+      </div>
+
+      <!-- Usage History Chart (#history) -->
+      <div id="history"></div>
+      <div class="usage-chart-section">
+        <h2>Usage History</h2>
+        <div class="usage-chart-wrap">
+          <canvas id="usage-chart"></canvas>
+        </div>
+      </div>
+  </div>
+
+  <script src="usage.js"></script>
+  <script src="footer.js?v=2"></script>
+</body>
+</html>

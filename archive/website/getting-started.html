@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Integrate | CLS++</title>
+  <link rel="stylesheet" href="styles.css?v=2">
+  <script src="posthog.js" defer></script>
+  <script src="variant-loader.js"></script>
+  <script src="feedback-widget.js" defer></script>
+  <script src="auth.js" defer></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { overflow-x: hidden; color: #1d1d1f; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
+
+    /* 3 colors: #1d1d1f, #ffffff, #ff6b35 */
+
+    .video-bg { position: fixed; inset: 0; z-index: -2; overflow: hidden; }
+    .video-bg video { width: 100%; height: 100%; object-fit: cover; object-position: center 35%; }
+    .video-overlay { position: fixed; inset: 0; z-index: -1; background: none; }
+
+    /* Nav — all nav styles come from styles.css */
+
+    /* Hero */
+    .gs-hero { min-height: 50vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 130px 22px 50px; text-align: center; }
+    .gs-hero h1 { font-size: clamp(44px, 6vw, 72px); color: #fff; margin-bottom: 16px; }
+    .gs-hero h1 em { font-style: normal; color: #ff6b35; }
+    .gs-hero p { font-size: 18px; color: #fff; max-width: 480px; line-height: 1.47; letter-spacing: -0.01em; margin-bottom: 28px; }
+
+    /* Search input */
+    .gs-search { width: 100%; max-width: 440px; padding: 15px 24px; border: none; border-radius: 980px; font-size: 15px; font-weight: 400; font-family: inherit; background: rgba(255,255,255,0.95); color: #1d1d1f; outline: none; box-shadow: 0 4px 30px rgba(0,0,0,0.12); letter-spacing: -0.01em; }
+    .gs-search::placeholder { color: #aaa; font-weight: 400; }
+    .gs-search:focus { box-shadow: 0 4px 30px rgba(0,0,0,0.12), 0 0 0 3px rgba(255,107,53,0.25); }
+
+    /* Content area — frosted glass over video, sea visible on sides */
+    .gs-content { position: relative; z-index: 1; }
+    .gs-section { max-width: 900px; margin: 0 auto; padding: 60px 28px; background: rgba(255,255,255,0.85); backdrop-filter: blur(40px) saturate(1.4); -webkit-backdrop-filter: blur(40px) saturate(1.4); border-radius: 24px; margin-bottom: 0; }
+    .gs-section-dark { color: #fff; }
+    .gs-section-dark .gs-section { background: rgba(29,29,31,0.88); }
+
+    /* Category label */
+    .gs-cat { font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: #1d1d1f; opacity: 0.3; margin-bottom: 20px; }
+    .gs-cat-light { color: #fff; opacity: 0.35; }
+
+    /* Integration grid */
+    .gs-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 40px; }
+    .gs-card { padding: 28px 16px 22px; text-align: center; cursor: pointer; background: #f5f5f7; border: 2px solid transparent; border-radius: 16px; transition: all 0.25s; }
+    .gs-card:hover { border-color: rgba(255,107,53,0.25); transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,0,0,0.04); }
+    .gs-card.active { border-color: #ff6b35; background: #fff; box-shadow: 0 4px 20px rgba(255,107,53,0.08); }
+    .gs-card.soon { opacity: 0.3; cursor: default; }
+    .gs-card.soon:hover { border-color: transparent; transform: none; box-shadow: none; }
+
+    /* Card icons — clean SVG-style circles */
+    .gs-card-icon { width: 44px; height: 44px; border-radius: 12px; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 600; color: #fff; }
+    .gs-card-icon.ic-chrome { background: linear-gradient(135deg, #4285f4, #34a853); }
+    .gs-card-icon.ic-openai { background: linear-gradient(135deg, #1d1d1f, #444); }
+    .gs-card-icon.ic-anthropic { background: linear-gradient(135deg, #d4a574, #c4956a); }
+    .gs-card-icon.ic-python { background: linear-gradient(135deg, #3776ab, #ffd43b); }
+    .gs-card-icon.ic-js { background: linear-gradient(135deg, #f7df1e, #e8d44d); color: #1d1d1f; }
+    .gs-card-icon.ic-langchain { background: linear-gradient(135deg, #1c3c3c, #2d5a5a); }
+    .gs-card-icon.ic-cli { background: linear-gradient(135deg, #1d1d1f, #333); }
+    .gs-card-icon.ic-rest { background: linear-gradient(135deg, #ff6b35, #ff8c5a); }
+    /* Coming soon icons */
+    .gs-card-icon.ic-soon { background: #e5e5e7; color: #999; }
+
+    .gs-card-name { font-size: 13px; font-weight: 600; color: #1d1d1f; letter-spacing: -0.01em; }
+    .gs-card-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 6px; margin-top: 6px; }
+    .gs-badge-live { background: rgba(34,197,94,0.1); color: #16a34a; }
+    .gs-badge-soon { background: rgba(0,0,0,0.04); color: #bbb; }
+
+    /* Detail panel */
+    .gs-detail { background: #fff; border: 1px solid rgba(0,0,0,0.06); border-radius: 20px; padding: 44px; margin-bottom: 32px; display: none; animation: fadeUp 0.3s ease; box-shadow: 0 2px 20px rgba(0,0,0,0.03); }
+    .gs-detail.visible { display: block; }
+    .gs-detail-title { font-size: 28px; color: #1d1d1f; margin-bottom: 6px; letter-spacing: -0.03em; }
+    .gs-detail-sub { font-size: 16px; color: #86868b; margin-bottom: 28px; line-height: 1.47; letter-spacing: -0.01em; }
+
+    /* Code block */
+    .gs-code { background: #1d1d1f; border-radius: 12px; padding: 20px 24px; font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; font-size: 13px; line-height: 1.8; color: rgba(255,255,255,0.85); overflow-x: auto; position: relative; white-space: pre; margin-bottom: 16px; }
+    .gs-code .kw { color: #ff6b35; }
+    .gs-code .str { color: rgba(255,255,255,0.45); }
+    .gs-code .cmt { color: rgba(255,255,255,0.22); }
+    .gs-copy { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.08); border: none; color: rgba(255,255,255,0.4); padding: 5px 12px; border-radius: 6px; font-size: 11px; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+    .gs-copy:hover { background: #ff6b35; color: #fff; }
+
+    /* Section label */
+    .gs-ex-label { font-size: 11px; font-weight: 600; color: #1d1d1f; opacity: 0.3; text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 10px; margin-top: 24px; }
+
+    /* API link */
+    .gs-api-link { display: inline-flex; align-items: center; gap: 6px; color: #ff6b35; font-size: 14px; font-weight: 500; text-decoration: none; margin-top: 12px; letter-spacing: -0.01em; }
+    .gs-api-link:hover { text-decoration: underline; }
+
+    /* Action buttons */
+    .gs-actions { display: flex; gap: 10px; margin-bottom: 4px; flex-wrap: wrap; align-items: center; }
+    .gs-btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; border-radius: 980px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; text-decoration: none; transition: all 0.15s; border: none; letter-spacing: -0.01em; }
+    .gs-btn-primary { background: #ff6b35; color: #fff; }
+    .gs-btn-primary:hover { opacity: 0.85; }
+    .gs-btn-secondary { background: transparent; color: #ff6b35; border: 1px solid rgba(255,107,53,0.25) !important; }
+    .gs-btn-secondary:hover { background: rgba(255,107,53,0.04); }
+    .gs-key-box { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; padding: 14px 20px; background: #fafafa; border-radius: 12px; border: 1px solid rgba(0,0,0,0.05); flex-wrap: wrap; gap: 10px; }
+    .gs-key-box span { font-size: 14px; color: #1d1d1f; opacity: 0.45; }
+    .gs-key-box a { color: #ff6b35; font-weight: 500; text-decoration: none; font-size: 14px; }
+    .gs-key-box a:hover { text-decoration: underline; }
+
+    /* Next steps */
+    .gs-next { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 32px; }
+    .gs-next-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 24px 20px; text-decoration: none; color: #fff; transition: all 0.2s; }
+    .gs-next-card:hover { background: rgba(255,255,255,0.08); transform: translateY(-2px); }
+    .gs-next-card h4 { font-size: 15px; font-weight: 600; margin-bottom: 4px; letter-spacing: -0.01em; }
+    .gs-next-card p { font-size: 13px; opacity: 0.4; margin: 0; line-height: 1.4; }
+
+    /* Footer */
+    .gs-footer { max-width: 860px; margin: 0 auto; padding: 40px 22px; text-align: center; }
+    .gs-footer p { font-size: 12px; color: rgba(255,255,255,0.2); }
+
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+    @media (max-width: 768px) {
+      .gs-grid { grid-template-columns: repeat(3, 1fr); }
+      .gs-next { grid-template-columns: 1fr 1fr; }
+      .gs-detail { padding: 28px 20px; }
+      .nav-links { display: none; }
+    }
+    @media (max-width: 480px) {
+      .gs-grid { grid-template-columns: repeat(2, 1fr); }
+      .gs-next { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="video-bg">
+    <video autoplay muted loop playsinline poster="beach-bg.jpg">
+      <source src="sunrise-ocean.mp4" type="video/mp4">
+    </video>
+  </div>
+  <div class="video-overlay"></div>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs.html">API</a>
+        <a href="/integrate.html">Integrate</a>
+        <a href="/#pricing">Pricing</a>
+        <div id="nav-auth" class="nav-auth"></div>
+        <a href="/getting-started.html" class="nav-cta">Get Started</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="gs-hero">
+    <h1>Every AI <em>remembers.</em></h1>
+    <p>Pick your integration. Follow the example. Ship memory in under a minute.</p>
+    <input type="text" class="gs-search" id="gs-search" placeholder="What are you building?" oninput="filterCards(this.value)">
+  </section>
+
+  <!-- White content -->
+  <div class="gs-content">
+    <div class="gs-section">
+
+      <!-- LIVE integrations -->
+      <div class="gs-cat">Live Integrations</div>
+      <div class="gs-grid" id="live-grid">
+        <div class="gs-card" onclick="showDetail('extension', this)">
+          <div class="gs-card-icon ic-chrome">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="21.17" y1="8" x2="12" y2="8"/><line x1="3.95" y1="6.06" x2="8.54" y2="14"/><line x1="10.88" y1="21.94" x2="15.46" y2="14"/></svg>
+          </div>
+          <div class="gs-card-name">Chrome Extension</div>
+          <div class="gs-card-badge gs-badge-live">Live</div>
+        </div>
+        <div class="gs-card" onclick="showDetail('openai', this)">
+          <div class="gs-card-icon ic-openai">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M22.28 9.37a5.88 5.88 0 00-.51-4.84A5.96 5.96 0 0015.33 1a5.89 5.89 0 00-4.5.63A5.96 5.96 0 004.96 1.1a5.89 5.89 0 00-3.89 2.85 5.96 5.96 0 00.72 6.98 5.88 5.88 0 00.51 4.84A5.96 5.96 0 008.74 19a5.89 5.89 0 004.5-.63 5.96 5.96 0 005.87.53 5.89 5.89 0 003.89-2.85 5.96 5.96 0 00-.72-6.98z"/></svg>
+          </div>
+          <div class="gs-card-name">OpenAI Proxy</div>
+          <div class="gs-card-badge gs-badge-live">Live</div>
+        </div>
+        <div class="gs-card" onclick="showDetail('anthropic', this)">
+          <div class="gs-card-icon ic-anthropic">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><path d="M13.83 2H16.6l7.4 20h-2.94l-1.86-5.27H12l.97-2.7h5.73L15.22 4.7 13.83 2zm-5.66 0h2.77L3.94 22H1L8.17 2z"/></svg>
+          </div>
+          <div class="gs-card-name">Anthropic Proxy</div>
+          <div class="gs-card-badge gs-badge-live">Live</div>
+        </div>
+        <div class="gs-card" onclick="showDetail('python', this)">
+          <div class="gs-card-icon ic-python">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M12 2C6.48 2 6 4.02 6 4.02V7h6v1H4.5S2 7.59 2 12s2.02 5 2.02 5H6v-2.52S5.88 12 8.5 12h5c2.12 0 3.5-1.52 3.5-3.5V5.02S17.62 2 12 2zm-2.5 2a1 1 0 110 2 1 1 0 010-2zM12 22c5.52 0 6-2.02 6-2.02V17h-6v-1h7.5S22 16.41 22 12s-2.02-5-2.02-5H18v2.52s.12 2.48-2.5 2.48h-5c-2.12 0-3.5 1.52-3.5 3.5v3.48S7.38 22 12 22zm2.5-2a1 1 0 110-2 1 1 0 010 2z"/></svg>
+          </div>
+          <div class="gs-card-name">Python SDK</div>
+          <div class="gs-card-badge gs-badge-live">Live</div>
+        </div>
+        <div class="gs-card" onclick="showDetail('npm', this)">
+          <div class="gs-card-icon ic-js">
+            <span style="font-size:16px;font-weight:800;">JS</span>
+          </div>
+          <div class="gs-card-name">JavaScript SDK</div>
+          <div class="gs-card-badge gs-badge-live">Live</div>
+        </div>
+        <div class="gs-card" onclick="showDetail('langchain', this)">
+          <div class="gs-card-icon ic-langchain">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+          </div>
+          <div class="gs-card-name">LangChain</div>
+          <div class="gs-card-badge gs-badge-live">Live</div>
+        </div>
+        <div class="gs-card" onclick="showDetail('cli', this)">
+          <div class="gs-card-icon ic-cli">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          </div>
+          <div class="gs-card-name">CLI</div>
+          <div class="gs-card-badge gs-badge-live">Live</div>
+        </div>
+        <div class="gs-card" onclick="showDetail('rest', this)">
+          <div class="gs-card-icon ic-rest">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          </div>
+          <div class="gs-card-name">REST API</div>
+          <div class="gs-card-badge gs-badge-live">Live</div>
+        </div>
+      </div>
+
+      <!-- Detail panel (morphs on click or search) -->
+      <div id="detail-panel" class="gs-detail"></div>
+
+      <!-- Coming Soon -->
+      <div class="gs-cat" id="soon-label">Coming Soon</div>
+      <div class="gs-grid" id="soon-grid">
+        <div class="gs-card soon"><div class="gs-card-icon ic-soon">F</div><div class="gs-card-name">Firefox</div><div class="gs-card-badge gs-badge-soon">Soon</div></div>
+        <div class="gs-card soon"><div class="gs-card-icon ic-soon">S</div><div class="gs-card-name">Safari</div><div class="gs-card-badge gs-badge-soon">Soon</div></div>
+        <div class="gs-card soon"><div class="gs-card-icon ic-soon">E</div><div class="gs-card-name">Edge</div><div class="gs-card-badge gs-badge-soon">Soon</div></div>
+        <div class="gs-card soon"><div class="gs-card-icon ic-soon">LG</div><div class="gs-card-name">LangGraph</div><div class="gs-card-badge gs-badge-soon">Soon</div></div>
+        <div class="gs-card soon"><div class="gs-card-icon ic-soon">CA</div><div class="gs-card-name">CrewAI</div><div class="gs-card-badge gs-badge-soon">Soon</div></div>
+        <div class="gs-card soon"><div class="gs-card-icon ic-soon">OA</div><div class="gs-card-name">OpenAI Agents</div><div class="gs-card-badge gs-badge-soon">Soon</div></div>
+        <div class="gs-card soon"><div class="gs-card-icon ic-soon">MC</div><div class="gs-card-name">MCP Server</div><div class="gs-card-badge gs-badge-soon">Soon</div></div>
+        <div class="gs-card soon"><div class="gs-card-icon ic-soon">VS</div><div class="gs-card-name">VS Code</div><div class="gs-card-badge gs-badge-soon">Soon</div></div>
+        <div class="gs-card soon"><div class="gs-card-icon ic-soon">Cu</div><div class="gs-card-name">Cursor</div><div class="gs-card-badge gs-badge-soon">Soon</div></div>
+        <div class="gs-card soon"><div class="gs-card-icon ic-soon">V</div><div class="gs-card-name">Vercel AI</div><div class="gs-card-badge gs-badge-soon">Soon</div></div>
+        <div class="gs-card soon"><div class="gs-card-icon ic-soon">HF</div><div class="gs-card-name">Hugging Face</div><div class="gs-card-badge gs-badge-soon">Soon</div></div>
+        <div class="gs-card soon"><div class="gs-card-icon ic-soon">AB</div><div class="gs-card-name">AWS Bedrock</div><div class="gs-card-badge gs-badge-soon">Soon</div></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Dark section: next steps -->
+  <div class="gs-content gs-section-dark">
+    <div class="gs-section">
+      <div class="gs-cat gs-cat-light">Next steps</div>
+      <div class="gs-next">
+        <a href="/docs.html" class="gs-next-card">
+          <h4>API Reference</h4>
+          <p>Full endpoint docs with examples.</p>
+        </a>
+        <a href="/dashboard.html" class="gs-next-card">
+          <h4>Dashboard</h4>
+          <p>Usage, API keys, upgrade tier.</p>
+        </a>
+        <a href="https://pypi.org/project/clsplusplus/" class="gs-next-card" target="_blank">
+          <h4>PyPI</h4>
+          <p>pip install clsplusplus</p>
+        </a>
+        <a href="https://github.com/rajamohan1950/CLSplusplus" class="gs-next-card" target="_blank">
+          <h4>GitHub</h4>
+          <p>Star the repo, contribute.</p>
+        </a>
+      </div>
+      <div class="gs-footer">
+        <p>CLS++ by AlphaForge AI Labs</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="getting-started.js"></script>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script src="toast.js"></script>
+  <script src="billing-ui.js"></script>
+
+  <script>
+  // ── Keyword map for generative search ──
+  var KEYWORDS = {
+    extension: ['chrome', 'extension', 'browser', 'install', 'plugin', 'addon', 'chatgpt', 'gemini', 'chatbot', 'app'],
+    openai: ['openai', 'gpt', 'gpt-4', 'gpt4', 'chatgpt', 'proxy', 'base_url', 'chatbot', 'app', 'product'],
+    anthropic: ['anthropic', 'claude', 'sonnet', 'opus', 'haiku', 'chatbot'],
+    python: ['python', 'pip', 'sdk', 'brain', 'pypi'],
+    npm: ['javascript', 'typescript', 'node', 'npm', 'js', 'ts', 'deno', 'bun', 'react', 'next'],
+    langchain: ['langchain', 'langgraph', 'crewai', 'autogen', 'agent', 'chain', 'crew', 'framework'],
+    cli: ['cli', 'terminal', 'command', 'shell', 'bash', 'zsh'],
+    rest: ['rest', 'api', 'curl', 'http', 'endpoint', 'fetch', 'go', 'rust', 'java', 'ruby']
+  };
+
+  // Integration detail data
+  var DETAILS = {
+    extension: {
+      title: 'Chrome Extension',
+      sub: 'Zero code. Every AI remembers you across ChatGPT, Claude, and Gemini automatically.',
+      install: { label: 'Install Extension', href: 'https://chromewebstore.google.com/detail/cls++-memory/placeholder', icon: '\u2B07' },
+      examples: [
+        { label: 'How it works', code: '<span class="cmt"># 1. Install from Chrome Web Store (click above)</span>\n<span class="cmt"># 2. Click the CLS++ icon \u2192 enter your API key</span>\n<span class="cmt"># 3. Chat normally with any AI</span>\n\n<span class="cmt"># Tell ChatGPT: "My name is Alice"</span>\n<span class="cmt"># Switch to Claude</span>\n<span class="cmt"># Claude already knows: "Your name is Alice"</span>\n\n<span class="cmt"># No code. No config. Just works.</span>' }
+      ],
+      apiLink: '/docs.html'
+    },
+    openai: {
+      title: 'OpenAI Proxy',
+      sub: 'Change one line. Your OpenAI app gets persistent memory across every session.',
+      install: { label: 'pip install openai', copy: true, icon: '\u2B07' },
+      examples: [
+        { label: 'Quick start', code: '<span class="cmt"># Just change base_url \u2014 nothing else</span>\n<span class="kw">from</span> openai <span class="kw">import</span> OpenAI\n\nclient = OpenAI(\n    <span class="kw">base_url</span>=<span class="str">"https://www.clsplusplus.com/v1"</span>\n)\n\nresponse = client.chat.completions.create(\n    model=<span class="str">"gpt-4"</span>,\n    messages=[{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"I prefer dark mode"</span>}]\n)\n<span class="cmt"># Next session: GPT-4 already knows the preference</span>' },
+        { label: 'With namespace (multi-user)', code: '<span class="cmt"># Separate memory per user</span>\nclient = OpenAI(\n    <span class="kw">base_url</span>=<span class="str">"https://www.clsplusplus.com/v1"</span>,\n    <span class="kw">default_headers</span>={<span class="str">"X-Namespace"</span>: <span class="str">"user-alice"</span>}\n)\n<span class="cmt"># Alice and Bob each get their own memory</span>' }
+      ],
+      apiLink: '/docs.html#proxy'
+    },
+    anthropic: {
+      title: 'Anthropic Proxy',
+      sub: 'One line change. Claude now remembers every user across sessions.',
+      install: { label: 'pip install anthropic', copy: true, icon: '\u2B07' },
+      examples: [
+        { label: 'Quick start', code: '<span class="cmt"># Change base_url \u2014 same API, now with memory</span>\n<span class="kw">import</span> anthropic\n\nclient = anthropic.Anthropic(\n    <span class="kw">base_url</span>=<span class="str">"https://www.clsplusplus.com"</span>\n)\n\nmessage = client.messages.create(\n    model=<span class="str">"claude-sonnet-4-20250514"</span>,\n    max_tokens=1024,\n    messages=[{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"I use TypeScript"</span>}]\n)\n<span class="cmt"># Claude remembers this across all future sessions</span>' }
+      ],
+      apiLink: '/docs.html#proxy'
+    },
+    python: {
+      title: 'Python SDK',
+      sub: 'Full control: learn, ask, forget, context \u2014 11 methods for memory management.',
+      install: { label: 'pip install clsplusplus', copy: true, icon: '\u2B07' },
+      examples: [
+        { label: 'Quick start', code: '<span class="kw">from</span> clsplusplus <span class="kw">import</span> Brain\n\nbrain = Brain(<span class="str">"alice"</span>)\n\nbrain.learn(<span class="str">"Works at Google, senior engineer"</span>)\nbrain.ask(<span class="str">"Where does she work?"</span>)\n<span class="cmt"># \u2192 ["Works at Google, senior engineer"]</span>\n\nbrain.context(<span class="str">"Help with coding"</span>)\n<span class="cmt"># \u2192 "Known facts: Works at Google..."</span>' },
+        { label: 'All 11 methods', code: 'brain.learn(text)      <span class="cmt"># Store a fact</span>\nbrain.ask(query)       <span class="cmt"># Recall relevant memories</span>\nbrain.context(prompt)  <span class="cmt"># Context string for LLM</span>\nbrain.forget(text)     <span class="cmt"># Remove a memory</span>\nbrain.wrap(fn)         <span class="cmt"># Auto-memory decorator</span>\nbrain.absorb(text)     <span class="cmt"># Bulk import</span>\nbrain.teach(fact)      <span class="cmt"># Store verified truth</span>\nbrain.watch(conv)      <span class="cmt"># Extract from conversation</span>\nbrain.correct(old,new) <span class="cmt"># Update a memory</span>\nbrain.chat(msg)        <span class="cmt"># Chat with memory</span>\nbrain.who()            <span class="cmt"># User profile summary</span>' }
+      ],
+      apiLink: '/docs.html'
+    },
+    npm: {
+      title: 'JavaScript / TypeScript SDK',
+      sub: 'Zero dependencies. Works in Node.js, browsers, Deno, Bun. Full TypeScript support.',
+      install: { label: 'npm install clsplusplus', copy: true, icon: '\u2B07' },
+      examples: [
+        { label: 'Quick start', code: '<span class="kw">import</span> { Brain } <span class="kw">from</span> <span class="str">\'clsplusplus\'</span>\n\n<span class="kw">const</span> brain = <span class="kw">new</span> Brain(<span class="str">\'alice\'</span>)\n\n<span class="kw">await</span> brain.learn(<span class="str">\'Prefers React and TypeScript\'</span>)\n<span class="kw">await</span> brain.ask(<span class="str">\'What framework?\'</span>)\n<span class="cmt">// \u2192 ["Prefers React and TypeScript"]</span>\n\n<span class="kw">const</span> ctx = <span class="kw">await</span> brain.context(<span class="str">\'Help with frontend\'</span>)\n<span class="cmt">// Inject ctx into any LLM prompt</span>' }
+      ],
+      apiLink: '/docs.html'
+    },
+    langchain: {
+      title: 'LangChain Integration',
+      sub: 'Every LangChain chain gets persistent user memory. Works with CrewAI and AutoGen.',
+      install: { label: 'pip install langchain-openai', copy: true, icon: '\u2B07' },
+      examples: [
+        { label: 'Quick start', code: '<span class="kw">from</span> langchain_openai <span class="kw">import</span> ChatOpenAI\n\nllm = ChatOpenAI(\n    model=<span class="str">"gpt-4"</span>,\n    <span class="kw">base_url</span>=<span class="str">"https://www.clsplusplus.com/v1"</span>\n)\n\n<span class="cmt"># Every chain now has persistent user memory.</span>\n<span class="cmt"># Works with CrewAI, AutoGen, and any</span>\n<span class="cmt"># framework that uses LangChain under the hood.</span>' },
+        { label: 'With retrieval chain', code: '<span class="kw">from</span> langchain.chains <span class="kw">import</span> ConversationalRetrievalChain\n\nchain = ConversationalRetrievalChain.from_llm(\n    llm=ChatOpenAI(\n        <span class="kw">base_url</span>=<span class="str">"https://www.clsplusplus.com/v1"</span>\n    ),\n    retriever=my_retriever\n)\n<span class="cmt"># Chain now remembers user across sessions</span>' }
+      ],
+      apiLink: '/docs.html#proxy'
+    },
+    cli: {
+      title: 'CLI Package',
+      sub: 'One-click installer. Downloads, configures API key, tests connection.',
+      install: { label: 'pip install clsplusplus', copy: true, icon: '\u2B07' },
+      examples: [
+        { label: 'Install and run', code: 'pip install clsplusplus\n\n<span class="cmt"># Run the installer</span>\npython -m clsplusplus install\n\n<span class="cmt"># Creates API key, tests memory write/read</span>\n<span class="cmt"># Ready to use in under 30 seconds</span>' }
+      ],
+      apiLink: '/docs.html'
+    },
+    rest: {
+      title: 'REST API',
+      sub: 'Direct HTTP calls. Works with any language, any framework.',
+      install: null,
+      examples: [
+        { label: 'Store a memory', code: 'curl -X POST https://www.clsplusplus.com/v1/memory/write \\\n  -H <span class="str">"Authorization: Bearer YOUR_API_KEY"</span> \\\n  -H <span class="str">"Content-Type: application/json"</span> \\\n  -d <span class="str">\'{"text": "User prefers dark mode", "namespace": "alice"}\'</span>' },
+        { label: 'Recall memories', code: 'curl -X POST https://www.clsplusplus.com/v1/memory/read \\\n  -H <span class="str">"Authorization: Bearer YOUR_API_KEY"</span> \\\n  -H <span class="str">"Content-Type: application/json"</span> \\\n  -d <span class="str">\'{"query": "What theme?", "namespace": "alice"}\'</span>\n\n<span class="cmt"># Returns: [{"text": "User prefers dark mode", ...}]</span>' }
+      ],
+      apiLink: '/docs.html'
+    }
+  };
+
+  // ── Generative search ──
+  function filterCards(q) {
+    q = q.toLowerCase().trim();
+    var cards = document.querySelectorAll('#live-grid .gs-card');
+    var soonCards = document.querySelectorAll('#soon-grid .gs-card');
+    var soonLabel = document.getElementById('soon-label');
+
+    if (!q) {
+      cards.forEach(function(c) { c.style.display = ''; });
+      soonCards.forEach(function(c) { c.style.display = ''; });
+      if (soonLabel) soonLabel.style.display = '';
+      return;
+    }
+
+    // Score each integration
+    var bestId = null;
+    var bestScore = 0;
+    var matchedIds = {};
+    for (var id in KEYWORDS) {
+      var score = 0;
+      KEYWORDS[id].forEach(function(kw) {
+        if (q.indexOf(kw) !== -1) score += 2;
+        if (kw.indexOf(q) !== -1 && q.length >= 2) score += 1;
+      });
+      if (DETAILS[id].title.toLowerCase().indexOf(q) !== -1) score += 3;
+      if (DETAILS[id].sub.toLowerCase().indexOf(q) !== -1) score += 1;
+      if (score >= 1) matchedIds[id] = true;
+      if (score > bestScore) { bestScore = score; bestId = id; }
+    }
+
+    // Show matching live cards
+    cards.forEach(function(c) {
+      var onclick = c.getAttribute('onclick') || '';
+      var name = c.querySelector('.gs-card-name').textContent.toLowerCase();
+      var show = name.indexOf(q) !== -1;
+      for (var mid in matchedIds) {
+        if (onclick.indexOf(mid) !== -1) show = true;
+      }
+      c.style.display = show ? '' : 'none';
+    });
+
+    // Filter soon cards by name only
+    var anySoon = false;
+    soonCards.forEach(function(c) {
+      var name = c.querySelector('.gs-card-name').textContent.toLowerCase();
+      var show = name.indexOf(q) !== -1;
+      c.style.display = show ? '' : 'none';
+      if (show) anySoon = true;
+    });
+    if (soonLabel) soonLabel.style.display = anySoon ? '' : 'none';
+
+    // Auto-show best match panel
+    if (bestId && bestScore >= 2) {
+      var matchCard = document.querySelector('#live-grid .gs-card[onclick*="' + bestId + '"]');
+      if (matchCard) {
+        matchCard.style.display = '';
+        showDetail(bestId, matchCard);
+      }
+    }
+  }
+
+  function showDetail(id, el) {
+    var info = DETAILS[id];
+    if (!info) return;
+
+    // Toggle active card
+    var cards = document.querySelectorAll('#live-grid .gs-card');
+    cards.forEach(function(c) { c.classList.remove('active'); });
+    if (el) el.classList.add('active');
+
+    // Build detail HTML
+    var html = '<div class="gs-detail-title">' + info.title + '</div>';
+    html += '<div class="gs-detail-sub">' + info.sub + '</div>';
+
+    // Install / download button
+    if (info.install) {
+      html += '<div class="gs-actions">';
+      if (info.install.copy) {
+        html += '<button class="gs-btn gs-btn-primary" onclick="copyInstall(this, \'' + info.install.label.replace(/'/g, "\\'") + '\')">';
+        html += info.install.icon + ' ' + info.install.label + '</button>';
+      } else if (info.install.href) {
+        html += '<a href="' + info.install.href + '" target="_blank" class="gs-btn gs-btn-primary">';
+        html += info.install.icon + ' ' + info.install.label + '</a>';
+      }
+      html += '</div>';
+    }
+
+    // API key hook
+    html += '<div class="gs-key-box">';
+    html += '<span>Need an API key?</span>';
+    html += '<a href="/signup.html">Get free API key \u2192</a>';
+    html += '</div>';
+
+    info.examples.forEach(function(ex) {
+      html += '<div class="gs-ex-label">' + ex.label + '</div>';
+      html += '<div class="gs-code">' + ex.code + '<button class="gs-copy" onclick="copyCode(this)">Copy</button></div>';
+    });
+
+    html += '<a href="' + info.apiLink + '" class="gs-api-link">Full API docs \u2192</a>';
+
+    var panel = document.getElementById('detail-panel');
+    panel.innerHTML = html;
+    panel.className = 'gs-detail visible';
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function copyInstall(btn, text) {
+    navigator.clipboard.writeText(text).then(function() {
+      var orig = btn.innerHTML;
+      btn.innerHTML = '\u2705 Copied!';
+      setTimeout(function() { btn.innerHTML = orig; }, 1500);
+    });
+  }
+
+  function copyCode(btn) {
+    var block = btn.closest('.gs-code');
+    var clone = block.cloneNode(true);
+    clone.querySelector('.gs-copy').remove();
+    var text = clone.textContent.trim();
+    navigator.clipboard.writeText(text).then(function() {
+      btn.textContent = 'Copied!';
+      setTimeout(function() { btn.textContent = 'Copy'; }, 1500);
+    });
+  }
+  </script>
+  <script src="footer.js?v=2"></script>
+</body>
+</html>

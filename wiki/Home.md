@@ -41,4 +41,4 @@ uvicorn clsplusplus.api:app --host 0.0.0.0 --port 8080
 
 ---
 
-**AlphaForge AI Labs** | [GitHub](https://github.com/rajamohan1950/CLSplusplus) | [API Docs](https://clsplusplus-api.onrender.com/docs)
+**AlphaForge AI Labs** | [GitHub](https://github.com/rajamohan1950/CLSplusplus) | [API Docs](https://www.clsplusplus.com/docs)

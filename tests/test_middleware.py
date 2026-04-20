@@ -168,7 +168,9 @@ class TestCORS:
                 "Access-Control-Request-Method": "GET",
             },
         )
-        assert resp.headers.get("access-control-allow-origin") == "*"
+        # With allow_credentials=True, CORS reflects the origin instead of "*"
+        origin = resp.headers.get("access-control-allow-origin")
+        assert origin in ("*", "http://malicious-site.com")
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Profile | CLS++</title>
+  <link rel="stylesheet" href="styles.css?v=2">
+  <script src="posthog.js" defer></script>
+  <script src="variant-loader.js"></script>
+  <script src="feedback-widget.js" defer></script>
+  <script src="auth.js" defer></script>
+</head>
+<body>
+  <div class="video-bg"><video autoplay muted loop playsinline poster="beach-bg.jpg"><source src="sunrise-ocean.mp4" type="video/mp4"></video></div>
+  <div class="video-overlay"></div>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/docs.html">API</a>
+        <a href="/integrate.html">Integrate</a>
+        <a href="/#pricing">Pricing</a>
+        <div id="nav-auth" class="nav-auth"></div>
+        <a href="/getting-started.html" class="nav-cta">Get Started</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container" style="margin-top:100px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;flex-wrap:wrap;gap:12px;">
+      <h1 style="font-size:1.6rem;">Profile</h1>
+      <span class="tier-badge" id="tier-badge">Loading...</span>
+    </div>
+
+      <!-- ============================================================ -->
+      <!-- Section: User Information (#info) -->
+      <!-- ============================================================ -->
+      <div class="profile-section" id="info">
+        <h2>User Information</h2>
+        <div id="profile-info">
+          <div class="profile-row">
+            <span class="profile-label">Avatar</span>
+            <span class="profile-value" id="profile-avatar"></span>
+          </div>
+          <div class="profile-row">
+            <span class="profile-label">Name</span>
+            <span class="profile-value" id="profile-name">--</span>
+          </div>
+          <div class="profile-row">
+            <span class="profile-label">Email</span>
+            <span class="profile-value" id="profile-email">--</span>
+          </div>
+          <div class="profile-row">
+            <span class="profile-label">Tier</span>
+            <span class="profile-value" id="profile-tier">--</span>
+          </div>
+          <div class="profile-row">
+            <span class="profile-label">Member Since</span>
+            <span class="profile-value" id="profile-since">--</span>
+          </div>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:8px;">
+          <button class="btn btn-outline btn-sm" id="btn-edit-profile" onclick="toggleEditProfile()">Edit Profile</button>
+          <button class="btn btn-outline btn-sm" id="btn-change-pw" onclick="toggleChangePw()" style="display:none;">Change Password</button>
+        </div>
+
+        <!-- Edit Profile Form -->
+        <div class="profile-edit-form" id="edit-profile-form">
+          <div class="profile-form-group">
+            <label for="edit-name">Name</label>
+            <input type="text" id="edit-name" maxlength="128">
+          </div>
+          <div class="profile-form-group">
+            <label for="edit-email">Email</label>
+            <input type="email" id="edit-email" maxlength="256">
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <button class="btn btn-primary btn-sm" onclick="saveProfile()">Save</button>
+            <button class="btn btn-outline btn-sm" onclick="toggleEditProfile()">Cancel</button>
+          </div>
+          <div id="edit-profile-msg" style="margin-top:8px;font-size:0.85rem;"></div>
+        </div>
+
+        <!-- Change Password Form -->
+        <div class="profile-edit-form" id="change-pw-form">
+          <div class="profile-form-group">
+            <label for="pw-current">Current Password</label>
+            <input type="password" id="pw-current" maxlength="128">
+          </div>
+          <div class="profile-form-group">
+            <label for="pw-new">New Password (min 8 characters)</label>
+            <input type="password" id="pw-new" maxlength="128" minlength="8">
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <button class="btn btn-primary btn-sm" onclick="changePassword()">Update Password</button>
+            <button class="btn btn-outline btn-sm" onclick="toggleChangePw()">Cancel</button>
+          </div>
+          <div id="change-pw-msg" style="margin-top:8px;font-size:0.85rem;"></div>
+        </div>
+      </div>
+
+      <!-- ============================================================ -->
+      <!-- Section: Preferences (#prefs) -->
+      <!-- ============================================================ -->
+      <div class="profile-section" id="prefs">
+        <h2>Preferences</h2>
+        <div class="profile-row">
+          <span class="profile-label">Default Namespace</span>
+          <span class="profile-value" id="pref-namespace">--</span>
+        </div>
+        <div class="profile-row">
+          <span class="profile-label">Theme</span>
+          <span class="profile-value" style="color:var(--text-muted);">Dark (default)</span>
+        </div>
+      </div>
+
+      <!-- ============================================================ -->
+      <!-- Section: API Keys (#keys) -->
+      <!-- ============================================================ -->
+      <div class="profile-section" id="keys">
+        <h2>API Keys</h2>
+
+        <!-- Instant Connect — one button, everything automatic -->
+        <div style="margin-bottom:20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <button class="btn btn-primary" id="btn-instant-connect" onclick="instantConnect()">Instant Connect</button>
+          <span style="font-size:0.85rem;color:var(--text-muted);">One click does everything: creates key, downloads .env, verifies connection.</span>
+        </div>
+
+        <!-- Instant Connect Panel (auto-populates on click) -->
+        <div class="instant-connect" id="ic-panel">
+          <!-- Live status feed — each step appears as it completes -->
+          <div id="ic-status"></div>
+
+          <!-- Done message -->
+          <div id="ic-done" style="display:none;margin-top:16px;padding:16px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:10px;">
+            <p style="margin:0;font-weight:600;color:var(--success);font-size:0.95rem;">All done. Integration tested and verified.</p>
+            <p style="margin:6px 0 0;font-size:0.8rem;color:var(--text-muted);">Run this in your terminal to install the CLI:</p>
+            <pre style="margin:8px 0;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-family:'JetBrains Mono',monospace;font-size:0.82rem;color:var(--accent-light);">python ~/Downloads/cls_install.py</pre>
+            <p style="margin:0;font-size:0.78rem;color:var(--text-muted);">Installs the package, configures your API key, and tests the connection automatically.</p>
+            <a href="/memory.html" style="display:inline-block;margin-top:10px;color:var(--accent-light);text-decoration:none;font-size:0.9rem;font-weight:600;">See your memories in Memory Viewer &rarr;</a>
+          </div>
+
+          <!-- Code snippets (reference only — shown automatically) -->
+          <div class="ic-snippets" id="ic-snippets" style="display:none;">
+            <p style="font-size:0.8rem;color:var(--text-muted);margin:16px 0 8px;">Ready-to-use code (your key is pre-filled):</p>
+            <div class="ic-tab-bar">
+              <button class="ic-tab active" data-lang="python" onclick="icShowSnippet('python', this)">Python</button>
+              <button class="ic-tab" data-lang="javascript" onclick="icShowSnippet('javascript', this)">JavaScript</button>
+              <button class="ic-tab" data-lang="curl" onclick="icShowSnippet('curl', this)">cURL</button>
+            </div>
+            <pre id="ic-snippet-code"></pre>
+          </div>
+        </div>
+
+        <!-- Integration selector + new button -->
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
+          <label for="key-integration" style="font-size:0.85rem;color:var(--text-muted);">Integration:</label>
+          <select id="key-integration" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.85rem;font-family:inherit;outline:none;min-width:200px;">
+            <option value="">Loading...</option>
+          </select>
+          <button class="btn btn-outline btn-sm" onclick="createNewIntegration()" title="Create a new integration">+ New</button>
+        </div>
+
+        <!-- Generate key form -->
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
+          <h3 style="font-size:0.9rem;margin-bottom:12px;">Generate New Key</h3>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;">
+            <div class="profile-form-group" style="margin-bottom:0;flex:1;min-width:180px;">
+              <label for="key-label">Label</label>
+              <input type="text" id="key-label" placeholder="e.g. Production Server" maxlength="128">
+            </div>
+            <div class="profile-form-group" style="margin-bottom:0;">
+              <label for="key-expiry">Expires</label>
+              <select id="key-expiry" style="padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.9rem;font-family:inherit;outline:none;">
+                <option value="">Never</option>
+                <option value="30">30 days</option>
+                <option value="90">90 days</option>
+                <option value="365">1 year</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:12px;">
+            <label style="font-size:0.8rem;color:var(--text-muted);display:block;margin-bottom:6px;">Scopes</label>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;" id="scope-checkboxes">
+              <label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;"><input type="checkbox" value="memories:read" checked> memories:read</label>
+              <label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;"><input type="checkbox" value="memories:write" checked> memories:write</label>
+              <label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;"><input type="checkbox" value="memories:delete"> memories:delete</label>
+              <label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;"><input type="checkbox" value="consolidate"> consolidate</label>
+              <label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;"><input type="checkbox" value="usage:read"> usage:read</label>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm" style="margin-top:12px;" onclick="generateKey()">Generate Key</button>
+        </div>
+
+        <!-- New key result -->
+        <div class="new-key-box" id="new-key-box">
+          <p style="margin:0 0 6px;font-weight:600;color:var(--success);">API Key Created</p>
+          <p style="margin:0 0 6px;font-size:0.8rem;color:var(--text-muted);">Save this key now. It will not be shown again.</p>
+          <div class="key-display">
+            <span id="new-key-value" style="word-break:break-all;"></span>
+            <button class="btn btn-outline btn-sm" onclick="copyNewKey()">Copy</button>
+          </div>
+        </div>
+
+        <!-- Keys table -->
+        <div id="keys-table-container">
+          <p style="color:var(--text-muted);font-size:0.85rem;">Loading keys...</p>
+        </div>
+
+        <!-- Audit history -->
+        <div style="margin-top:20px;">
+          <h3 style="font-size:0.9rem;margin-bottom:10px;color:var(--text-muted);">Key History</h3>
+          <div class="audit-log" id="key-audit-log">
+            <p style="color:var(--text-muted);font-size:0.8rem;">No events yet.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================ -->
+      <!-- Section: Billing & Subscription (#billing) -->
+      <!-- ============================================================ -->
+      <div class="profile-section" id="billing">
+        <h2>Billing & Subscription</h2>
+
+        <div id="billing-current" style="margin-bottom:20px;">
+          <div class="profile-row">
+            <span class="profile-label">Current Plan</span>
+            <span class="profile-value" id="billing-plan">--</span>
+          </div>
+          <div class="profile-row">
+            <span class="profile-label">Monthly Price</span>
+            <span class="profile-value" id="billing-price">--</span>
+          </div>
+          <div class="profile-row">
+            <span class="profile-label">Billing Period</span>
+            <span class="profile-value" id="billing-period">--</span>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-bottom:24px;">
+          <button class="btn btn-primary btn-sm" id="btn-manage-billing" onclick="openBillingPortal()" style="display:none;">Manage Subscription</button>
+        </div>
+
+        <!-- Plan comparison -->
+        <h3 style="font-size:0.9rem;margin-bottom:12px;color:var(--text-muted);">Available Plans</h3>
+        <div class="plan-grid" id="plan-grid">
+          <div class="plan-card" data-tier="free">
+            <h3>Free</h3>
+            <div class="plan-price">$0<span>/month</span></div>
+            <ul>
+              <li>1,000 operations/month</li>
+              <li>500 memory items</li>
+              <li>1 namespace</li>
+              <li>20 requests/minute</li>
+            </ul>
+            <button class="btn btn-outline btn-sm plan-btn" data-tier="free" disabled>Current</button>
+          </div>
+          <div class="plan-card" data-tier="pro">
+            <h3>Pro</h3>
+            <div class="plan-price">$9<span>/month</span></div>
+            <ul>
+              <li>50,000 operations/month</li>
+              <li>50,000 memory items</li>
+              <li>10 namespaces</li>
+              <li>100 requests/minute</li>
+            </ul>
+            <button class="btn btn-primary btn-sm plan-btn" data-tier="pro" onclick="startCheckout('pro')">Upgrade</button>
+          </div>
+          <div class="plan-card" data-tier="business">
+            <h3>Business</h3>
+            <div class="plan-price">$29<span>/month</span></div>
+            <ul>
+              <li>200,000 operations/month</li>
+              <li>200,000 memory items</li>
+              <li>50 namespaces</li>
+              <li>1,000 requests/minute</li>
+            </ul>
+            <button class="btn btn-primary btn-sm plan-btn" data-tier="business" onclick="startCheckout('business')">Upgrade</button>
+          </div>
+          <div class="plan-card" data-tier="enterprise">
+            <h3>Enterprise</h3>
+            <div class="plan-price">$149<span>/month</span></div>
+            <ul>
+              <li>1,000,000 operations/month</li>
+              <li>1,000,000 memory items</li>
+              <li>500 namespaces</li>
+              <li>5,000 requests/minute</li>
+            </ul>
+            <button class="btn btn-primary btn-sm plan-btn" data-tier="enterprise" onclick="startCheckout('enterprise')">Upgrade</button>
+          </div>
+        </div>
+      </div>
+  </div>
+
+  <style>
+    .profile-section { border: 1px solid rgba(0,0,0,0.06); border-radius: 14px; margin-bottom: 12px; overflow: hidden; }
+    .profile-section h2 {
+      margin: 0; padding: 16px 20px; font-size: 1rem; font-weight: 600; cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(0,0,0,0.02); user-select: none; transition: background 0.15s;
+    }
+    .profile-section h2:hover { background: rgba(0,0,0,0.04); }
+    .profile-section h2::after { content: '\203A'; font-size: 1.3rem; color: #86868b; transition: transform 0.2s; }
+    .profile-section.expanded h2::after { transform: rotate(90deg); }
+    .profile-section .section-body { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+    .profile-section.expanded .section-body { max-height: 2000px; }
+    .profile-section .section-body-inner { padding: 16px 20px; }
+  </style>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('.profile-section').forEach(function(sec, i) {
+        var h2 = sec.querySelector('h2');
+        // Wrap content after h2 in section-body
+        var body = document.createElement('div');
+        body.className = 'section-body';
+        var inner = document.createElement('div');
+        inner.className = 'section-body-inner';
+        while (sec.children.length > 1) inner.appendChild(sec.children[1]);
+        body.appendChild(inner);
+        sec.appendChild(body);
+        // First section expanded by default
+        if (i === 0) sec.classList.add('expanded');
+        h2.addEventListener('click', function() { sec.classList.toggle('expanded'); });
+      });
+      // Auto-expand section from hash
+      if (window.location.hash) {
+        var target = document.querySelector(window.location.hash);
+        if (target && target.classList.contains('profile-section')) {
+          target.classList.add('expanded');
+          setTimeout(function() { target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 100);
+        }
+      }
+    });
+  </script>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script src="toast.js"></script>
+  <script src="billing-ui.js"></script>
+  <script src="profile.js"></script>
+  <script src="footer.js?v=2"></script>
+</body>
+</html>

@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A/B/C Test Results | CLS++</title>
+  <link rel="stylesheet" href="../styles.css?v=2">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="../posthog.js" defer></script>
+  <script src="../variant-loader.js"></script>
+  <script src="../feedback-widget.js" defer></script>
+  <script src="../auth.js" defer></script>
+  <style>
+    .ab-container { max-width: 1000px; margin: 100px auto 40px; padding: 0 24px; }
+    .ab-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 32px; flex-wrap: wrap; gap: 12px; }
+    .ab-header h1 { font-size: 1.5rem; }
+    .ab-status { display: flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--success); padding: 6px 14px; background: rgba(34,197,94,0.1); border-radius: 20px; }
+    .ab-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+
+    .ab-kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px; }
+    .ab-kpi { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 14px; padding: 24px; text-align: center; }
+    .ab-kpi .kpi-variant { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 8px; }
+    .ab-kpi .kpi-name { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 16px; }
+    .ab-kpi .kpi-val { font-size: 2.2rem; font-weight: 800; letter-spacing: -1px; line-height: 1; }
+    .ab-kpi .kpi-sub { font-size: 0.78rem; color: var(--text-muted); margin-top: 6px; }
+    .ab-kpi.a { border-top: 3px solid #71717a; }
+    .ab-kpi.b { border-top: 3px solid #ff6b35; }
+    .ab-kpi.c { border-top: 3px solid #8b5cf6; }
+
+    .ab-section { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 14px; padding: 24px; margin-bottom: 24px; }
+    .ab-section h2 { font-size: 1.1rem; margin-bottom: 16px; }
+    .ab-section p { font-size: 0.85rem; color: var(--text-muted); }
+
+    .ab-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 12px; }
+    .ab-table th { text-align: left; padding: 10px 12px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+    .ab-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    .ab-table tr:hover td { background: rgba(255,107,53,0.03); }
+
+    .rating-bar { display: flex; align-items: center; gap: 8px; }
+    .rating-fill { height: 8px; border-radius: 4px; min-width: 4px; }
+    .rating-fill.a { background: #71717a; }
+    .rating-fill.b { background: #ff6b35; }
+    .rating-fill.c { background: #8b5cf6; }
+    .rating-num { font-size: 0.82rem; font-weight: 600; min-width: 32px; }
+
+    .winner-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; background: rgba(34,197,94,0.1); color: var(--success); border-radius: 12px; font-size: 0.7rem; font-weight: 600; }
+
+    .chart-wrap { height: 300px; margin-top: 16px; }
+
+    .ab-test-links { display: flex; gap: 12px; margin-bottom: 32px; flex-wrap: wrap; }
+    .ab-link { padding: 10px 20px; border: 1px solid var(--border); border-radius: 10px; text-decoration: none; color: var(--text); font-size: 0.85rem; font-weight: 500; transition: all 0.15s; }
+    .ab-link:hover { border-color: var(--accent); color: var(--accent); }
+    .ab-link.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    @media(max-width:768px) { .ab-kpi-row { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="video-bg"><video autoplay muted loop playsinline poster="../beach-bg.jpg"><source src="../sunrise-ocean.mp4" type="video/mp4"></video></div>
+  <div class="video-overlay"></div>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/admin/dashboard.html">Admin</a>
+        <div id="nav-auth" class="nav-auth"></div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="ab-container">
+    <div class="ab-header">
+      <h1>A/B/C Landing Page Test</h1>
+      <div class="ab-status">Running</div>
+    </div>
+
+    <!-- Quick preview links -->
+    <div class="ab-test-links">
+      <a href="/?variant=A" class="ab-link" target="_blank">Preview Variant A (Current)</a>
+      <a href="/?variant=B" class="ab-link" target="_blank">Preview Variant B (Command Center)</a>
+      <a href="/?variant=C" class="ab-link" target="_blank">Preview Variant C (Ambient Focus)</a>
+    </div>
+
+    <!-- KPI cards -->
+    <div class="ab-kpi-row">
+      <div class="ab-kpi a">
+        <div class="kpi-variant">Variant A</div>
+        <div class="kpi-name">Current Design</div>
+        <div class="kpi-val" id="kpi-a-views">--</div>
+        <div class="kpi-sub">Page views</div>
+      </div>
+      <div class="ab-kpi b">
+        <div class="kpi-variant">Variant B</div>
+        <div class="kpi-name">Command Center</div>
+        <div class="kpi-val" id="kpi-b-views">--</div>
+        <div class="kpi-sub">Page views</div>
+      </div>
+      <div class="ab-kpi c">
+        <div class="kpi-variant">Variant C</div>
+        <div class="kpi-name">Ambient Focus</div>
+        <div class="kpi-val" id="kpi-c-views">--</div>
+        <div class="kpi-sub">Page views</div>
+      </div>
+    </div>
+
+    <!-- Metrics table -->
+    <div class="ab-section">
+      <h2>Conversion Funnel</h2>
+      <table class="ab-table">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>Variant A</th>
+            <th>Variant B</th>
+            <th>Variant C</th>
+            <th>Winner</th>
+          </tr>
+        </thead>
+        <tbody id="funnel-body">
+          <tr>
+            <td>Landing page views</td>
+            <td id="f-a-views">--</td>
+            <td id="f-b-views">--</td>
+            <td id="f-c-views">--</td>
+            <td id="f-views-winner">--</td>
+          </tr>
+          <tr>
+            <td>Call to Action clicked</td>
+            <td id="f-a-cta">--</td>
+            <td id="f-b-cta">--</td>
+            <td id="f-c-cta">--</td>
+            <td id="f-cta-winner">--</td>
+          </tr>
+          <tr>
+            <td>Call to Action rate</td>
+            <td id="f-a-rate">--</td>
+            <td id="f-b-rate">--</td>
+            <td id="f-c-rate">--</td>
+            <td id="f-rate-winner">--</td>
+          </tr>
+          <tr>
+            <td>Average feedback rating</td>
+            <td id="f-a-rating">--</td>
+            <td id="f-b-rating">--</td>
+            <td id="f-c-rating">--</td>
+            <td id="f-rating-winner">--</td>
+          </tr>
+          <tr>
+            <td>Feedback count</td>
+            <td id="f-a-fb">--</td>
+            <td id="f-b-fb">--</td>
+            <td id="f-c-fb">--</td>
+            <td>--</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Feedback chart -->
+    <div class="ab-section">
+      <h2>Feedback Ratings Distribution</h2>
+      <p>User sentiment per variant (1 = bad, 5 = amazing)</p>
+      <div class="chart-wrap">
+        <canvas id="feedback-chart"></canvas>
+      </div>
+    </div>
+
+    <!-- Views over time -->
+    <div class="ab-section">
+      <h2>Views Over Time</h2>
+      <p>Daily landing page views per variant</p>
+      <div class="chart-wrap">
+        <canvas id="views-chart"></canvas>
+      </div>
+    </div>
+
+    <!-- Recent feedback -->
+    <div class="ab-section">
+      <h2>Recent Feedback Comments</h2>
+      <table class="ab-table">
+        <thead><tr><th>Variant</th><th>Rating</th><th>Comment</th><th>Time</th></tr></thead>
+        <tbody id="feedback-list">
+          <tr><td colspan="4" style="color:var(--text-muted);text-align:center;padding:24px">Feedback data will appear here as users submit ratings. Check PostHog for live data.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Setup instructions -->
+    <div class="ab-section">
+      <h2>How to View Live Data</h2>
+      <p style="margin-bottom:12px">This dashboard shows placeholder data. For live metrics:</p>
+      <ol style="font-size:0.85rem;color:var(--text-muted);padding-left:20px;line-height:2">
+        <li>Go to your <strong>PostHog dashboard</strong> at <a href="https://us.posthog.com" target="_blank" style="color:var(--accent)">us.posthog.com</a></li>
+        <li>Create an Insight with events: <code style="background:var(--border);padding:2px 6px;border-radius:4px">page_viewed</code>, <code style="background:var(--border);padding:2px 6px;border-radius:4px">cta_clicked</code>, <code style="background:var(--border);padding:2px 6px;border-radius:4px">landing_feedback</code></li>
+        <li>Break down by property: <code style="background:var(--border);padding:2px 6px;border-radius:4px">variant</code></li>
+        <li>Use <strong>Funnels</strong> to measure: page_viewed → cta_clicked → signup_completed per variant</li>
+        <li>Force a variant for testing: <code style="background:var(--border);padding:2px 6px;border-radius:4px">/?variant=A</code>, <code style="background:var(--border);padding:2px 6px;border-radius:4px">/?variant=B</code>, or <code style="background:var(--border);padding:2px 6px;border-radius:4px">/?variant=C</code></li>
+      </ol>
+    </div>
+  </div>
+
+  <script>
+    // Require admin access
+    document.addEventListener('DOMContentLoaded', function() {
+      if (window.CLSAuth && typeof window.CLSAuth.requireAdmin === 'function') {
+        window.CLSAuth.requireAdmin();
+      }
+    });
+
+    // Placeholder charts (PostHog data would populate these in production)
+    window.addEventListener('load', function() {
+      // Feedback ratings chart
+      var fbCtx = document.getElementById('feedback-chart');
+      if (fbCtx && window.Chart) {
+        new Chart(fbCtx, {
+          type: 'bar',
+          data: {
+            labels: ['😞 1', '😕 2', '😐 3', '😊 4', '😍 5'],
+            datasets: [
+              { label: 'Variant A', data: [0, 0, 0, 0, 0], backgroundColor: 'rgba(113, 113, 122, 0.6)', borderRadius: 6 },
+              { label: 'Variant B', data: [0, 0, 0, 0, 0], backgroundColor: 'rgba(255, 107, 53, 0.6)', borderRadius: 6 },
+              { label: 'Variant C', data: [0, 0, 0, 0, 0], backgroundColor: 'rgba(139, 92, 246, 0.6)', borderRadius: 6 },
+            ]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#a1a1aa', font: { family: 'Inter' } } } },
+            scales: {
+              x: { ticks: { color: '#71717a' }, grid: { color: 'rgba(255,255,255,0.03)' } },
+              y: { ticks: { color: '#71717a' }, grid: { color: 'rgba(255,255,255,0.03)' }, beginAtZero: true }
+            }
+          }
+        });
+      }
+
+      // Views over time chart
+      var viewsCtx = document.getElementById('views-chart');
+      if (viewsCtx && window.Chart) {
+        var labels = [];
+        var now = new Date();
+        for (var i = 6; i >= 0; i--) {
+          var d = new Date(now);
+          d.setDate(d.getDate() - i);
+          labels.push(d.toLocaleDateString('en', { month: 'short', day: 'numeric' }));
+        }
+        new Chart(viewsCtx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [
+              { label: 'Variant A', data: [0, 0, 0, 0, 0, 0, 0], borderColor: '#71717a', backgroundColor: 'rgba(113,113,122,0.1)', fill: true, tension: 0.4 },
+              { label: 'Variant B', data: [0, 0, 0, 0, 0, 0, 0], borderColor: '#ff6b35', backgroundColor: 'rgba(255,107,53,0.1)', fill: true, tension: 0.4 },
+              { label: 'Variant C', data: [0, 0, 0, 0, 0, 0, 0], borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.1)', fill: true, tension: 0.4 },
+            ]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#a1a1aa', font: { family: 'Inter' } } } },
+            scales: {
+              x: { ticks: { color: '#71717a' }, grid: { color: 'rgba(255,255,255,0.03)' } },
+              y: { ticks: { color: '#71717a' }, grid: { color: 'rgba(255,255,255,0.03)' }, beginAtZero: true }
+            }
+          }
+        });
+      }
+    });
+  </script>
+  <script src="../footer.js?v=2"></script>
+</body>
+</html>

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CLS++ Memory · Activate extension</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#05050a;--accent:#7c6ef0;--accent2:#5de0c5;
+      --text:#f0f0f8;--muted:rgba(240,240,248,0.42);--warn:#f0a85d;
+    }
+    html,body{min-height:100%;background:var(--bg);color:var(--text);
+      font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;
+      -webkit-font-smoothing:antialiased;padding:32px 20px 48px}
+    .wrap{max-width:440px;margin:0 auto}
+    h1{font-size:clamp(22px,4vw,28px);font-weight:800;letter-spacing:-.03em;margin-bottom:8px}
+    .lead{font-size:14px;color:var(--muted);line-height:1.5;margin-bottom:22px}
+    .panel{
+      padding:22px;border-radius:20px;border:1px solid rgba(255,255,255,.1);
+      background:rgba(13,13,24,.85);backdrop-filter:blur(14px);margin-bottom:18px}
+    .panel p{font-size:13px;color:rgba(240,240,248,.78);line-height:1.55;margin-bottom:12px}
+    .panel p:last-child{margin-bottom:0}
+    .status{font-size:13px;line-height:1.45;margin-bottom:16px;min-height:44px}
+    .status.muted{color:var(--muted)}
+    .status.ok{color:var(--accent2)}
+    .status.warn{color:var(--warn)}
+    #btn-go{
+      width:100%;padding:16px 20px;border-radius:14px;border:none;cursor:pointer;
+      font-size:14px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+      background:linear-gradient(135deg,rgba(124,110,240,.9),rgba(93,224,197,.55));
+      color:#fff;box-shadow:0 8px 32px rgba(124,110,240,.35);transition:transform .15s}
+    #btn-go:hover{transform:translateY(-1px)}
+    #btn-go:disabled{opacity:.45;cursor:not-allowed;transform:none}
+    .path-box{
+      font-size:11px;word-break:break-all;padding:12px 14px;border-radius:10px;
+      background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.08);
+      color:rgba(240,240,248,.85);margin-top:10px;font-family:ui-monospace,Menlo,monospace}
+    ol.steps{counter-reset:s;margin:14px 0 0 18px;font-size:12px;color:var(--muted);line-height:1.6}
+    ol.steps li{margin-bottom:8px}
+    a.back{display:inline-block;margin-top:20px;font-size:12px;color:var(--accent)}
+    a.back:visited{color:var(--accent)}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CLS++ Memory</h1>
+  <p class="lead">One click opens your browser’s extension page so you can load CLS++. This page uses the <strong>local server</strong> to find Chrome on disk — not the browser you opened this tab in.</p>
+
+  <div class="panel">
+    <p><strong>Memory is installed</strong> when the menubar app and <code style="font-size:11px">127.0.0.1:8080</code> are running. Use the button below to open Chrome (or Brave / Arc / Edge), turn on <strong>Developer mode</strong>, then <strong>Load unpacked</strong> and pick the extension folder.</p>
+    <div id="detect" class="status muted">Checking this Mac for Chrome, Brave, Arc, or Edge…</div>
+    <button type="button" id="btn-go" disabled>Activate</button>
+    <p style="margin-top:16px;font-size:12px;color:var(--muted)">Opens the extensions page in your chosen browser. Then open the memory dashboard from the menubar or <a href="memory.html" style="color:var(--accent2)">Memories</a>.</p>
+    <div id="ext-path-wrap" style="display:none;margin-top:12px">
+      <p style="font-size:12px;color:var(--muted)">Extension folder (Load unpacked):</p>
+      <div class="path-box" id="ext-path"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <p style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Manual steps</p>
+    <ol class="steps">
+      <li>Open <code style="font-size:10px">chrome://extensions</code> in Chrome (paste into the address bar).</li>
+      <li>Enable <strong>Developer mode</strong>.</li>
+      <li>Click <strong>Load unpacked</strong> and select the <code style="font-size:10px">extension</code> folder next to <code style="font-size:10px">server.py</code> (or under <code style="font-size:10px">~/.clspp/extension</code> after install).</li>
+    </ol>
+  </div>
+
+  <a class="back" href="index.html">← CLS++ home</a>
+</div>
+<script>
+(function () {
+  const detectEl = document.getElementById('detect');
+  const btn = document.getElementById('btn-go');
+  const extWrap = document.getElementById('ext-path-wrap');
+  const extPath = document.getElementById('ext-path');
+
+  const priority = ['google_chrome', 'google_chrome_canary', 'chromium', 'brave', 'arc', 'edge'];
+
+  function pickBrowser(rows) {
+    const byId = {};
+    rows.forEach(function (r) { byId[r.id] = r; });
+    for (let i = 0; i < priority.length; i++) {
+      const id = priority[i];
+      if (byId[id]) return byId[id];
+    }
+    return rows[0] || null;
+  }
+
+  function openUrl(apple, url) {
+    return fetch('/api/mac/open-browser-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apple: apple, url: url }),
+    }).then(function (r) { return r.json(); });
+  }
+
+  btn.addEventListener('click', function () {
+    if (!btn._browser) return;
+    btn.disabled = true;
+    const b = btn._browser;
+    const extUrl = b.id === 'edge' ? 'edge://extensions/' : 'chrome://extensions/';
+    detectEl.className = 'status muted';
+    detectEl.textContent = 'Opening ' + b.apple + '…';
+    openUrl(b.apple, extUrl)
+      .then(function (j) {
+        if (j.ok) {
+          detectEl.className = 'status ok';
+          detectEl.textContent = b.apple + ' should be frontmost with the extensions page. Enable Developer mode, then Load unpacked.';
+          return openUrl(b.apple, window.location.origin + '/ui/memory.html');
+        }
+        detectEl.className = 'status warn';
+        detectEl.textContent = 'Could not open the browser automatically. Use the manual steps below, or run: open -a "' + b.apple + '" "' + extUrl + '"';
+        return null;
+      })
+      .catch(function () {
+        detectEl.className = 'status warn';
+        detectEl.textContent = 'Request failed. Is the CLS++ server running on 127.0.0.1:8080?';
+      })
+      .finally(function () {
+        btn.disabled = false;
+      });
+  });
+
+  fetch('/api/detect-browsers')
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d.extension_dir) {
+        extWrap.style.display = 'block';
+        extPath.textContent = d.extension_dir;
+      }
+      if (!d.ok || !d.browsers || !d.browsers.length) {
+        if (d.os && d.os !== 'darwin') {
+          detectEl.className = 'status warn';
+          detectEl.textContent = 'Automatic browser open is only wired for macOS. On this system, load the extension manually (steps below).';
+          return;
+        }
+        detectEl.className = 'status warn';
+        detectEl.textContent = 'No Chrome-class browser was found under /Applications, ~/Applications, or Spotlight. If Chrome is installed, try reinstalling from google.com/chrome — then refresh this page.';
+        btn.disabled = true;
+        return;
+      }
+      const choice = pickBrowser(d.browsers);
+      btn._browser = choice;
+      btn.disabled = false;
+      detectEl.className = 'status ok';
+      detectEl.textContent = 'Found ' + choice.apple + ' at ' + choice.path + '. Press Activate to open its extensions page and the memory dashboard.';
+    })
+    .catch(function () {
+      detectEl.className = 'status warn';
+      detectEl.textContent = 'Could not reach /api/detect-browsers. Start the CLS++ server (port 8080) and reload.';
+      btn.disabled = true;
+    });
+})();
+</script>
+</body>
+</html>

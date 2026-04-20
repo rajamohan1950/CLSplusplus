@@ -2,23 +2,22 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system deps for sentence-transformers
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-render.txt ./
+RUN pip install --no-cache-dir -r requirements-render.txt
 
 COPY src/ ./src/
+COPY prototype/ ./prototype/
+COPY extension/ ./extension/
+# website/ archived to archive/website/ — the API no longer serves static HTML.
+# archive/ is copied so the waitlist test runner still finds its fixture path.
+COPY archive/ ./archive/
 
 ENV PYTHONPATH=/app/src
-ENV CLS_HOST=0.0.0.0
-ENV CLS_PORT=8080
-
-# Render / docker-compose inject these at runtime
 
 EXPOSE 8080
 
-# Render sets PORT; default to 8080 for local/Docker
-CMD ["sh", "-c", "uvicorn clsplusplus.api:app --host 0.0.0.0 --port ${PORT:-8080}"]
+CMD ["python", "-m", "clsplusplus.main"]

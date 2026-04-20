@@ -1,0 +1,62 @@
+[
+  {
+    "run_id": "20260320T081440",
+    "run_timestamp": "2026-03-20T08:14:40.378665+00:00",
+    "file": "20260320T081440.json",
+    "total": 21,
+    "passed": 21,
+    "failed": 0,
+    "pass_rate": 1.0,
+    "total_runtime_ms": 2102.2
+  },
+  {
+    "run_id": "20260319T061029",
+    "run_timestamp": "2026-03-19T06:10:29.852080+00:00",
+    "file": "20260319T061029.json",
+    "total": 21,
+    "passed": 21,
+    "failed": 0,
+    "pass_rate": 1.0,
+    "total_runtime_ms": 1890.0
+  },
+  {
+    "run_id": "20260319T055110",
+    "run_timestamp": "2026-03-19T05:51:10.479357+00:00",
+    "file": "20260319T055110.json",
+    "total": 21,
+    "passed": 21,
+    "failed": 0,
+    "pass_rate": 1.0,
+    "total_runtime_ms": 2211.3
+  },
+  {
+    "run_id": "20260318T195013",
+    "run_timestamp": "2026-03-18T19:50:13.567308+00:00",
+    "file": "20260318T195013.json",
+    "total": 21,
+    "passed": 21,
+    "failed": 0,
+    "pass_rate": 1.0,
+    "total_runtime_ms": 1709.4
+  },
+  {
+    "run_id": "20260318T190549",
+    "run_timestamp": "2026-03-18T19:05:49.900704+00:00",
+    "file": "20260318T190549.json",
+    "total": 21,
+    "passed": 21,
+    "failed": 0,
+    "pass_rate": 1.0,
+    "total_runtime_ms": 1570.6
+  },
+  {
+    "run_id": "20260318T185727",
+    "run_timestamp": "2026-03-18T18:57:27.862110+00:00",
+    "file": "20260318T185727.json",
+    "total": 21,
+    "passed": 8,
+    "failed": 13,
+    "pass_rate": 0.381,
+    "total_runtime_ms": 1485.0
+  }
+]

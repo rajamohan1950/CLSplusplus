@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<title>CLS++ Store Asset Generator</title>
+<style>
+  body{background:#111;color:#fff;font-family:-apple-system,sans-serif;padding:20px}
+  h2{margin:20px 0 10px;color:#5de0c5}
+  .asset{margin-bottom:30px}
+  .asset canvas{border:1px solid #333;display:block;margin-bottom:8px}
+  a.dl{display:inline-block;padding:8px 16px;background:#7c6ef0;color:#fff;border-radius:6px;text-decoration:none;font-size:13px;margin-top:4px}
+</style>
+</head>
+<body>
+<h1>Chrome Web Store Assets</h1>
+<p>Click each download link to save the PNG file.</p>
+
+<div id="output"></div>
+
+<script>
+const OUT = document.getElementById('output');
+
+function drawBrain(ctx, x, y, size) {
+  ctx.font = size + 'px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🧠', x, y);
+}
+
+function makeAsset(name, w, h, drawFn) {
+  const div = document.createElement('div');
+  div.className = 'asset';
+  div.innerHTML = `<h2>${name} (${w}x${h})</h2>`;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  drawFn(ctx, w, h);
+  div.appendChild(canvas);
+
+  const a = document.createElement('a');
+  a.className = 'dl';
+  a.download = name.toLowerCase().replace(/\s+/g, '-') + '-' + w + 'x' + h + '.png';
+  a.href = canvas.toDataURL('image/png');
+  a.textContent = 'Download ' + a.download;
+  div.appendChild(a);
+  OUT.appendChild(div);
+}
+
+// ── SCREENSHOTS (1280x800) — render memory viewer mockup ──
+function drawScreenshot1(ctx, w, h) {
+  // Dark bg
+  ctx.fillStyle = '#06060c';
+  ctx.fillRect(0, 0, w, h);
+
+  // Sidebar
+  ctx.fillStyle = '#0d0d18';
+  ctx.fillRect(0, 0, 260, h);
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.strokeRect(260, 0, 0, h);
+
+  // Logo
+  ctx.font = '18px serif';
+  ctx.fillText('🧠', 30, 32);
+  ctx.font = 'bold 14px -apple-system,sans-serif';
+  ctx.fillStyle = '#f0f0f8';
+  ctx.textAlign = 'left';
+  ctx.fillText('CLS++ Memory', 52, 36);
+
+  // Count
+  ctx.font = 'bold 36px -apple-system,sans-serif';
+  ctx.fillStyle = '#7c6ef0';
+  ctx.fillText('250', 20, 85);
+  ctx.font = '11px -apple-system,sans-serif';
+  ctx.fillStyle = 'rgba(240,240,248,0.42)';
+  ctx.fillText('memories stored', 20, 102);
+
+  // Models
+  ctx.font = 'bold 10px -apple-system,sans-serif';
+  ctx.fillStyle = 'rgba(240,240,248,0.42)';
+  ctx.fillText('BY AI MODEL', 20, 135);
+  var models = [['Claude','#cc785c',144],['ChatGPT','#19c37d',85],['Gemini','#4285f4',21]];
+  models.forEach(function(m, i){
+    var y = 155 + i*32;
+    ctx.beginPath();ctx.arc(28, y, 4, 0, Math.PI*2);ctx.fillStyle=m[1];ctx.fill();
+    ctx.font = '12px -apple-system,sans-serif';ctx.fillStyle='rgba(240,240,248,0.6)';
+    ctx.fillText(m[0], 40, y+4);
+    ctx.fillStyle='rgba(255,255,255,0.06)';ctx.fillRect(200,y-10,40,20);ctx.fillStyle='rgba(240,240,248,0.42)';
+    ctx.font='11px -apple-system,sans-serif';ctx.fillText(m[2]+'',210,y+4);
+  });
+
+  // Categories
+  ctx.font = 'bold 10px -apple-system,sans-serif';
+  ctx.fillStyle = 'rgba(240,240,248,0.42)';
+  ctx.fillText('BY CATEGORY', 20, 270);
+  var cats = [['Identity',64],['Work',20],['Preference',17],['General',125]];
+  cats.forEach(function(c, i){
+    var y = 290 + i*28;
+    ctx.font = '12px -apple-system,sans-serif';ctx.fillStyle='rgba(240,240,248,0.6)';
+    ctx.fillText(c[0], 40, y+4);
+  });
+
+  // Layers
+  ctx.font = 'bold 10px -apple-system,sans-serif';
+  ctx.fillStyle = 'rgba(240,240,248,0.42)';
+  ctx.fillText('MEMORY LAYERS', 20, 430);
+  var layers = [['L0 Gas',0],['L1 Liquid',220],['L2 Solid',26],['L3 Glass',4]];
+  layers.forEach(function(l, i){
+    var y = 450 + i*30;
+    ctx.font = 'bold 12px -apple-system,sans-serif';ctx.fillStyle='#f0f0f8';
+    ctx.fillText(l[0], 20, y+4);
+    ctx.fillStyle='rgba(255,255,255,0.06)';ctx.fillRect(200,y-8,40,20);
+    ctx.font='11px -apple-system,sans-serif';ctx.fillStyle='rgba(240,240,248,0.42)';
+    ctx.fillText(l[1]+'',210,y+4);
+  });
+
+  // Title
+  ctx.font = 'bold 17px -apple-system,sans-serif';
+  ctx.fillStyle = '#f0f0f8';
+  ctx.fillText('All Memories', 280, 36);
+  ctx.font = '12px -apple-system,sans-serif';
+  ctx.fillStyle = 'rgba(240,240,248,0.42)';
+  ctx.fillText('250 memories', 280, 56);
+
+  // Search
+  ctx.fillStyle = '#131325';
+  ctx.beginPath();ctx.roundRect(530, 16, 220, 36, 9);ctx.fill();
+  ctx.font = '13px -apple-system,sans-serif';ctx.fillStyle='rgba(240,240,248,0.42)';
+  ctx.fillText('Search memories...', 545, 38);
+
+  // Sort
+  ctx.fillStyle = '#131325';
+  ctx.beginPath();ctx.roundRect(760, 16, 90, 36, 9);ctx.fill();
+  ctx.font = '12px -apple-system,sans-serif';ctx.fillStyle='#f0f0f8';
+  ctx.fillText('Newest', 775, 38);
+
+  // Context Log btn
+  ctx.fillStyle = 'rgba(93,224,197,0.08)';
+  ctx.beginPath();ctx.roundRect(860, 16, 120, 36, 9);ctx.fill();
+  ctx.font = 'bold 12px -apple-system,sans-serif';ctx.fillStyle='#5de0c5';
+  ctx.fillText('Context Log', 878, 38);
+
+  // Memory cards
+  var memories = [
+    {cat:'IDENTITY',phase:'L1 LIQUID',model:'Claude',color:'#cc785c',text:'My name is Rajesh and I am a CTO at Bonito Designs',str:98},
+    {cat:'WORK',phase:'L1 LIQUID',model:'ChatGPT',color:'#19c37d',text:'I work at AlphaForge AI Labs in Bangalore',str:100},
+    {cat:'IDENTITY',phase:'L1 LIQUID',model:'Claude',color:'#cc785c',text:'I\'m Anusha saxena',str:92},
+    {cat:'PREFERENCE',phase:'L1 LIQUID',model:'Gemini',color:'#4285f4',text:'My favorite programming language is Rust',str:87},
+    {cat:'TEMPORAL',phase:'L1 LIQUID',model:'ChatGPT',color:'#19c37d',text:'I am training for my first marathon in October',str:100},
+  ];
+
+  memories.forEach(function(m, i){
+    var y = 75 + i * 130;
+    var x = 280;
+    // Card bg
+    ctx.fillStyle = '#0d0d18';
+    ctx.beginPath();ctx.roundRect(x, y, w-x-20, 115, 14);ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+    ctx.beginPath();ctx.roundRect(x, y, w-x-20, 115, 14);ctx.stroke();
+
+    // Category badge
+    ctx.fillStyle = 'rgba(124,110,240,0.15)';
+    ctx.beginPath();ctx.roundRect(x+14, y+14, m.cat.length*7+16, 20, 10);ctx.fill();
+    ctx.font = 'bold 9px -apple-system,sans-serif';ctx.fillStyle='#a89cf7';
+    ctx.fillText(m.cat, x+22, y+27);
+
+    // Phase badge
+    ctx.fillStyle = 'rgba(93,224,197,0.12)';
+    var px = x+14+m.cat.length*7+24;
+    ctx.beginPath();ctx.roundRect(px, y+14, 70, 20, 10);ctx.fill();
+    ctx.font = 'bold 9px -apple-system,sans-serif';ctx.fillStyle='#5de0c5';
+    ctx.fillText(m.phase, px+8, y+27);
+
+    // Model badge (right)
+    ctx.fillStyle = m.color+'18';
+    ctx.beginPath();ctx.roundRect(w-120, y+14, 80, 20, 10);ctx.fill();
+    ctx.beginPath();ctx.arc(w-108, y+24, 3, 0, Math.PI*2);ctx.fillStyle=m.color;ctx.fill();
+    ctx.font = 'bold 10px -apple-system,sans-serif';ctx.fillStyle=m.color;
+    ctx.fillText(m.model, w-100, y+28);
+
+    // Label pill
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.beginPath();ctx.roundRect(x+14, y+40, 50, 18, 9);ctx.fill();
+    ctx.font = '9px -apple-system,sans-serif';ctx.fillStyle='rgba(240,240,248,0.42)';
+    ctx.fillText('+ label', x+22, y+52);
+
+    // Text
+    ctx.font = '13px -apple-system,sans-serif';ctx.fillStyle='#f0f0f8';
+    ctx.fillText(m.text, x+14, y+76);
+
+    // Timestamp
+    ctx.font = '11px -apple-system,sans-serif';ctx.fillStyle='rgba(240,240,248,0.42)';
+    ctx.fillText('Mar 31 06:05 PM', x+14, y+100);
+
+    // Strength bar
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.beginPath();ctx.roundRect(x+160, y+92, 600, 6, 3);ctx.fill();
+    ctx.fillStyle = m.color;
+    ctx.beginPath();ctx.roundRect(x+160, y+92, 600*(m.str/100), 6, 3);ctx.fill();
+    ctx.font = '11px -apple-system,sans-serif';ctx.fillStyle='rgba(240,240,248,0.42)';
+    ctx.fillText(m.str+'%', w-55, y+100);
+  });
+}
+
+function drawScreenshot2(ctx, w, h) {
+  // Homepage
+  ctx.fillStyle = '#06060c';
+  ctx.fillRect(0, 0, w, h);
+
+  // Stars
+  for(var i=0;i<80;i++){
+    ctx.fillStyle='rgba(255,255,255,'+(Math.random()*0.3+0.05)+')';
+    ctx.fillRect(Math.random()*w, Math.random()*h, 1, 1);
+  }
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 48px -apple-system,sans-serif';
+  ctx.fillStyle = '#f0f0f8';
+  ctx.fillText('CLS++', w/2, 100);
+
+  ctx.font = '16px -apple-system,sans-serif';
+  ctx.fillStyle = 'rgba(240,240,248,0.6)';
+  ctx.fillText('Switch AI Models. Never Lose Context.', w/2, 140);
+
+  ctx.font = '14px -apple-system,sans-serif';
+  ctx.fillStyle = 'rgba(240,240,248,0.42)';
+  ctx.fillText('Tell Claude your name. ChatGPT already knows it.', w/2, 180);
+  ctx.fillText('Mention your job on Gemini. Claude remembers.', w/2, 200);
+
+  // Brain orb
+  var cx = w/2, cy = 380;
+  var grad = ctx.createRadialGradient(cx, cy, 20, cx, cy, 100);
+  grad.addColorStop(0, 'rgba(124,110,240,0.3)');
+  grad.addColorStop(0.5, 'rgba(93,224,197,0.15)');
+  grad.addColorStop(1, 'rgba(74,61,168,0.05)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();ctx.arc(cx, cy, 100, 0, Math.PI*2);ctx.fill();
+
+  ctx.font = '64px serif';
+  ctx.fillText('🧠', cx, cy+10);
+
+  // Model badges
+  var badges = [['Claude','#cc785c'],['ChatGPT','#19c37d'],['Gemini','#4285f4']];
+  badges.forEach(function(b, i){
+    var bx = w/2 - 150 + i*150;
+    ctx.fillStyle = b[1]+'22';
+    ctx.beginPath();ctx.roundRect(bx-35, 520, 70, 28, 14);ctx.fill();
+    ctx.font = 'bold 12px -apple-system,sans-serif';ctx.fillStyle=b[1];
+    ctx.fillText(b[0], bx, 538);
+  });
+
+  // Tagline
+  ctx.font = '13px -apple-system,sans-serif';
+  ctx.fillStyle = 'rgba(93,224,197,0.8)';
+  ctx.fillText('Every AI remembers you. Zero friction. Just chat.', w/2, 590);
+
+  // Memory active badge
+  ctx.fillStyle = 'rgba(93,224,197,0.1)';
+  ctx.beginPath();ctx.roundRect(w-180, 20, 150, 36, 18);ctx.fill();
+  ctx.beginPath();ctx.arc(w-158, 38, 4, 0, Math.PI*2);ctx.fillStyle='#5de0c5';ctx.fill();
+  ctx.font = 'bold 12px -apple-system,sans-serif';ctx.fillStyle='#5de0c5';
+  ctx.fillText('Memory active', w-105, 42);
+}
+
+function drawPromoSmall(ctx, w, h) {
+  ctx.fillStyle = '#06060c';
+  ctx.fillRect(0, 0, w, h);
+  for(var i=0;i<30;i++){ctx.fillStyle='rgba(255,255,255,'+(Math.random()*0.2)+')';ctx.fillRect(Math.random()*w,Math.random()*h,1,1);}
+
+  ctx.textAlign = 'center';
+  ctx.font = '60px serif';
+  ctx.fillText('🧠', w/2, h/2 - 10);
+  ctx.font = 'bold 28px -apple-system,sans-serif';ctx.fillStyle='#f0f0f8';
+  ctx.fillText('CLS++', w/2, h/2 + 50);
+  ctx.font = '13px -apple-system,sans-serif';ctx.fillStyle='#5de0c5';
+  ctx.fillText('Switch AI Models. Never Lose Context.', w/2, h/2 + 75);
+}
+
+function drawPromoMarquee(ctx, w, h) {
+  ctx.fillStyle = '#06060c';
+  ctx.fillRect(0, 0, w, h);
+  for(var i=0;i<60;i++){ctx.fillStyle='rgba(255,255,255,'+(Math.random()*0.15)+')';ctx.fillRect(Math.random()*w,Math.random()*h,1,1);}
+
+  // Left side: brain + title
+  ctx.textAlign = 'center';
+  ctx.font = '80px serif';
+  ctx.fillText('🧠', 300, h/2 - 20);
+  ctx.font = 'bold 42px -apple-system,sans-serif';ctx.fillStyle='#f0f0f8';
+  ctx.fillText('CLS++', 300, h/2 + 50);
+  ctx.font = '16px -apple-system,sans-serif';ctx.fillStyle='#5de0c5';
+  ctx.fillText('Switch AI Models. Never Lose Context.', 300, h/2 + 80);
+
+  // Right side: feature bullets
+  ctx.textAlign = 'left';
+  ctx.font = '18px -apple-system,sans-serif';ctx.fillStyle='#f0f0f8';
+  var features = [
+    '✅  Cross-model memory — Claude ↔ ChatGPT ↔ Gemini',
+    '✅  Silent injection — zero friction, just chat',
+    '✅  Memory viewer with labels, sort, and search',
+    '✅  Thermodynamic memory engine (L0→L3)',
+    '✅  Works locally — your data stays on your machine',
+  ];
+  features.forEach(function(f, i){
+    ctx.fillStyle = i === 0 ? '#f0f0f8' : 'rgba(240,240,248,0.7)';
+    ctx.fillText(f, 620, 160 + i * 50);
+  });
+
+  // Model badges
+  var badges = [['Claude','#cc785c'],['ChatGPT','#19c37d'],['Gemini','#4285f4']];
+  badges.forEach(function(b, i){
+    var bx = 620 + i*140;
+    ctx.fillStyle = b[1]+'22';
+    ctx.beginPath();ctx.roundRect(bx, 440, 100, 30, 15);ctx.fill();
+    ctx.textAlign='center';ctx.font='bold 13px -apple-system,sans-serif';ctx.fillStyle=b[1];
+    ctx.fillText(b[0], bx+50, 459);
+  });
+  ctx.textAlign='left';
+}
+
+// Generate all assets
+makeAsset('Screenshot 1 - Memory Viewer', 1280, 800, drawScreenshot1);
+makeAsset('Screenshot 2 - Homepage', 1280, 800, drawScreenshot2);
+makeAsset('Small Promo Tile', 440, 280, drawPromoSmall);
+makeAsset('Marquee Promo Tile', 1400, 560, drawPromoMarquee);
+</script>
+</body>
+</html>

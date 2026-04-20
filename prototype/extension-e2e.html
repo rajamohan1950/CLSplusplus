@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CLS++ Extension E2E</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem;
+      background: #0a0a12; color: #e8e8f0; }
+    h1 { font-size: 1.25rem; color: #7c6ef0; }
+    button { margin: 0.5rem 0.5rem 0.5rem 0; padding: 0.6rem 1rem; border-radius: 8px;
+      border: 1px solid #7c6ef0; background: #1a1530; color: #e8e8f0; cursor: pointer; }
+    button:hover { background: #2a2048; }
+    pre { background: #12121a; padding: 1rem; border-radius: 8px; overflow: auto; font-size: 12px;
+      border: 1px solid #2a2a35; white-space: pre-wrap; word-break: break-word; }
+    .hint { color: #888; font-size: 13px; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>CLS++ Extension — injection harness</h1>
+  <p>Load the unpacked extension, start <code>prototype/server.py</code>, then use the buttons.
+    Tests call mock endpoints that echo the <strong>post-intercept</strong> body.</p>
+
+  <button type="button" id="btn-chatgpt">Run ChatGPT-shaped request</button>
+  <button type="button" id="btn-claude">Run Claude-shaped request</button>
+
+  <p class="hint" id="status">Idle</p>
+  <pre id="result">{}</pre>
+
+  <script>
+    const api = (path) => {
+      const h = location.hostname === 'localhost' ? 'localhost' : location.hostname;
+      return `http://${h}:${location.port || '8080'}${path}`;
+    };
+
+    async function runChatGPT() {
+      const status = document.getElementById('status');
+      const result = document.getElementById('result');
+      status.textContent = 'Sending…';
+      result.textContent = '';
+      const body = {
+        messages: [{
+          id: 'test-msg',
+          role: 'user',
+          content: { content_type: 'text', parts: ['What is my secret codename?'] }
+        }]
+      };
+      const r = await fetch(api('/backend-api/conversation'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const j = await r.json();
+      result.textContent = JSON.stringify(j, null, 2);
+      status.textContent = j.injection_ok ? 'PASS: memory injected (ChatGPT)' : 'FAIL: expected BLUEBADGER in echoed text';
+      window.__CLSPP_E2E_LAST = j;
+    }
+
+    async function runClaude() {
+      const status = document.getElementById('status');
+      const result = document.getElementById('result');
+      status.textContent = 'Sending…';
+      result.textContent = '';
+      const r = await fetch(api('/api/e2e/chat_conversations/local/completion'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: 'What city do I live in?' })
+      });
+      const j = await r.json();
+      result.textContent = JSON.stringify(j, null, 2);
+      status.textContent = j.injection_ok ? 'PASS: memory injected (Claude)' : 'FAIL: expected Springfield in echoed prompt';
+      window.__CLSPP_E2E_LAST = j;
+    }
+
+    document.getElementById('btn-chatgpt').addEventListener('click', () => runChatGPT().catch(e => {
+      document.getElementById('status').textContent = 'Error: ' + e;
+    }));
+    document.getElementById('btn-claude').addEventListener('click', () => runClaude().catch(e => {
+      document.getElementById('status').textContent = 'Error: ' + e;
+    }));
+  </script>
+</body>
+</html>

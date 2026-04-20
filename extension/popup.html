@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<link rel="stylesheet" href="shared.css"/>
+<style>
+  body { width: 320px; padding: var(--cls-lg); }
+</style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="cls-header" style="padding: 0 0 var(--cls-md) 0;">
+    <span class="cls-header-icon">🧠</span>
+    <span class="cls-header-title">CLS++ Memory</span>
+    <div class="cls-header-user">
+      <span class="cls-dot off" id="dot"></span>
+      <span id="user-name" class="name"></span>
+      <span id="user-tier"></span>
+    </div>
+  </div>
+
+  <!-- Unlinked State -->
+  <div id="sec-unlinked">
+    <input type="password" class="cls-input" id="key-input" placeholder="Paste API key" style="margin-bottom: var(--cls-sm);"/>
+    <button class="cls-btn cls-btn-primary" id="btn-link">Link Account</button>
+    <div style="margin-top: var(--cls-sm); text-align: center;">
+      <a href="https://www.clsplusplus.com/profile.html#keys" target="_blank" style="font-size:11px;">Generate API Key →</a>
+    </div>
+    <div class="cls-error" id="err"></div>
+  </div>
+
+  <!-- Linked State -->
+  <div id="sec-linked" style="display:none;">
+    <!-- Stat Pills -->
+    <div class="cls-pills" style="padding: 0; margin-bottom: var(--cls-md);">
+      <div class="cls-pill">
+        <div class="cls-pill-value" id="stat-memories">—</div>
+        <div class="cls-pill-label">memories</div>
+      </div>
+      <div class="cls-pill">
+        <div class="cls-pill-value" id="stat-ops">—</div>
+        <div class="cls-pill-label">operations</div>
+      </div>
+      <div class="cls-pill">
+        <div class="cls-pill-value" id="stat-sites">—</div>
+        <div class="cls-pill-label">sites active</div>
+      </div>
+    </div>
+
+    <!-- Last Memory -->
+    <div class="cls-last-memory" id="last-memory" style="margin: 0 0 var(--cls-md) 0; display:none;">
+      <div class="cls-last-memory-label">Last Memory</div>
+      <div class="cls-last-memory-text" id="last-memory-text"></div>
+      <div class="cls-last-memory-meta" id="last-memory-meta"></div>
+    </div>
+
+    <!-- Open Panel Button -->
+    <button class="cls-btn cls-btn-primary" id="btn-panel">Open Full Panel ▸</button>
+  </div>
+
+<script src="posthog.min.js"></script>
+<script src="analytics.js"></script>
+<script src="themes.js"></script>
+<script src="popup.js"></script>
+</body>
+</html>
