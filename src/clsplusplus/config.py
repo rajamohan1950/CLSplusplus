@@ -37,7 +37,10 @@ class Settings(BaseSettings):
     google_client_secret: str = ""        # CLS_GOOGLE_CLIENT_SECRET
     github_client_id: str = ""            # CLS_GITHUB_CLIENT_ID
     github_client_secret: str = ""        # CLS_GITHUB_CLIENT_SECRET
-    # Optional explicit redirect URI; if empty, computed from request.base_url
+    # Optional explicit redirect URIs; if empty, computed from request.base_url.
+    # Set these when the OAuth callback must go through a frontend proxy (e.g.
+    # Vercel rewrites) so Set-Cookie lands on the UI host, not the API host.
+    google_redirect_uri: str = ""         # CLS_GOOGLE_REDIRECT_URI
     github_redirect_uri: str = ""         # CLS_GITHUB_REDIRECT_URI
 
     # Frontend origin for post-auth redirects. Needed when the API host
