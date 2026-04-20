@@ -121,6 +121,13 @@ class Settings(BaseSettings):
     # Leave empty for same-host dev (cookie stays host-only).
     cookie_domain: str = ""  # CLS_COOKIE_DOMAIN
 
+    # Metering v2 — append-only event log pipeline. See docs/adr/0001-metering-data-lake.md.
+    # Rollout is in small, reversible steps. Both flags default to False; no
+    # production path consults these yet. Flipping the write flag causes the
+    # new schema to be applied on startup; it does NOT enable any writer.
+    metering_v2_write_enabled: bool = False  # CLS_METERING_V2_WRITE_ENABLED
+    metering_v2_read_enabled: bool = False   # CLS_METERING_V2_READ_ENABLED
+
     # Razorpay billing (active payment gateway)
     razorpay_key_id: str = ""               # CLS_RAZORPAY_KEY_ID
     razorpay_key_secret: str = ""           # CLS_RAZORPAY_KEY_SECRET
