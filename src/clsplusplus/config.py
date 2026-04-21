@@ -132,6 +132,13 @@ class Settings(BaseSettings):
     # Default is the project owner; override per-deployment via env var.
     oncall_email: str = "rjabbala@gmail.com"  # CLS_ONCALL_EMAIL
 
+    # Per-tier per-event overage rates in cents, applied to operations that
+    # cross `TIER_LIMITS[tier]["ops_per_month"]`. Defaults to all zeros so
+    # enabling the pricer without configuring rates is a safe no-op. The env
+    # var is a JSON object: e.g.
+    # CLS_OVERAGE_RATES_CENTS='{"pro":{"_default":5,"write":10}, ...}'
+    overage_rates_cents: dict = {}  # CLS_OVERAGE_RATES_CENTS (JSON)
+
     # Razorpay billing (active payment gateway)
     razorpay_key_id: str = ""               # CLS_RAZORPAY_KEY_ID
     razorpay_key_secret: str = ""           # CLS_RAZORPAY_KEY_SECRET

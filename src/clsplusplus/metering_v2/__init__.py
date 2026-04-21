@@ -7,6 +7,7 @@ Rollout defined in docs/adr/0001-metering-data-lake.md. Steps landed:
 """
 
 from clsplusplus.metering_v2.notifier import MeteringNotifier
+from clsplusplus.metering_v2.pricing import MeteringPricer, compute_unit_cost_cents
 from clsplusplus.metering_v2.schema import (
     apply_if_enabled,
     apply_schema,
@@ -22,6 +23,8 @@ __all__ = [
     "read_ddl",
     "MeteringWriter",
     "MeteringNotifier",
+    "MeteringPricer",
     "UsageEvent",
     "VALID_ACTOR_KINDS",
+    "compute_unit_cost_cents",
 ]
