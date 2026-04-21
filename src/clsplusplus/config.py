@@ -28,8 +28,18 @@ class Settings(BaseSettings):
     track_usage: bool = False
 
     # SaaS: Tier and quota enforcement
-    tier: str = "free"                # free | pro | unlimited
-    enforce_quotas: bool = False      # Enable quota enforcement (off for local/demo)
+    tier: str = "free"                # DEPRECATED fallback. Real per-user tier
+                                      # comes from the DB via TierResolver.
+                                      # Used only when resolution returns None.
+    enforce_quotas: bool = True       # Block over-cap users with 402. Safe
+                                      # default now that tier resolution is
+                                      # per-user (set CLS_ENFORCE_QUOTAS=false
+                                      # for local/demo stacks).
+    # When Redis is unreachable, the quota check cannot tell whether a user
+    # is over their cap. Default: fail-CLOSED (return 503) so we never give
+    # away unlimited billable usage during an outage. Flip to false only if
+    # availability matters more than billing accuracy during Redis outages.
+    quota_fail_closed: bool = True    # CLS_QUOTA_FAIL_CLOSED
 
     # User auth (JWT + Google OAuth + GitHub OAuth)
     jwt_secret: str = ""                  # CLS_JWT_SECRET (required for user auth)

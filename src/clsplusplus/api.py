@@ -60,6 +60,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     integration_service = IntegrationService(settings, store=_integration_store)
     user_service = UserService(settings)
 
+    # Shared api_key → tier resolver. QuotaMiddleware uses it to enforce the
+    # correct per-user cap; MeteringPricer uses it to decide overage pricing.
+    # 5-minute cache; invalidated on /v1/user/upgrade.
+    from clsplusplus.tier_resolver import TierResolver
+    _tier_resolver = TierResolver(_integration_store)
+
     # Demo chat session persistence — used by /v1/chat/sessions/* so users
     # can replay earlier demos. Initialised lazily on first use.
     from clsplusplus.stores.chat_session_store import ChatSessionStore
@@ -193,7 +199,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     )
     # Middleware execution order: outermost (added last) runs first.
     # TracingMiddleware → RequestId → RateLimit → Auth → Quota → route handler
-    app.add_middleware(QuotaMiddleware, settings=settings)
+    app.add_middleware(QuotaMiddleware, settings=settings, tier_resolver=_tier_resolver)
     app.add_middleware(AuthMiddleware, settings=settings, integration_store=_integration_store)
     app.add_middleware(RateLimitMiddleware, settings=settings)
     app.add_middleware(RequestIdMiddleware)
@@ -291,7 +297,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     _metering_writer = MeteringWriter(settings, _metering_pool)
     _metering_pricer = MeteringPricer(
         settings,
-        integration_store=_integration_store,
+        tier_resolver=_tier_resolver,
         get_ops_counter=_get_ops_count,
     )
 

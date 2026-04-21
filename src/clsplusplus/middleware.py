@@ -233,11 +233,18 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 
 class QuotaMiddleware(BaseHTTPMiddleware):
-    """Enforce monthly operation quota based on tier. Returns 402 when exceeded."""
+    """Enforce the monthly operation quota for each API key's *owning* tier.
 
-    def __init__(self, app, settings: Settings):
+    Looks the tier up live from the DB via `TierResolver` (cached 5 min).
+    Falls back to `settings.tier` only when resolution returns `None`.
+    Returns 402 when over cap, 503 when the check itself fails and
+    `settings.quota_fail_closed` is true (the default — billing-safe).
+    """
+
+    def __init__(self, app, settings: Settings, tier_resolver=None):
         super().__init__(app)
         self.settings = settings
+        self._tier_resolver = tier_resolver
 
     async def dispatch(self, request: Request, call_next) -> Response:
         if not self.settings.enforce_quotas:
@@ -254,24 +261,50 @@ class QuotaMiddleware(BaseHTTPMiddleware):
         if not api_key:
             return await call_next(request)
 
+        from clsplusplus.tiers import Tier, check_quota
         try:
-            from clsplusplus.tiers import get_tier, check_quota
+            # Per-user tier (cached); falls back to server-wide default when
+            # the key can't be resolved — which only happens for legacy keys
+            # not yet in the integrations table.
+            tier_str: Optional[str] = None
+            if self._tier_resolver is not None:
+                tier_str = await self._tier_resolver.resolve(api_key)
+            if not tier_str:
+                tier_str = self.settings.tier
+            try:
+                tier = Tier(tier_str)
+            except ValueError:
+                tier = Tier.free
 
-            tier = get_tier(self.settings)
             allowed, usage, limit = await check_quota(api_key, tier, self.settings)
             if not allowed:
                 return JSONResponse(
                     status_code=402,
                     content={
-                        "detail": "Monthly operation quota exceeded. Upgrade your plan for more.",
+                        "detail": "Monthly operation quota exceeded. "
+                                  "Upgrade your plan for more.",
                         "usage": usage,
                         "limit": limit,
                         "tier": tier.value,
                     },
                 )
-        except Exception:
-            pass  # Fail-open: never block on quota check errors
-
+        except Exception as exc:
+            if self.settings.quota_fail_closed:
+                # Billing safety: refuse the request when we can't prove
+                # the user is within their cap. Log loudly.
+                import logging
+                logging.getLogger(__name__).error(
+                    "quota: fail-closed (%s: %s)", type(exc).__name__, exc,
+                )
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "detail": "Usage service temporarily unavailable. "
+                                  "Retry in a moment.",
+                    },
+                    headers={"Retry-After": "5"},
+                )
+            # Legacy fail-open path — explicit opt-in via quota_fail_closed=false.
         return await call_next(request)
 
 

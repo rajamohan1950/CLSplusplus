@@ -1,7 +1,7 @@
 """Tests for MeteringPricer and compute_unit_cost_cents (ADR 0001 step 2.5).
 
 Pure-Python tests for the pricing function.
-Class-level tests use fakes for the integration store + ops-counter reader.
+Class-level tests use a FakeTierResolver + ops-counter reader fake.
 """
 
 from __future__ import annotations
@@ -69,18 +69,29 @@ def test_default_rates_are_all_zero_so_flag_on_is_safe():
 
 
 # --------------------------------------------------------------------------- #
-# MeteringPricer — caching, tier resolution, end-to-end
+# MeteringPricer — uses the shared TierResolver
 # --------------------------------------------------------------------------- #
 
 
-class FakeIntegrationStore:
-    def __init__(self, mapping: dict[str, Optional[str]]):
-        self.mapping = mapping
-        self.calls = 0
+class FakeTierResolver:
+    """Stand-in for `TierResolver` with an explicit mapping."""
 
-    async def resolve_tier_from_key(self, raw_key: str) -> Optional[str]:
+    def __init__(self, mapping: dict[str, Optional[str]], raise_for: Optional[str] = None):
+        self.mapping = mapping
+        self.raise_for = raise_for
+        self.calls = 0
+        self.invalidated: list[Optional[str]] = []
+
+    async def resolve(self, api_key: str) -> Optional[str]:
         self.calls += 1
-        return self.mapping.get(raw_key)
+        if self.raise_for and api_key == self.raise_for:
+            # Real TierResolver swallows exceptions and returns None;
+            # mimic that behaviour so pricer sees None, not the raise.
+            return None
+        return self.mapping.get(api_key)
+
+    def invalidate(self, api_key: Optional[str] = None) -> None:
+        self.invalidated.append(api_key)
 
 
 def _fake_ops_counter(counts: dict[str, int]):
@@ -93,7 +104,7 @@ def _fake_ops_counter(counts: dict[str, int]):
 async def test_price_event_no_api_key_returns_zero():
     pricer = MeteringPricer(
         Settings(),
-        integration_store=FakeIntegrationStore({}),
+        tier_resolver=FakeTierResolver({}),
         get_ops_counter=_fake_ops_counter({}),
     )
     assert await pricer.price_event(None, "write") == 0
@@ -105,7 +116,7 @@ async def test_price_event_under_cap_is_zero():
     settings = Settings(overage_rates_cents={"pro": {"_default": 50}})
     pricer = MeteringPricer(
         settings,
-        integration_store=FakeIntegrationStore({"k1": "pro"}),
+        tier_resolver=FakeTierResolver({"k1": "pro"}),
         get_ops_counter=_fake_ops_counter({"k1": 100}),
     )
     # pro cap is 50_000 — 100 is well under
@@ -117,7 +128,7 @@ async def test_price_event_over_cap_charges_overage():
     settings = Settings(overage_rates_cents={"pro": {"_default": 50, "write": 75}})
     pricer = MeteringPricer(
         settings,
-        integration_store=FakeIntegrationStore({"k1": "pro"}),
+        tier_resolver=FakeTierResolver({"k1": "pro"}),
         get_ops_counter=_fake_ops_counter({"k1": 60_000}),  # > 50_000 pro cap
     )
     assert await pricer.price_event("k1", "write") == 75    # event-specific
@@ -129,7 +140,7 @@ async def test_price_event_unknown_tier_is_zero_and_logs():
     settings = Settings(overage_rates_cents={"pro": {"_default": 999}})
     pricer = MeteringPricer(
         settings,
-        integration_store=FakeIntegrationStore({"k1": "platinum-unknown"}),
+        tier_resolver=FakeTierResolver({"k1": "platinum-unknown"}),
         get_ops_counter=_fake_ops_counter({"k1": 10_000_000}),
     )
     assert await pricer.price_event("k1", "write") == 0
@@ -140,70 +151,31 @@ async def test_price_event_stale_api_key_is_zero():
     """Key that doesn't resolve to a tier returns 0 — don't bill unknown actors."""
     pricer = MeteringPricer(
         Settings(overage_rates_cents={"pro": {"_default": 999}}),
-        integration_store=FakeIntegrationStore({"k1": None}),
+        tier_resolver=FakeTierResolver({"k1": None}),
         get_ops_counter=_fake_ops_counter({"k1": 10_000_000}),
     )
     assert await pricer.price_event("k1", "write") == 0
 
 
 @pytest.mark.asyncio
-async def test_tier_lookup_is_cached():
-    store = FakeIntegrationStore({"k1": "pro"})
+async def test_invalidate_delegates_to_resolver():
+    resolver = FakeTierResolver({"k1": "pro"})
     pricer = MeteringPricer(
         Settings(),
-        integration_store=store,
+        tier_resolver=resolver,
         get_ops_counter=_fake_ops_counter({"k1": 1}),
-        cache_ttl_seconds=60,
     )
-    await pricer.price_event("k1", "write")
-    await pricer.price_event("k1", "read")
-    await pricer.price_event("k1", "retrieve")
-    assert store.calls == 1  # three events, one DB hit
-
-
-@pytest.mark.asyncio
-async def test_invalidate_drops_cache():
-    store = FakeIntegrationStore({"k1": "pro"})
-    pricer = MeteringPricer(
-        Settings(),
-        integration_store=store,
-        get_ops_counter=_fake_ops_counter({"k1": 1}),
-        cache_ttl_seconds=60,
-    )
-    await pricer.price_event("k1", "write")
-    assert store.calls == 1
     pricer.invalidate()
-    await pricer.price_event("k1", "write")
-    assert store.calls == 2  # cache flushed, re-resolves
-
-
-@pytest.mark.asyncio
-async def test_invalidate_scoped_to_one_key():
-    store = FakeIntegrationStore({"k1": "pro", "k2": "business"})
-    pricer = MeteringPricer(
-        Settings(),
-        integration_store=store,
-        get_ops_counter=_fake_ops_counter({"k1": 1, "k2": 1}),
-    )
-    await pricer.price_event("k1", "write")
-    await pricer.price_event("k2", "write")
-    assert store.calls == 2
     pricer.invalidate("k1")
-    await pricer.price_event("k1", "write")  # re-resolves
-    await pricer.price_event("k2", "write")  # still cached
-    assert store.calls == 3
+    assert resolver.invalidated == [None, "k1"]
 
 
 @pytest.mark.asyncio
 async def test_tier_resolution_error_returns_zero():
-    class BrokenStore:
-        async def resolve_tier_from_key(self, raw_key):
-            raise RuntimeError("db down")
-
+    """If the resolver returns None for the key (its error path), price is 0."""
     pricer = MeteringPricer(
         Settings(overage_rates_cents={"pro": {"_default": 999}}),
-        integration_store=BrokenStore(),
+        tier_resolver=FakeTierResolver({}, raise_for="k1"),
         get_ops_counter=_fake_ops_counter({"k1": 10_000_000}),
     )
-    # Broken store should not surface as a billing error — treat as 0.
     assert await pricer.price_event("k1", "write") == 0
