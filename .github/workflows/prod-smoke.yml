@@ -1,0 +1,138 @@
+name: Prod smoke (billing + metering)
+
+# Catches regressions that unit tests can't see — Render outages, bad env
+# vars, webhook secret drift, quota misconfiguration, expired OAuth creds.
+#
+# Runs:
+#   * every 15 minutes (catches infra regressions fast)
+#   * after every push to main (catches deploy-time breakage)
+#   * manually via workflow_dispatch (for debugging)
+#
+# Required GitHub secrets (set via repo → Settings → Secrets → Actions):
+#   CLS_E2E_ADMIN_EMAIL    — email of an admin user on prod
+#   CLS_E2E_ADMIN_PASSWORD — that user's password
+#
+# When the secrets are absent the job self-skips with a warning rather than
+# spamming failure emails. Set them to turn the gate on.
+#
+# Optional secrets:
+#   CLS_E2E_BASE_URL  — override production URL (default: https://www.clsplusplus.com)
+#   SLACK_WEBHOOK_URL — if set, posts to Slack on failure
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Override base URL (blank = use secret or default)'
+        required: false
+        default: ''
+
+concurrency:
+  group: prod-smoke
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check required secrets are configured
+        id: have_secrets
+        env:
+          HAVE_EMAIL: ${{ secrets.CLS_E2E_ADMIN_EMAIL != '' }}
+          HAVE_PASSWORD: ${{ secrets.CLS_E2E_ADMIN_PASSWORD != '' }}
+        run: |
+          if [ "$HAVE_EMAIL" = "true" ] && [ "$HAVE_PASSWORD" = "true" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Prod smoke disabled::Set CLS_E2E_ADMIN_EMAIL + CLS_E2E_ADMIN_PASSWORD secrets to enable live regression checks."
+          fi
+
+      - name: Set up Python
+        if: steps.have_secrets.outputs.configured == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install minimal deps (httpx + pytest only)
+        if: steps.have_secrets.outputs.configured == 'true'
+        run: pip install --upgrade 'httpx<1' 'pytest>=8' 'pytest-asyncio>=1'
+
+      - name: Resolve base URL
+        if: steps.have_secrets.outputs.configured == 'true'
+        id: url
+        run: |
+          URL="${{ github.event.inputs.base_url }}"
+          [ -z "$URL" ] && URL="${{ secrets.CLS_E2E_BASE_URL }}"
+          [ -z "$URL" ] && URL="https://www.clsplusplus.com"
+          echo "base=$URL" >> "$GITHUB_OUTPUT"
+          echo "Using base URL: $URL"
+
+      - name: Log in as admin (fresh cls_session cookie)
+        if: steps.have_secrets.outputs.configured == 'true'
+        id: login
+        env:
+          BASE_URL: ${{ steps.url.outputs.base }}
+          ADMIN_EMAIL: ${{ secrets.CLS_E2E_ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.CLS_E2E_ADMIN_PASSWORD }}
+        run: |
+          HTTP=$(curl -sS -o /tmp/login.json -w '%{http_code}' \
+            -X POST "$BASE_URL/api/v1/auth/login" \
+            -H 'Content-Type: application/json' \
+            -c /tmp/cookies.txt \
+            -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}")
+          if [ "$HTTP" -lt 200 ] || [ "$HTTP" -ge 300 ]; then
+            echo "::error title=Login failed::HTTP $HTTP from /v1/auth/login. Check CLS_E2E_ADMIN_EMAIL/PASSWORD."
+            cat /tmp/login.json
+            exit 1
+          fi
+          COOKIE=$(awk '/cls_session/ {print $7}' /tmp/cookies.txt | tail -1)
+          if [ -z "$COOKIE" ]; then
+            echo "::error title=No cookie::Login returned 2xx but no cls_session cookie."
+            cat /tmp/cookies.txt
+            exit 1
+          fi
+          echo "::add-mask::$COOKIE"
+          echo "cookie=$COOKIE" >> "$GITHUB_OUTPUT"
+
+      - name: Run billing E2E pytest suite
+        if: steps.have_secrets.outputs.configured == 'true'
+        env:
+          CLS_E2E_BASE_URL: ${{ steps.url.outputs.base }}
+          CLS_E2E_ADMIN_COOKIE: ${{ steps.login.outputs.cookie }}
+        run: pytest tests/test_billing_e2e.py -v --tb=short
+
+      - name: Dump metering diagnostics on failure
+        if: failure() && steps.login.outputs.cookie != ''
+        env:
+          CLS_E2E_BASE_URL: ${{ steps.url.outputs.base }}
+          CLS_E2E_ADMIN_COOKIE: ${{ steps.login.outputs.cookie }}
+        run: |
+          echo "== Metering health at failure =="
+          curl -sS -b "cls_session=$CLS_E2E_ADMIN_COOKIE" \
+            "$CLS_E2E_BASE_URL/api/admin/metering/health" | python -m json.tool || true
+          echo ""
+          echo "== Reconciler at failure =="
+          curl -sS -X POST -b "cls_session=$CLS_E2E_ADMIN_COOKIE" \
+            "$CLS_E2E_BASE_URL/api/admin/metering/reconcile" | python -m json.tool || true
+
+      - name: Notify Slack on failure
+        if: failure() && steps.have_secrets.outputs.configured == 'true'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL not set — skipping Slack notification."
+            exit 0
+          fi
+          curl -sS -X POST -H 'Content-Type: application/json' \
+            --data "{\"text\":\"🚨 CLS++ prod smoke FAILED\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>\"}" \
+            "$SLACK_WEBHOOK_URL" || true
