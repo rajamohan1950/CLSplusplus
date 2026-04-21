@@ -143,11 +143,25 @@ class Settings(BaseSettings):
     oncall_email: str = "rjabbala@gmail.com"  # CLS_ONCALL_EMAIL
 
     # Per-tier per-event overage rates in cents, applied to operations that
-    # cross `TIER_LIMITS[tier]["ops_per_month"]`. Defaults to all zeros so
-    # enabling the pricer without configuring rates is a safe no-op. The env
-    # var is a JSON object: e.g.
-    # CLS_OVERAGE_RATES_CENTS='{"pro":{"_default":5,"write":10}, ...}'
-    overage_rates_cents: dict = {}  # CLS_OVERAGE_RATES_CENTS (JSON)
+    # cross `TIER_LIMITS[tier]["ops_per_month"]`.
+    #
+    # Defaults are a conservative starting point — adjust via CLS_OVERAGE_RATES_CENTS
+    # when you want different numbers. Rationale:
+    #   free       0¢  — hard-block is better than surprise bill.
+    #   pro        2¢  — $9/mo gives 50k ops ≈ 0.018¢/op. Overage @ 2¢ is ~11×
+    #                   markup → strong upgrade signal toward Business.
+    #   business   1¢  — $29/mo for 200k ≈ 0.0145¢/op. Overage @ 1¢ is ~7× markup.
+    #   enterprise 0¢  — flat price includes elastic usage (these customers want
+    #                   predictability; charge-on-overage would be a surprise).
+    #
+    # Override with JSON env var, e.g.
+    # CLS_OVERAGE_RATES_CENTS='{"pro":{"_default":3,"write":5}}'
+    overage_rates_cents: dict = {
+        "free":       {"_default": 0},
+        "pro":        {"_default": 2},
+        "business":   {"_default": 1},
+        "enterprise": {"_default": 0},
+    }  # CLS_OVERAGE_RATES_CENTS (JSON)
 
     # Razorpay billing (active payment gateway)
     razorpay_key_id: str = ""               # CLS_RAZORPAY_KEY_ID
