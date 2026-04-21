@@ -124,6 +124,35 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             title=app.title + " — API Documentation",
         )
 
+    # Metering v2 dead-letter notifier — runs only when the write flag is on.
+    # Polls metering_dead_letter every 60s, emails the oncall address, and
+    # marks rows notified. Flag-off startup is a no-op.
+    _metering_notifier = None
+
+    @app.on_event("startup")
+    async def _metering_startup():
+        nonlocal _metering_notifier
+        if not settings.metering_v2_write_enabled:
+            return
+        try:
+            from clsplusplus.metering_v2 import MeteringNotifier, apply_if_enabled
+            # Ensure the schema exists before the notifier tries to read it.
+            pool = await user_service.store.get_pool()
+            await apply_if_enabled(settings, pool)
+            _metering_notifier = MeteringNotifier(
+                settings, _metering_pool, user_service.email,
+            )
+            _metering_notifier.start()
+            logger.info("metering v2: notifier started (poll=60s)")
+        except Exception as exc:
+            logger.error("metering v2: notifier startup failed: %s: %s",
+                         type(exc).__name__, exc)
+
+    @app.on_event("shutdown")
+    async def _metering_shutdown():
+        if _metering_notifier is not None:
+            await _metering_notifier.stop()
+
     # Explicit allowed origins — configurable via CLS_CORS_ORIGINS env var (comma-separated).
     # Chrome extension origins use the literal "chrome-extension://*" pattern which the
     # CORSMiddleware regex_origins list handles; the explicit list covers the web properties.
@@ -228,6 +257,17 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     _metrics = MetricsEmitter(settings)
     memory_service._metrics = _metrics  # Wire metrics into memory service
 
+    # Metering v2 — durable event log. Dual-writes alongside the existing
+    # Redis counters when CLS_METERING_V2_WRITE_ENABLED is on. Off by default
+    # so production behaviour is unchanged until we flip the flag. See
+    # docs/adr/0001-metering-data-lake.md.
+    from clsplusplus.metering_v2 import MeteringWriter, UsageEvent
+
+    async def _metering_pool():
+        return await user_service.store.get_pool()
+
+    _metering_writer = MeteringWriter(settings, _metering_pool)
+
     async def _record_usage(operation: str, request: Request):
         """Fire-and-forget usage tracking. Must never crash a user request."""
         try:
@@ -240,8 +280,51 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             user_id = getattr(request.state, "user_id", None)
             if user_id:
                 await _metrics.emit(user_id, operation)
+            # Metering v2 durable log — no-op when flag is off.
+            if _metering_writer.enabled:
+                await _metering_writer.record(
+                    _build_usage_event(operation, request, user_id, api_key),
+                )
         except Exception:
             pass  # Usage tracking failure must not affect user responses
+
+    def _build_usage_event(
+        operation: str,
+        request: Request,
+        user_id: Optional[str],
+        api_key: Optional[str],
+    ) -> "UsageEvent":
+        """Translate the request-scoped context into a UsageEvent.
+
+        Idempotency key is `{request_id}:{operation}` so a client retry of
+        the same request does not double-count, while distinct operations
+        within one request each get their own row.
+        """
+        request_id = getattr(request.state, "request_id", None) or "no-req-id"
+        namespace = getattr(request.state, "namespace", None)
+        if user_id:
+            actor_kind, actor_id = "user", str(user_id)
+        elif api_key:
+            actor_kind, actor_id = "api_key", _hash_actor(api_key)
+        elif namespace:
+            actor_kind, actor_id = "ns", namespace
+        else:
+            actor_kind, actor_id = "system", "anon"
+        return UsageEvent(
+            idempotency_key=f"{request_id}:{operation}",
+            actor_kind=actor_kind,
+            actor_id=actor_id,
+            event_type=operation,
+            user_id=str(user_id) if user_id else None,
+            api_key_id=_hash_actor(api_key) if api_key else None,
+            namespace=namespace,
+            raw={"request_id": request_id},
+        )
+
+    def _hash_actor(value: str) -> str:
+        """Short, non-reversible digest so we never persist raw api keys."""
+        import hashlib as _hashlib
+        return _hashlib.sha256(value.encode()).hexdigest()[:16]
 
     @app.post("/v1/memory/write")
     async def write_memory(req: WriteRequest, request: Request):

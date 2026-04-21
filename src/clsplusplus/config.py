@@ -128,6 +128,10 @@ class Settings(BaseSettings):
     metering_v2_write_enabled: bool = False  # CLS_METERING_V2_WRITE_ENABLED
     metering_v2_read_enabled: bool = False   # CLS_METERING_V2_READ_ENABLED
 
+    # Oncall address that receives metering_dead_letter paging digests.
+    # Default is the project owner; override per-deployment via env var.
+    oncall_email: str = "rjabbala@gmail.com"  # CLS_ONCALL_EMAIL
+
     # Razorpay billing (active payment gateway)
     razorpay_key_id: str = ""               # CLS_RAZORPAY_KEY_ID
     razorpay_key_secret: str = ""           # CLS_RAZORPAY_KEY_SECRET
