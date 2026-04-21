@@ -5,7 +5,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
-from typing import TYPE_CHECKING
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING, Optional
 
 import razorpay
 
@@ -32,6 +33,22 @@ TIER_AMOUNT_PAISE: dict[str, int] = {
     "business": 239900,   # INR 2,399
     "enterprise": 1239900,  # INR 12,399
 }
+
+# How long each tier buys when paid via a one-time Razorpay Order. A follow-up
+# migration to Razorpay Subscriptions will replace this with actual
+# current_period_end pulled from the subscription.charged webhook.
+TIER_DURATION_DAYS: dict[str, int] = {
+    "pro": 30,
+    "business": 30,
+    "enterprise": 30,
+}
+
+
+def _compute_expiry(tier: str, now: Optional[datetime] = None) -> datetime:
+    """Return the expires_at stamp for a fresh payment at `tier`."""
+    now = now or datetime.now(timezone.utc)
+    days = TIER_DURATION_DAYS.get(tier, 30)
+    return now + timedelta(days=days)
 
 
 def _get_client(settings: "Settings") -> razorpay.Client:
@@ -85,6 +102,28 @@ async def create_order(
     }
 
 
+async def _upgrade_and_stamp_expiry(
+    user_service: "UserService",
+    user_id: str,
+    tier: str,
+    razorpay_subscription_id: Optional[str] = None,
+) -> None:
+    """Set tier=<paid>, status=active, expires_at=now+duration atomically.
+
+    Used by both the synchronous verify-payment path and the
+    payment.captured / subscription.charged webhook handlers so the
+    "what does a successful payment mean" logic lives in one place.
+    """
+    expires_at = _compute_expiry(tier)
+    await user_service.store.set_subscription(
+        user_id,
+        tier=tier,
+        expires_at=expires_at,
+        status="active",
+        razorpay_subscription_id=razorpay_subscription_id,
+    )
+
+
 async def verify_payment(
     order_id: str,
     payment_id: str,
@@ -112,7 +151,7 @@ async def verify_payment(
         )
         raise ValueError("Payment verification failed — invalid signature")
 
-    await user_service.update_tier(user_id, tier)
+    await _upgrade_and_stamp_expiry(user_service, user_id, tier)
     logger.info(
         "Razorpay payment verified: upgraded user %s to %s (order=%s, payment=%s)",
         user_id, tier, order_id, payment_id,
@@ -128,7 +167,13 @@ async def handle_webhook(
 ) -> None:
     """Process a Razorpay webhook event.
 
-    Verifies webhook signature, then handles payment.captured and payment.failed.
+    Handles:
+      * payment.captured          — upgrade + stamp expiry (one-time Orders)
+      * payment.failed            — log only
+      * subscription.charged      — recurring renewal: extend expiry
+      * subscription.cancelled    — status=cancelled; downgrade at expiry
+      * subscription.halted       — repeated renewal failures: downgrade now
+      * subscription.completed    — fixed-term ended: downgrade now
     """
     if not settings.razorpay_webhook_secret:
         raise ValueError("Razorpay webhook secret not configured")
@@ -146,28 +191,107 @@ async def handle_webhook(
     import json
     event = json.loads(payload)
     event_type = event.get("event", "")
-    entity = (event.get("payload", {}).get("payment", {}).get("entity", {}))
 
-    if event_type == "payment.captured":
-        notes = entity.get("notes", {})
+    # Razorpay nests entities under payload.{payment|subscription|...}.entity
+    pl = event.get("payload") or {}
+
+    # -------- Payment events (one-time Orders) --------
+    if event_type in ("payment.captured", "payment.failed"):
+        entity = (pl.get("payment") or {}).get("entity") or {}
+        notes = entity.get("notes") or {}
         user_id = notes.get("user_id")
         tier = notes.get("tier")
-        if user_id and tier:
-            try:
-                await user_service.update_tier(user_id, tier)
-                logger.info(
-                    "Razorpay webhook: payment captured, upgraded user %s to %s",
-                    user_id, tier,
-                )
-            except Exception as e:
-                logger.error("Failed to upgrade user %s after webhook: %s", user_id, e)
-                raise
 
-    elif event_type == "payment.failed":
-        notes = entity.get("notes", {})
-        user_id = notes.get("user_id")
-        logger.warning(
-            "Razorpay webhook: payment failed for user %s, reason: %s",
-            user_id,
-            entity.get("error_description", "unknown"),
-        )
+        if event_type == "payment.captured" and user_id and tier:
+            try:
+                await _upgrade_and_stamp_expiry(user_service, user_id, tier)
+                logger.info(
+                    "Razorpay: payment captured — user %s → %s (expires in %d days)",
+                    user_id, tier, TIER_DURATION_DAYS.get(tier, 30),
+                )
+            except Exception as exc:
+                logger.error("Failed to upgrade user %s after payment.captured: %s",
+                             user_id, exc)
+                raise
+        elif event_type == "payment.failed":
+            logger.warning(
+                "Razorpay: payment.failed for user %s (reason: %s)",
+                user_id, entity.get("error_description", "unknown"),
+            )
+        return
+
+    # -------- Subscription events (recurring Subscriptions) --------
+    subscription_entity = (pl.get("subscription") or {}).get("entity") or {}
+    sub_id = subscription_entity.get("id")
+    notes = subscription_entity.get("notes") or {}
+    user_id = notes.get("user_id")
+    tier = notes.get("tier")
+
+    if not user_id:
+        logger.warning("Razorpay webhook %s missing user_id in notes (sub_id=%s)",
+                       event_type, sub_id)
+        return
+
+    try:
+        if event_type == "subscription.charged":
+            # Extend the window. Razorpay gives current_end (epoch seconds)
+            # on the subscription — honour that when present.
+            current_end = subscription_entity.get("current_end")
+            if current_end:
+                expires_at = datetime.fromtimestamp(int(current_end), tz=timezone.utc)
+            else:
+                expires_at = _compute_expiry(tier or "pro")
+            await user_service.store.set_subscription(
+                user_id,
+                tier=tier,
+                expires_at=expires_at,
+                status="active",
+                razorpay_subscription_id=sub_id,
+            )
+            logger.info("Razorpay: subscription.charged — user %s expires %s",
+                        user_id, expires_at.isoformat())
+
+        elif event_type == "subscription.cancelled":
+            # User cancelled. Keep their paid tier until current_end; then
+            # the watchdog downgrades them on expiry.
+            await user_service.store.set_subscription(
+                user_id, status="cancelled",
+                razorpay_subscription_id=sub_id,
+            )
+            logger.info(
+                "Razorpay: subscription.cancelled — user %s status=cancelled "
+                "(tier preserved until expires_at)", user_id,
+            )
+
+        elif event_type == "subscription.halted":
+            # Repeated renewal failures — Razorpay halted the subscription.
+            # Downgrade immediately: the user's current paid window is
+            # effectively forfeit.
+            await user_service.store.set_subscription(
+                user_id,
+                tier="free",
+                status="halted",
+                razorpay_subscription_id=sub_id,
+            )
+            logger.warning(
+                "Razorpay: subscription.halted — user %s downgraded to free", user_id,
+            )
+
+        elif event_type == "subscription.completed":
+            # Fixed-term subscription ran its course. Downgrade now.
+            await user_service.store.set_subscription(
+                user_id,
+                tier="free",
+                status="expired",
+                razorpay_subscription_id=sub_id,
+            )
+            logger.info(
+                "Razorpay: subscription.completed — user %s downgraded to free", user_id,
+            )
+
+        else:
+            logger.debug("Razorpay webhook: ignoring unhandled event %s", event_type)
+    except Exception as exc:
+        logger.error("Razorpay webhook %s failed for user %s: %s: %s",
+                     event_type, user_id, type(exc).__name__, exc)
+        raise
