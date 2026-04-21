@@ -204,3 +204,12 @@ class EmailService:
 </body>
 </html>"""
         return await self._send(to, "Reset your CLS++ password", html)
+
+    async def send_metering_alert(self, to: str, subject: str, html: str) -> bool:
+        """Send an on-call alert for the metering dead-letter digest.
+
+        Kept as a thin passthrough so the notifier is decoupled from the
+        transport layer — a test can stub this method without touching
+        the Resend internals.
+        """
+        return await self._send(to, subject, html)
