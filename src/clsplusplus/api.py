@@ -261,12 +261,18 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     # Redis counters when CLS_METERING_V2_WRITE_ENABLED is on. Off by default
     # so production behaviour is unchanged until we flip the flag. See
     # docs/adr/0001-metering-data-lake.md.
-    from clsplusplus.metering_v2 import MeteringWriter, UsageEvent
+    from clsplusplus.metering_v2 import MeteringPricer, MeteringWriter, UsageEvent
+    from clsplusplus.usage import get_operation_count as _get_ops_count
 
     async def _metering_pool():
         return await user_service.store.get_pool()
 
     _metering_writer = MeteringWriter(settings, _metering_pool)
+    _metering_pricer = MeteringPricer(
+        settings,
+        integration_store=_integration_store,
+        get_ops_counter=_get_ops_count,
+    )
 
     async def _record_usage(operation: str, request: Request):
         """Fire-and-forget usage tracking. Must never crash a user request."""
@@ -282,9 +288,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 await _metrics.emit(user_id, operation)
             # Metering v2 durable log — no-op when flag is off.
             if _metering_writer.enabled:
-                await _metering_writer.record(
-                    _build_usage_event(operation, request, user_id, api_key),
+                event = _build_usage_event(operation, request, user_id, api_key)
+                # Stamp pay-as-you-go cost at write time; rates default to 0
+                # so this is a safe no-op until CLS_OVERAGE_RATES_CENTS is set.
+                event.unit_cost_cents = await _metering_pricer.price_event(
+                    api_key, operation,
                 )
+                await _metering_writer.record(event)
         except Exception:
             pass  # Usage tracking failure must not affect user responses
 
@@ -1530,6 +1540,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception:
             raise HTTPException(status_code=500, detail="Upgrade service unavailable")
+        # Drop the pricer's tier cache so this user's API keys re-resolve
+        # against the new tier on the next metered call.
+        _metering_pricer.invalidate()
         return user
 
     @app.get("/v1/user/usage/history")

@@ -118,6 +118,30 @@ class IntegrationStore:
         )
         return row["namespace"] if row else None
 
+    async def resolve_tier_from_key(self, raw_key: str) -> Optional[str]:
+        """Resolve an API key to its owning user's billing tier.
+
+        Follows the chain api_credentials → integrations → users.email → users.tier.
+        Used by the metering pricer to decide whether an event is in-tier
+        (free) or over-cap (pay-as-you-go). Returns None when any hop is
+        missing (stale key, deleted integration, orphaned integration).
+        """
+        key_hash = _sha256_hex(raw_key)
+        pool = await self.get_pool()
+        row = await pool.fetchrow(
+            """SELECT u.tier
+               FROM integrations i
+               JOIN api_credentials ac ON i.id = ac.integration_id
+               JOIN users u           ON u.email = i.owner_email
+               WHERE ac.key_hash = $1
+                 AND ac.status IN ('active', 'rotated')
+                 AND i.status != 'deleted'
+                 AND (ac.expires_at IS NULL OR ac.expires_at > now())
+                 AND (ac.status = 'active' OR ac.grace_until > now())""",
+            key_hash,
+        )
+        return row["tier"] if row else None
+
     # =========================================================================
     # Integrations CRUD
     # =========================================================================
