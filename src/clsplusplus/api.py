@@ -124,34 +124,55 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             title=app.title + " — API Documentation",
         )
 
-    # Metering v2 dead-letter notifier — runs only when the write flag is on.
-    # Polls metering_dead_letter every 60s, emails the oncall address, and
-    # marks rows notified. Flag-off startup is a no-op.
+    # Metering v2 background workers — run only when the write flag is on.
+    # The notifier (60s poll) pages oncall on dead-letter rows.
+    # The reconciler (24h poll) compares Redis counters to usage_events
+    # aggregates and enqueues any drift into dead_letter so the notifier
+    # picks it up. Flag-off startup is a no-op.
     _metering_notifier = None
+    _metering_reconciler = None
+
+    async def _metering_redis():
+        """Lazy Redis client for the reconciler. Returns None if unavailable."""
+        try:
+            import redis.asyncio as _redis
+            return _redis.from_url(settings.redis_url, decode_responses=True)
+        except Exception as exc:
+            logger.error("metering reconciler: redis init failed: %s: %s",
+                         type(exc).__name__, exc)
+            return None
 
     @app.on_event("startup")
     async def _metering_startup():
-        nonlocal _metering_notifier
+        nonlocal _metering_notifier, _metering_reconciler
         if not settings.metering_v2_write_enabled:
             return
         try:
-            from clsplusplus.metering_v2 import MeteringNotifier, apply_if_enabled
-            # Ensure the schema exists before the notifier tries to read it.
+            from clsplusplus.metering_v2 import (
+                MeteringNotifier, MeteringReconciler, apply_if_enabled,
+            )
+            # Ensure the schema exists before the workers touch it.
             pool = await user_service.store.get_pool()
             await apply_if_enabled(settings, pool)
             _metering_notifier = MeteringNotifier(
                 settings, _metering_pool, user_service.email,
             )
             _metering_notifier.start()
-            logger.info("metering v2: notifier started (poll=60s)")
+            _metering_reconciler = MeteringReconciler(
+                settings, _metering_pool, _metering_redis,
+            )
+            _metering_reconciler.start()
+            logger.info("metering v2: notifier (60s) + reconciler (24h) started")
         except Exception as exc:
-            logger.error("metering v2: notifier startup failed: %s: %s",
+            logger.error("metering v2: startup failed: %s: %s",
                          type(exc).__name__, exc)
 
     @app.on_event("shutdown")
     async def _metering_shutdown():
         if _metering_notifier is not None:
             await _metering_notifier.stop()
+        if _metering_reconciler is not None:
+            await _metering_reconciler.stop()
 
     # Explicit allowed origins — configurable via CLS_CORS_ORIGINS env var (comma-separated).
     # Chrome extension origins use the literal "chrome-extension://*" pattern which the
@@ -2083,6 +2104,31 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         except Exception as e:
             logger.error("Admin waitlist promote error: %s: %s", type(e).__name__, e)
             raise HTTPException(status_code=500, detail="Promote failed")
+
+    @app.post("/admin/metering/reconcile")
+    async def admin_metering_reconcile(request: Request, period: Optional[str] = None):
+        """Run the metering reconciler on demand and return the summary.
+
+        Query param `period=YYYY-MM` selects the period (default: current).
+        Any drift findings are enqueued into metering_dead_letter as a side
+        effect, so the notifier will email on its next pump cycle.
+        """
+        _require_admin(request)
+        if not settings.metering_v2_write_enabled:
+            raise HTTPException(status_code=409,
+                                detail="Metering v2 write path is disabled")
+        if _metering_reconciler is None:
+            raise HTTPException(status_code=503,
+                                detail="Reconciler not initialised")
+        try:
+            result = await _metering_reconciler.reconcile_once(period)
+        except Exception as exc:
+            logger.error("admin reconcile: %s: %s", type(exc).__name__, exc)
+            raise HTTPException(status_code=500, detail="Reconciliation failed")
+        return {
+            **result.summary(),
+            "drift_findings": [f.to_payload() for f in result.findings[:50]],
+        }
 
     @app.post("/admin/tests/waitlist/run")
     async def admin_run_waitlist_tests(request: Request):
