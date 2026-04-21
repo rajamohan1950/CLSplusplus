@@ -181,6 +181,164 @@ class TestQuotaMiddleware:
 
 
 # ---------------------------------------------------------------------------
+# Per-user tier resolution in the quota path
+# ---------------------------------------------------------------------------
+
+class TestQuotaPerUserTier:
+    """The middleware must read the OWNING USER's tier, not `settings.tier`.
+
+    These tests patch `TierResolver.resolve` so the middleware sees a specific
+    tier regardless of the DB, then assert the quota math is done against
+    that tier's cap.
+    """
+
+    @pytest.mark.asyncio
+    async def test_pro_user_under_their_own_cap(self):
+        """Pro user at 30k ops is allowed despite the server-wide tier=free default."""
+        from clsplusplus.api import create_app
+        settings = Settings(
+            require_api_key=True,
+            api_keys=VALID_API_KEY,
+            enforce_quotas=True,
+            track_usage=True,
+            tier="free",   # server-wide default; should be IGNORED for this user
+        )
+        app = create_app(settings)
+        transport = ASGITransport(app=app)
+
+        with patch("clsplusplus.tier_resolver.TierResolver.resolve",
+                   new_callable=AsyncMock, return_value="pro"), \
+             patch("clsplusplus.usage.get_operation_count",
+                   new_callable=AsyncMock, return_value=30_000):
+            async with AsyncClient(
+                transport=transport, base_url="http://test",
+                headers={"Authorization": f"Bearer {VALID_API_KEY}"},
+            ) as ac:
+                resp = await ac.post("/v1/memory/write",
+                                     json={"text": "ok", "namespace": "default"})
+                assert resp.status_code != 402, (
+                    f"Pro at 30k should be allowed (cap=50k). "
+                    f"Got {resp.status_code}: {resp.text}"
+                )
+
+    @pytest.mark.asyncio
+    async def test_pro_user_over_their_own_cap_blocks(self):
+        """Pro user at 60k ops is blocked even when server-wide tier is enterprise."""
+        from clsplusplus.api import create_app
+        settings = Settings(
+            require_api_key=True,
+            api_keys=VALID_API_KEY,
+            enforce_quotas=True,
+            track_usage=True,
+            tier="enterprise",   # server-wide — should NOT leak to this user
+        )
+        app = create_app(settings)
+        transport = ASGITransport(app=app)
+
+        with patch("clsplusplus.tier_resolver.TierResolver.resolve",
+                   new_callable=AsyncMock, return_value="pro"), \
+             patch("clsplusplus.usage.get_operation_count",
+                   new_callable=AsyncMock, return_value=60_000):
+            async with AsyncClient(
+                transport=transport, base_url="http://test",
+                headers={"Authorization": f"Bearer {VALID_API_KEY}"},
+            ) as ac:
+                resp = await ac.post("/v1/memory/write",
+                                     json={"text": "ok", "namespace": "default"})
+                assert resp.status_code == 402
+                body = resp.json()
+                assert body["tier"] == "pro"     # the user's real tier, not enterprise
+                assert body["limit"] == 50_000   # pro cap, not enterprise's
+
+    @pytest.mark.asyncio
+    async def test_unknown_api_key_falls_back_to_settings_tier(self):
+        """Legacy keys that don't resolve to a tier use the fallback safely."""
+        from clsplusplus.api import create_app
+        settings = Settings(
+            require_api_key=True,
+            api_keys=VALID_API_KEY,
+            enforce_quotas=True,
+            track_usage=True,
+            tier="free",
+        )
+        app = create_app(settings)
+        transport = ASGITransport(app=app)
+
+        with patch("clsplusplus.tier_resolver.TierResolver.resolve",
+                   new_callable=AsyncMock, return_value=None), \
+             patch("clsplusplus.usage.get_operation_count",
+                   new_callable=AsyncMock, return_value=1_500):
+            async with AsyncClient(
+                transport=transport, base_url="http://test",
+                headers={"Authorization": f"Bearer {VALID_API_KEY}"},
+            ) as ac:
+                resp = await ac.post("/v1/memory/write",
+                                     json={"text": "ok", "namespace": "default"})
+                assert resp.status_code == 402
+                assert resp.json()["tier"] == "free"
+
+
+# ---------------------------------------------------------------------------
+# Fail-closed on quota-check errors
+# ---------------------------------------------------------------------------
+
+class TestQuotaFailClosed:
+    """When the quota check itself errors (Redis down), we must default to
+    failing CLOSED so we don't hand out billable usage for free."""
+
+    @pytest.mark.asyncio
+    async def test_redis_error_returns_503_when_fail_closed(self):
+        from clsplusplus.api import create_app
+        settings = Settings(
+            require_api_key=True,
+            api_keys=VALID_API_KEY,
+            enforce_quotas=True,
+            track_usage=True,
+            quota_fail_closed=True,
+            tier="free",
+        )
+        app = create_app(settings)
+        transport = ASGITransport(app=app)
+
+        with patch("clsplusplus.usage.get_operation_count",
+                   new_callable=AsyncMock, side_effect=RuntimeError("redis down")):
+            async with AsyncClient(
+                transport=transport, base_url="http://test",
+                headers={"Authorization": f"Bearer {VALID_API_KEY}"},
+            ) as ac:
+                resp = await ac.post("/v1/memory/write",
+                                     json={"text": "ok", "namespace": "default"})
+                assert resp.status_code == 503
+                assert resp.headers.get("Retry-After") == "5"
+
+    @pytest.mark.asyncio
+    async def test_redis_error_passes_through_when_fail_open(self):
+        """Legacy opt-in: quota_fail_closed=False restores the old behaviour."""
+        from clsplusplus.api import create_app
+        settings = Settings(
+            require_api_key=True,
+            api_keys=VALID_API_KEY,
+            enforce_quotas=True,
+            track_usage=True,
+            quota_fail_closed=False,   # explicit opt-in to fail-open
+            tier="free",
+        )
+        app = create_app(settings)
+        transport = ASGITransport(app=app)
+
+        with patch("clsplusplus.usage.get_operation_count",
+                   new_callable=AsyncMock, side_effect=RuntimeError("redis down")):
+            async with AsyncClient(
+                transport=transport, base_url="http://test",
+                headers={"Authorization": f"Bearer {VALID_API_KEY}"},
+            ) as ac:
+                resp = await ac.post("/v1/memory/write",
+                                     json={"text": "ok", "namespace": "default"})
+                # Not 503 — fell through to the real handler.
+                assert resp.status_code != 503
+
+
+# ---------------------------------------------------------------------------
 # Usage counter functions
 # ---------------------------------------------------------------------------
 
