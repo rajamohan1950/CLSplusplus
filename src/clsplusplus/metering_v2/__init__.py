@@ -8,6 +8,11 @@ Rollout defined in docs/adr/0001-metering-data-lake.md. Steps landed:
     step 3   — daily reconciliation vs Redis (this package)
 """
 
+from clsplusplus.metering_v2.healthcheck import (
+    CheckResult,
+    HealthReport,
+    MeteringHealthCheck,
+)
 from clsplusplus.metering_v2.notifier import MeteringNotifier
 from clsplusplus.metering_v2.pricing import MeteringPricer, compute_unit_cost_cents
 from clsplusplus.metering_v2.reconciler import (
@@ -32,8 +37,11 @@ __all__ = [
     "MeteringNotifier",
     "MeteringPricer",
     "MeteringReconciler",
+    "MeteringHealthCheck",
     "DriftFinding",
     "ReconciliationResult",
+    "HealthReport",
+    "CheckResult",
     "UsageEvent",
     "VALID_ACTOR_KINDS",
     "compute_unit_cost_cents",

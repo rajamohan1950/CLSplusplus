@@ -2105,6 +2105,25 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             logger.error("Admin waitlist promote error: %s: %s", type(e).__name__, e)
             raise HTTPException(status_code=500, detail="Promote failed")
 
+    @app.get("/admin/metering/health")
+    async def admin_metering_health(request: Request):
+        """Run the full metering v2 health check and return a structured report.
+
+        Seven checks: config flag, oncall email, DB reachable, schema present,
+        writer roundtrip (canary insert + read-back), dead-letter clean,
+        reconciler runs without drift. Returns HTTP 200 when all pass,
+        HTTP 503 when any fail (so this can be used as a Render healthcheck
+        target if desired). Admin-only.
+        """
+        _require_admin(request)
+        from clsplusplus.metering_v2 import MeteringHealthCheck
+        check = MeteringHealthCheck(settings, _metering_pool, _metering_redis)
+        report = await check.run_all()
+        body = report.to_dict()
+        if report.passed:
+            return body
+        return JSONResponse(status_code=503, content=body)
+
     @app.post("/admin/metering/reconcile")
     async def admin_metering_reconcile(request: Request, period: Optional[str] = None):
         """Run the metering reconciler on demand and return the summary.
