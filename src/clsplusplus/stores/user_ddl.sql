@@ -29,6 +29,21 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'free';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
 
+-- Subscription lifecycle (added for PR "subscription expiry").
+-- expires_at is NULL on free users and on paid users without a known renewal
+-- date (e.g. lifetime deals). The SubscriptionWatchdog only downgrades rows
+-- where expires_at IS NOT NULL AND expires_at < now().
+ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status TEXT;  -- active|cancelled|halted|expired
+ALTER TABLE users ADD COLUMN IF NOT EXISTS razorpay_subscription_id TEXT;
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_subscription_status_check;
+ALTER TABLE users ADD CONSTRAINT users_subscription_status_check
+    CHECK (subscription_status IS NULL
+           OR subscription_status IN ('active', 'cancelled', 'halted', 'expired'));
+CREATE INDEX IF NOT EXISTS idx_users_subscription_expiry
+    ON users(subscription_expires_at)
+    WHERE subscription_expires_at IS NOT NULL AND tier != 'free';
+
 -- Drop old CHECK constraint and add new one (safe if doesn't exist)
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_tier_check;
 ALTER TABLE users ADD CONSTRAINT users_tier_check CHECK (tier IN ('free', 'pro', 'business', 'enterprise'));

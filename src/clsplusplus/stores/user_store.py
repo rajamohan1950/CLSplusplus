@@ -148,6 +148,79 @@ class UserStore:
             )
             return result == "UPDATE 1"
 
+    async def set_subscription(
+        self,
+        user_id: str,
+        *,
+        tier: Optional[str] = None,
+        expires_at: Optional[datetime] = None,
+        status: Optional[str] = None,
+        razorpay_subscription_id: Optional[str] = None,
+    ) -> bool:
+        """Update any subset of the subscription-related fields atomically.
+
+        COALESCE preserves existing values when a field is not passed —
+        so partial updates (e.g. webhook only sets expires_at) do not
+        clobber unrelated columns.
+        """
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(
+                """
+                UPDATE users
+                SET tier = COALESCE($1, tier),
+                    subscription_expires_at = COALESCE($2, subscription_expires_at),
+                    subscription_status = COALESCE($3, subscription_status),
+                    razorpay_subscription_id = COALESCE($4, razorpay_subscription_id),
+                    updated_at = $5
+                WHERE id = $6
+                """,
+                tier, expires_at, status, razorpay_subscription_id, _now(), user_id,
+            )
+            return result == "UPDATE 1"
+
+    async def get_expired_subscriptions(self, as_of: Optional[datetime] = None,
+                                        limit: int = 500) -> list[dict]:
+        """Return paid users whose subscription window has elapsed.
+
+        Only returns rows where `subscription_expires_at IS NOT NULL` so
+        lifetime-deal users (who pay once with no expiry) are never auto-
+        downgraded. Batch-limited so one run doesn't lock the table.
+        """
+        as_of = as_of or _now()
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id, email, tier, subscription_expires_at, subscription_status
+                FROM users
+                WHERE subscription_expires_at IS NOT NULL
+                  AND subscription_expires_at < $1
+                  AND tier != 'free'
+                ORDER BY subscription_expires_at ASC
+                LIMIT $2
+                """,
+                as_of, limit,
+            )
+        return [_row_to_dict(r) for r in rows]
+
+    async def expire_subscription(self, user_id: str) -> bool:
+        """Downgrade a user whose subscription has elapsed. Atomic."""
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(
+                """
+                UPDATE users
+                SET tier = 'free',
+                    subscription_status = 'expired',
+                    updated_at = $1
+                WHERE id = $2
+                  AND tier != 'free'
+                """,
+                _now(), user_id,
+            )
+            return result == "UPDATE 1"
+
     async def update_google_id(self, user_id: str, google_id: str, avatar_url: Optional[str] = None) -> bool:
         pool = await self.get_pool()
         async with pool.acquire() as conn:

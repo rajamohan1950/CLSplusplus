@@ -137,6 +137,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     # picks it up. Flag-off startup is a no-op.
     _metering_notifier = None
     _metering_reconciler = None
+    _subscription_watchdog = None
 
     async def _metering_redis():
         """Lazy Redis client for the reconciler. Returns None if unavailable."""
@@ -173,12 +174,36 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             logger.error("metering v2: startup failed: %s: %s",
                          type(exc).__name__, exc)
 
+    @app.on_event("startup")
+    async def _subscription_watchdog_startup():
+        """Daily scan for expired paid subscriptions → auto-downgrade to free.
+
+        Safe to run unconditionally: the watchdog only operates on users
+        whose `subscription_expires_at` has elapsed AND who are on a paid
+        tier. Users with no expiry set (lifetime deals, legacy accounts)
+        are untouched.
+        """
+        nonlocal _subscription_watchdog
+        try:
+            from clsplusplus.subscription_watchdog import SubscriptionWatchdog
+            _subscription_watchdog = SubscriptionWatchdog(
+                settings,
+                user_service.store,
+            )
+            _subscription_watchdog.start()
+            logger.info("subscription watchdog: started (24h loop)")
+        except Exception as exc:
+            logger.error("subscription watchdog: startup failed: %s: %s",
+                         type(exc).__name__, exc)
+
     @app.on_event("shutdown")
     async def _metering_shutdown():
         if _metering_notifier is not None:
             await _metering_notifier.stop()
         if _metering_reconciler is not None:
             await _metering_reconciler.stop()
+        if _subscription_watchdog is not None:
+            await _subscription_watchdog.stop()
 
     # Explicit allowed origins — configurable via CLS_CORS_ORIGINS env var (comma-separated).
     # Chrome extension origins use the literal "chrome-extension://*" pattern which the
@@ -2129,6 +2154,25 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         if report.passed:
             return body
         return JSONResponse(status_code=503, content=body)
+
+    @app.post("/admin/subscriptions/expire-due")
+    async def admin_subscriptions_expire_due(request: Request):
+        """Run the subscription watchdog immediately.
+
+        Scans for paid users whose `subscription_expires_at` has elapsed
+        and downgrades them to `free`. Safe to call repeatedly — nothing
+        happens for users already on free or without an expiry set.
+        """
+        _require_admin(request)
+        if _subscription_watchdog is None:
+            raise HTTPException(status_code=503,
+                                detail="Subscription watchdog not initialised")
+        try:
+            result = await _subscription_watchdog.run_once()
+        except Exception as exc:
+            logger.error("admin expire-due: %s: %s", type(exc).__name__, exc)
+            raise HTTPException(status_code=500, detail="Watchdog run failed")
+        return result
 
     @app.post("/admin/metering/reconcile")
     async def admin_metering_reconcile(request: Request, period: Optional[str] = None):
