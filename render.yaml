@@ -36,7 +36,20 @@ services:
         sync: false
       - key: CLS_GITHUB_REDIRECT_URI
         sync: false
+      # Google OAuth — client id/secret were MISSING from the blueprint.
+      # Without them "Sign in with Google" is broken.
+      - key: CLS_GOOGLE_CLIENT_ID
+        sync: false
+      - key: CLS_GOOGLE_CLIENT_SECRET
+        sync: false
       - key: CLS_GOOGLE_REDIRECT_URI
+        sync: false
+      # Resend transactional email — REQUIRED for signup. Registration is
+      # OTP-based: with no Resend key the verification email never sends
+      # and nobody can complete signup.
+      - key: CLS_RESEND_API_KEY
+        sync: false
+      - key: CLS_EMAIL_FROM
         sync: false
       - key: CLS_FRONTEND_URL
         sync: false
