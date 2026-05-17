@@ -11,7 +11,7 @@ from starlette.responses import JSONResponse, Response
 
 from clsplusplus.auth import get_api_key_from_request, validate_api_key
 from clsplusplus.config import Settings
-from clsplusplus.rate_limit import check_rate_limit
+from clsplusplus.rate_limit import check_auth_rate_limit, check_rate_limit
 
 
 # Paths that never require auth or rate limiting
@@ -55,6 +55,29 @@ _STATIC_EXTENSIONS = frozenset({
     ".woff", ".woff2", ".ttf", ".eot",
     ".pdf", ".txt", ".xml",
 })
+
+
+# Public (unauthenticated) endpoints that are still per-IP rate limited.
+# These bypass the per-API-key limiter because they're in _PUBLIC_PATHS, so a
+# storm of unauthenticated requests would otherwise have NO throttle at all.
+# A tight per-IP sliding window (CLS_AUTH_RATE_LIMIT_PER_IP) is the defense.
+_AUTH_THROTTLED_PATHS = frozenset({
+    "/v1/auth/register",
+    "/v1/auth/login",
+    "/v1/auth/forgot-password",
+    "/v1/auth/reset-password",
+    "/v1/auth/resend-verification",
+    "/v1/auth/verify-register",
+    "/v1/waitlist/join",
+    "/v1/waitlist/verify",
+})
+
+
+def _is_auth_throttled(path: str, method: str) -> bool:
+    """True for public auth endpoints that still need a per-IP throttle."""
+    if method == "OPTIONS":
+        return False
+    return (path.rstrip("/") or "/") in _AUTH_THROTTLED_PATHS
 
 
 def _is_public(path: str, method: str) -> bool:
@@ -297,6 +320,37 @@ class QuotaMiddleware(BaseHTTPMiddleware):
                         "tier": tier.value,
                     },
                 )
+
+            # Free-tier multi-window cost-safety caps (hour/day/week/month).
+            # Logic lives in window_limits.py; it fails OPEN on Redis errors
+            # so a blip never locks free users out. Paid tiers skip this.
+            if tier == Tier.free:
+                from clsplusplus.window_limits import (
+                    check_window_limits,
+                    record_window_operation,
+                    retry_after_seconds,
+                )
+                win_ok, window, win_used, win_limit = await check_window_limits(
+                    subject, self.settings,
+                )
+                if not win_ok:
+                    retry_after = retry_after_seconds(window)
+                    return JSONResponse(
+                        status_code=429,
+                        content={
+                            "detail": f"Free-tier {window}ly usage cap reached. "
+                                      f"Wait for the {window} window to reset, "
+                                      f"or upgrade your plan.",
+                            "window": window,
+                            "used": win_used,
+                            "limit": win_limit,
+                            "tier": tier.value,
+                            "retry_after": retry_after,
+                        },
+                        headers={"Retry-After": str(retry_after)},
+                    )
+                # Count this operation toward all four free-tier windows.
+                await record_window_operation(subject, self.settings)
         except Exception as exc:
             if self.settings.quota_fail_closed:
                 # Billing safety: refuse the request when we can't prove

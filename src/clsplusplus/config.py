@@ -24,6 +24,20 @@ class Settings(BaseSettings):
     rate_limit_requests: int = 100
     rate_limit_window_seconds: int = 60
 
+    # Launch hardening: tight per-IP throttle on the unauthenticated auth
+    # endpoints (/v1/auth/login, /v1/auth/register, /v1/waitlist/join). These
+    # are PUBLIC paths so the normal per-API-key limiter never sees them — an
+    # unauthenticated "login storm" has no key. Per-IP is the only defense.
+    # Over the limit → HTTP 429 + Retry-After. Fails OPEN on Redis errors.
+    auth_rate_limit_per_ip: int = 10           # CLS_AUTH_RATE_LIMIT_PER_IP
+    auth_rate_limit_window_seconds: int = 60   # CLS_AUTH_RATE_LIMIT_WINDOW_SECONDS
+
+    # asyncpg connection pool sizing for the user/integration stores. Render
+    # Postgres connection limits are modest, so keep max conservative. Raise
+    # via env only if a storm proves the pool is the bottleneck.
+    db_pool_min: int = 2                       # CLS_DB_POOL_MIN
+    db_pool_max: int = 10                      # CLS_DB_POOL_MAX
+
     # SaaS: Usage tracking for billing (marketplace)
     track_usage: bool = False
 
@@ -40,6 +54,24 @@ class Settings(BaseSettings):
     # away unlimited billable usage during an outage. Flip to false only if
     # availability matters more than billing accuracy during Redis outages.
     quota_fail_closed: bool = True    # CLS_QUOTA_FAIL_CLOSED
+
+    # Free-tier multi-window usage caps (cost safety; see window_limits.py).
+    # Enforced ONLY for the free tier, in addition to the monthly op cap.
+    # A free user who blows any of these gets HTTP 429. Conservative
+    # defaults for the launch — raise per-deployment via the env vars.
+    # The window check fails OPEN, so a Redis blip never locks free users out.
+    free_cap_per_hour: int = 120      # CLS_FREE_CAP_PER_HOUR
+    free_cap_per_day: int = 1_000     # CLS_FREE_CAP_PER_DAY
+    free_cap_per_week: int = 4_000    # CLS_FREE_CAP_PER_WEEK
+    free_cap_per_month: int = 8_000   # CLS_FREE_CAP_PER_MONTH
+
+    # Free-tier launch lifecycle: every new user gets 30 days at the generous
+    # launch quota, then stays free but drops to a small permanent hard cap.
+    # The effective monthly cap is picked per-request from the user's
+    # subscription_expires_at (see tiers.effective_free_cap) — no extra tier,
+    # no watchdog downgrade for free users.
+    free_launch_monthly_cap: int = 8_000     # CLS_FREE_LAUNCH_MONTHLY_CAP
+    free_posttrial_monthly_cap: int = 800    # CLS_FREE_POSTTRIAL_MONTHLY_CAP
 
     # User auth (JWT + Google OAuth + GitHub OAuth)
     jwt_secret: str = ""                  # CLS_JWT_SECRET (required for user auth)
@@ -195,10 +227,20 @@ class Settings(BaseSettings):
     waitlist_queue_seed_offset: int = 0
     waitlist_active_floor: int = 0
     # Daily promotion loop: promote the oldest N waiting visitors iff DAU is
-    # below the healthy threshold.
-    waitlist_promote_batch: int = 1
+    # below the healthy threshold. Launch default: release seats 5 at a time.
+    waitlist_promote_batch: int = 5
     waitlist_dau_healthy_threshold: int = 5
     waitlist_promote_interval_seconds: int = 86400  # 24h
+
+    # ── Launch region gating ──────────────────────────────────────────────
+    # The production launch is INDIA-ONLY for active accounts. Signups from
+    # other countries are routed into the waitlist queue instead of getting
+    # an active API key. `geo_gating_enabled` is the kill switch — flip it to
+    # false to open registration globally. Geo resolution FAILS OPEN: an
+    # unknown country is treated as allowed so a GeoIP outage never blocks
+    # Indian users.
+    launch_country: str = "IN"          # CLS_LAUNCH_COUNTRY (ISO-2)
+    geo_gating_enabled: bool = True     # CLS_GEO_GATING_ENABLED
 
     # Demo LLM keys (optional; demo uses these for real Claude/OpenAI/Gemini)
     anthropic_api_key: Optional[str] = None
