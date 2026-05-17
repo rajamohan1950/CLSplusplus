@@ -362,6 +362,7 @@ class TestMiddlewareIntegration:
 
         store = MagicMock()
         store.resolve_tier_from_key = AsyncMock(return_value="pro")
+        store.resolve_tier_and_expiry_from_key = AsyncMock(return_value=("pro", None))
         store.resolve_owner_email_from_key = AsyncMock(return_value="paid@example.com")
         resolver = TierResolver(store)
 
