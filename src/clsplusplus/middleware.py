@@ -9,6 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from clsplusplus.abuse_guard import client_ip
 from clsplusplus.auth import get_api_key_from_request, validate_api_key
 from clsplusplus.config import Settings
 from clsplusplus.rate_limit import check_auth_rate_limit, check_rate_limit
@@ -200,7 +201,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # limiter below because they're in _PUBLIC_PATHS. Apply a dedicated
         # tight per-IP throttle here so an unauthenticated storm is throttled.
         if _is_auth_throttled(request.url.path, request.method):
-            ip = request.client.host if request.client else "unknown"
+            ip = client_ip(request)
             a_allowed, _a_count, a_limit = await check_auth_rate_limit(ip, self.settings)
             if not a_allowed:
                 try:
@@ -227,8 +228,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         key_id = getattr(request.state, "api_key", None)
         if not key_id:
-            # Rate limit by client IP when no API key is present
-            key_id = f"ip:{request.client.host}" if request.client else "ip:unknown"
+            # Rate limit by real client IP (X-Forwarded-For aware) when no
+            # API key is present — request.client.host is the proxy IP.
+            key_id = f"ip:{client_ip(request)}"
 
         allowed, count, limit = await check_rate_limit(key_id, self.settings)
         if not allowed:

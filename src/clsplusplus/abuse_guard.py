@@ -20,6 +20,7 @@ Redis keys:
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import logging
 from typing import Optional
 
@@ -90,6 +91,64 @@ def is_suspicious_path(path: str) -> bool:
     """True when the path looks like an attack probe."""
     p = path.lower()
     return any(frag in p for frag in _SUSPICIOUS_FRAGMENTS)
+
+
+def client_ip(request) -> str:
+    """Best-effort real client IP, honoring X-Forwarded-For behind a proxy.
+
+    Render (and most PaaS) terminate TLS at a proxy, so `request.client.host`
+    is the proxy's PRIVATE IP — identical for every external user. Keying
+    abuse/rate-limit counters on that lumps all traffic onto one IP, which
+    instantly trips burst detection and blocklists the whole platform. The
+    real client is the first hop of X-Forwarded-For.
+    """
+    try:
+        xff = request.headers.get("x-forwarded-for")
+        if xff and isinstance(xff, str):
+            first = xff.split(",")[0].strip()
+            if first:
+                return first
+    except Exception:  # noqa: BLE001 — never raise into a request
+        pass
+    try:
+        return request.client.host if request.client else "unknown"
+    except Exception:  # noqa: BLE001
+        return "unknown"
+
+
+def is_infra_ip(host: str) -> bool:
+    """True for private/loopback/link-local IPs and unknown hosts.
+
+    This is platform traffic — load balancers, health checks, internal
+    probes — which must never be abuse-gated or counted. Behind Render the
+    health checker reaches the app on a private 10.x address.
+    """
+    if not host or host == "unknown":
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+        return ip.is_private or ip.is_loopback or ip.is_link_local
+    except ValueError:
+        return False
+
+
+# Endpoints that must NEVER be abuse-gated — health probes above all.
+# A 403 on a health endpoint makes the platform mark the service unhealthy.
+_ABUSE_EXEMPT_PREFIXES = (
+    "/health",
+    "/v1/health",
+    "/v1/memory/health",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+)
+
+
+def is_abuse_exempt_path(path: str) -> bool:
+    """True for health/infra/doc paths that must never be blocked or counted."""
+    if path in ("", "/"):
+        return True
+    return any(path == p or path.startswith(p) for p in _ABUSE_EXEMPT_PREFIXES)
 
 
 # --- blocklist primitives --------------------------------------------------
@@ -251,7 +310,7 @@ async def evaluate(
     """
     settings = settings or Settings()
     try:
-        host = request.client.host if request.client else "unknown"
+        host = client_ip(request)
         ip_identifier = f"ip:{host}"
 
         api_key = getattr(request.state, "api_key", None)
@@ -284,8 +343,7 @@ async def evaluate(
 def request_identifiers(request) -> tuple[str, Optional[str]]:
     """Return (ip_identifier, key_identifier) for a request. Never raises."""
     try:
-        host = request.client.host if request.client else "unknown"
-        ip_identifier = f"ip:{host}"
+        ip_identifier = f"ip:{client_ip(request)}"
     except Exception:  # noqa: BLE001
         ip_identifier = "ip:unknown"
     try:
@@ -323,6 +381,14 @@ class AbuseGuardMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:
         if not self.settings.abuse_guard_enabled:
+            return await call_next(request)
+
+        # Health/doc endpoints and platform (private-IP) traffic are never
+        # gated or counted. A health probe must never be 403'd, and the
+        # load balancer / health checker all reach the app on ONE private
+        # IP — counting it trips burst detection and blocklists the whole
+        # platform, failing every health check (→ 502 at the edge).
+        if is_abuse_exempt_path(request.url.path) or is_infra_ip(client_ip(request)):
             return await call_next(request)
 
         ip_identifier, _ = request_identifiers(request)

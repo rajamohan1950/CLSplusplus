@@ -365,9 +365,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             if ns:
                 req.namespace = ns
 
-    @app.get("/")
+    @app.api_route("/", methods=["GET", "HEAD"])
     async def root():
-        """API info — UI is served separately from Vercel at https://www.clsplusplus.com."""
+        """API info — UI is served separately from Vercel at https://www.clsplusplus.com.
+
+        Accepts HEAD so platform port/uptime probes don't get a 405.
+        """
         return {
             "name": "CLS++ API",
             "version": "0.1.0",
@@ -376,12 +379,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "ui": "https://www.clsplusplus.com",
         }
 
-    @app.get("/health")
+    @app.api_route("/health", methods=["GET", "HEAD"])
     async def health_check():
-        """Quick health check for Render/load balancers — must return 200 fast."""
+        """Quick health check for Render/load balancers — must return 200 fast.
+
+        Accepts HEAD as well as GET so any probe style succeeds.
+        """
         return {"status": "ok", "version": "7.0.0"}
 
-    @app.get("/v1/health")
+    @app.api_route("/v1/health", methods=["GET", "HEAD"])
     async def v1_health():
         """Quick liveness probe. chat.js and other clients call this on startup."""
         return {"status": "ok", "version": getattr(settings, "version", "0.7")}
