@@ -74,6 +74,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     # Launch-mode waitlist service (rate-limited rollout + social-proof widget)
     from clsplusplus.waitlist_service import WaitlistService, WaitlistError
+    # India-only launch gate — see clsplusplus/geo.py.
+    from clsplusplus.geo import (
+        resolve_country,
+        is_region_allowed,
+        queue_out_of_region,
+    )
     waitlist_service = WaitlistService(
         settings,
         user_store=user_service.store,
@@ -255,14 +261,84 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 content["fix"] = "Add Authorization: Bearer <api_key> header"
                 content["docs"] = "https://github.com/rajamohan1950/CLSplusplus/wiki/API-Reference"
             elif exc.status_code == 429:
-                content["fix"] = f"Retry after {request.headers.get('Retry-After', 60)} seconds or upgrade plan"
+                # Going a bit fast — keep the tone warm, never a bare code.
+                retry_after = int(request.headers.get("Retry-After", 60))
+                content["detail"] = detail
+                content["message"] = (
+                    "Whoa, you're going a little fast for us right now. "
+                    f"Take a breath and try again in about {retry_after} "
+                    "seconds — nothing went wrong and your data is safe."
+                )
+                content["retry_after"] = retry_after
+                content["fix"] = f"Retry after {retry_after} seconds or upgrade plan"
                 content["docs"] = "https://github.com/rajamohan1950/CLSplusplus/wiki/SaaS-and-Pricing"
+            elif exc.status_code == 402:
+                # Quota reached — friendly nudge, never a scary wall.
+                content["detail"] = detail
+                content["message"] = (
+                    "You've used up your plan's quota for now — nice work "
+                    "putting it to good use! Your saved data is safe. Upgrade "
+                    "your plan to keep going, or wait for your quota to reset."
+                )
+                content["fix"] = "Upgrade your plan for more usage"
+                content["docs"] = "https://github.com/rajamohan1950/CLSplusplus/wiki/SaaS-and-Pricing"
+            elif exc.status_code == 503:
+                # Server busy / fail-closed — reassure, give a retry window.
+                retry_after = int(request.headers.get("Retry-After", 5))
+                content["detail"] = detail
+                content["message"] = (
+                    "We're handling a lot of requests right now — hang tight "
+                    f"and please retry in a few seconds (about {retry_after}). "
+                    "Nothing is broken and your data is safe."
+                )
+                content["retry_after"] = retry_after
             elif exc.status_code == 422:
                 content["fix"] = "Check request body against API schema"
                 content["docs"] = "/docs"
         else:
             content = {"error": "request_error", "message": str(detail), "status_code": exc.status_code}
         return JSONResponse(status_code=exc.status_code, content=content)
+
+    # Catch-all so any unhandled error returns a JSON response instead of
+    # crashing the worker. Storm hardening: DB-pool exhaustion (asyncpg
+    # pool-acquire timeout / TooManyConnections) degrades to a clean 503 +
+    # Retry-After rather than a 500. The HTTPException handler above runs
+    # first for HTTP errors; this only sees genuinely unhandled exceptions.
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception):
+        import asyncio as _asyncio
+        import asyncpg as _asyncpg
+
+        # DB pool exhausted / Postgres out of connections → retryable 503.
+        # asyncpg raises TimeoutError (stdlib) when pool.acquire() blocks past
+        # its timeout, and TooManyConnectionsError when Postgres rejects.
+        if isinstance(exc, (_asyncio.TimeoutError, TimeoutError,
+                            _asyncpg.TooManyConnectionsError,
+                            _asyncpg.PostgresConnectionError)):
+            logger.error("pool/db saturation on %s: %s: %s",
+                         request.url.path, type(exc).__name__, exc)
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": "service_unavailable",
+                    "message": ("We're handling a lot of requests right now — "
+                                "hang tight and retry in a few seconds. "
+                                "Nothing is broken and your data is safe."),
+                    "status_code": 503,
+                    "retry_after": 5,
+                },
+                headers={"Retry-After": "5"},
+            )
+        logger.error("unhandled error on %s: %s: %s",
+                     request.url.path, type(exc).__name__, exc)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "internal_error",
+                "message": "An unexpected error occurred.",
+                "status_code": 500,
+            },
+        )
 
     def _ns_query(default: str = "default") -> str:
         return Query(default=default, min_length=1, max_length=64)
@@ -1107,15 +1183,16 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         # matches what QuotaMiddleware actually enforces.
         tier = get_tier(settings)
         subject = "anonymous"
+        subscription_expires_at = None
         if api_key:
-            tier_str = await _tier_resolver.resolve(api_key)
+            tier_str, subscription_expires_at = await _tier_resolver.resolve_effective(api_key)
             if tier_str:
                 try:
                     tier = Tier(tier_str)
                 except ValueError:
                     pass
             subject = await _tier_resolver.resolve_subject(api_key)
-        return await get_quota_status(subject, tier, settings)
+        return await get_quota_status(subject, tier, settings, subscription_expires_at)
 
     @app.get("/v1/billing/usage")
     async def billing_usage(request: Request):
@@ -1125,6 +1202,21 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     # =========================================================================
     # User Auth API — Registration, login, Google OAuth, profile
     # =========================================================================
+
+    def _is_db_saturation(exc: Exception) -> bool:
+        """True when an exception means the DB pool/Postgres is saturated.
+
+        Storm hardening: under a login/registration storm the asyncpg pool
+        can exhaust — pool.acquire() then raises asyncio.TimeoutError, and
+        Postgres rejects new connections with TooManyConnectionsError. These
+        are retryable; the auth handlers surface them as 503 (not 500) so a
+        burst degrades gracefully instead of looking like a server fault.
+        """
+        import asyncio as _asyncio
+        import asyncpg as _asyncpg
+        return isinstance(exc, (_asyncio.TimeoutError, TimeoutError,
+                                _asyncpg.TooManyConnectionsError,
+                                _asyncpg.PostgresConnectionError))
 
     def _set_session_cookie(response: JSONResponse, token: str) -> JSONResponse:
         response.set_cookie(
@@ -1148,6 +1240,14 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         waitlist widget instead. Waitlist-invited users bypass this via
         /v1/waitlist/accept which creates users directly.
         """
+        # India-only launch gate: out-of-region signups go to the waitlist
+        # queue instead of getting an active account. Fails open on unknown.
+        _country = await resolve_country(request)
+        if not is_region_allowed(_country, settings):
+            return JSONResponse(
+                content=await queue_out_of_region(waitlist_service, req.email)
+            )
+
         try:
             exceeded, current, cap = await waitlist_service.is_launch_cap_exceeded()
             if exceeded:
@@ -1262,6 +1362,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         otp_code = body.get("otp_code", "").strip()
         if not email or not otp_code or len(otp_code) != 6:
             raise HTTPException(status_code=400, detail="Email and 6-digit code required")
+        # India-only launch gate (defense-in-depth — register also gates, but
+        # the verify request may originate from a different IP).
+        _country = await resolve_country(request)
+        if not is_region_allowed(_country, settings):
+            return JSONResponse(
+                content=await queue_out_of_region(waitlist_service, email)
+            )
         try:
             user, token = await user_service.complete_registration(email, otp_code)
         except ValueError as e:
@@ -1469,6 +1576,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception:
             raise HTTPException(status_code=500, detail="Google auth service unavailable")
+        # India-only launch gate: out-of-region OAuth signups are routed to the
+        # waitlist queue and do NOT get a session cookie (no active account).
+        _country = await resolve_country(request)
+        if not is_region_allowed(_country, settings):
+            await queue_out_of_region(waitlist_service, user.get("email", ""))
+            from starlette.responses import RedirectResponse
+            return RedirectResponse("/?waitlist=queued_region")
         # Validate state is a safe relative path — reject open-redirect attempts
         _safe_redirect = "/dashboard.html"
         if state and state.startswith("/") and "://" not in state and not state.startswith("//"):
@@ -1587,6 +1701,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         except Exception as e:
             logger.error("GitHub auth error: %s: %s", type(e).__name__, e)
             raise HTTPException(status_code=500, detail="GitHub sign-in service unavailable")
+        # India-only launch gate: out-of-region OAuth signups are routed to the
+        # waitlist queue and do NOT get a session cookie (no active account).
+        _country = await resolve_country(request)
+        if not is_region_allowed(_country, settings):
+            await queue_out_of_region(waitlist_service, user.get("email", ""))
+            from starlette.responses import RedirectResponse
+            return RedirectResponse("/?waitlist=queued_region")
         from starlette.responses import RedirectResponse
         _target = (settings.frontend_url.rstrip("/") + safe_redirect) if settings.frontend_url else safe_redirect
         response = RedirectResponse(_target)
@@ -1612,7 +1733,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         # Usage counters key on the owner-email billing subject — the same
         # subject every api key this user owns writes to.
         subject = make_subject(user.get("email"), "")
-        return await get_quota_status(subject, tier, settings)
+        return await get_quota_status(
+            subject, tier, settings, user.get("subscription_expires_at"),
+        )
 
     @app.post("/v1/user/upgrade")
     async def upgrade_tier(req: TierUpgradeRequest, request: Request):
@@ -1666,6 +1789,74 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             return {"integrations": [i.model_dump(mode="json") if hasattr(i, "model_dump") else i for i in integrations]}
         except Exception:
             return {"integrations": []}
+
+    @app.get("/v1/mcp/connect")
+    async def mcp_connect(request: Request):
+        """One-click MCP connect.
+
+        For the authenticated user, mints a fresh API key (reusing the
+        integration-service key-creation path) and returns a ready-to-paste
+        ``mcpServers`` config block plus a one-line ``claude mcp add`` command,
+        both pre-filled with the new key and pointed at production.
+        """
+        from clsplusplus.models import IntegrationCreate, ApiKeyCreate
+
+        user_id = getattr(request.state, "user_id", None)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        user = await user_service.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        namespace = f"user-{user_id[:8]}"
+        owner_email = user.get("email")
+
+        # Reuse the existing key-creation path: find (or create) an
+        # integration for this user, then mint a fresh memory-scoped key.
+        existing = await integration_service.list_all(namespace)
+        integration = next((i for i in existing if i.status == "active"), None)
+        scopes = ["memories:read", "memories:write"]
+        key_label = "MCP one-click connect"
+
+        if integration is None:
+            _, api_key = await integration_service.register(
+                IntegrationCreate(
+                    name="CLS++ MCP",
+                    description="MCP server connection for Claude Code / Cursor / Windsurf",
+                    namespace=namespace,
+                    owner_email=owner_email,
+                )
+            )
+        else:
+            api_key = await integration_service.create_key(
+                integration.id,
+                ApiKeyCreate(scopes=scopes, label=key_label),
+            )
+            if api_key is None:
+                raise HTTPException(status_code=500, detail="Could not mint API key")
+
+        api_url = "https://www.clsplusplus.com"
+        raw_key = api_key.key
+        server_block = {
+            "command": "python3",
+            "args": ["-m", "clsplusplus.mcp_server"],
+            "env": {"CLS_API_URL": api_url, "CLS_API_KEY": raw_key},
+        }
+        return {
+            "server_name": "cls-memory",
+            "api_url": api_url,
+            "api_key": raw_key,  # shown once
+            "key_id": api_key.id,
+            # Ready-to-paste into .claude/settings.json
+            "mcp_config": {"mcpServers": {"cls-memory": server_block}},
+            # One-line install for the Claude Code CLI
+            "install_command": (
+                "claude mcp add cls-memory "
+                f"--env CLS_API_URL={api_url} "
+                f"--env CLS_API_KEY={raw_key} "
+                "-- python3 -m clsplusplus.mcp_server"
+            ),
+        }
 
     @app.patch("/v1/user/profile")
     async def update_profile(req: UserProfileUpdateRequest, request: Request):
