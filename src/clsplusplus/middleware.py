@@ -518,3 +518,25 @@ class TracingMiddleware(BaseHTTPMiddleware):
                 tracer.add_metadata(tid, http_hop, status=status_code, client=client_ip,
                                     error=err_msg)
                 raise
+            finally:
+                # Piggyback live user-pulse signal recording. Fire-and-forget
+                # and fully self-contained (catches its own errors) so a pulse
+                # failure can never slow or break a real request.
+                _record_user_pulse(request, op, status_code)
+
+
+def _record_user_pulse(request: Request, op: str, status_code: int) -> None:
+    """Fire-and-forget: feed one HTTP outcome into the live frustration signal.
+
+    Only fires for authenticated JWT users (we key the pulse on user_id).
+    Cheap, fail-open: any error is swallowed here so the request path is
+    never affected. See clsplusplus/user_pulse.py.
+    """
+    try:
+        user_id = getattr(request.state, "user_id", None)
+        if not user_id:
+            return
+        from clsplusplus.user_pulse import record_http_outcome
+        asyncio.create_task(record_http_outcome(user_id, status_code, op))
+    except Exception:
+        pass

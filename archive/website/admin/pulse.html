@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Pulse &amp; Satisfaction | CLS++</title>
+  <link rel="stylesheet" href="../styles.css?v=2">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="../auth.js" defer></script>
+  <link rel="stylesheet" href="styles.css?v=2">
+  <style>
+    .pulse-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .pulse-band { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    .band-happy { background: rgba(34,197,94,.18); color: #16a34a; }
+    .band-neutral { background: rgba(234,179,8,.18); color: #ca8a04; }
+    .band-frustrated { background: rgba(239,68,68,.2); color: #dc2626; }
+    .score-bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,.12); overflow: hidden; min-width: 80px; }
+    .score-fill { height: 100%; border-radius: 4px; }
+    .reason-chip { display: inline-block; background: rgba(255,255,255,.08); border-radius: 6px; padding: 2px 8px; margin: 2px 4px 2px 0; font-size: 12px; }
+    .pulse-empty { padding: 32px; text-align: center; opacity: .6; }
+    .pulse-section { margin-bottom: 32px; }
+    .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; margin-right: 6px; animation: livePulse 1.6s infinite; }
+    @keyframes livePulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+  </style>
+</head>
+<body>
+  <div class="video-bg"><video autoplay muted loop playsinline poster="../beach-bg.jpg"><source src="../sunrise-ocean.mp4" type="video/mp4"></video></div>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/admin/dashboard.html">Admin Dashboard</a>
+        <a href="/admin/pulse.html">User Pulse</a>
+        <div id="nav-auth" class="nav-auth"></div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="admin-container">
+    <h1 style="margin-bottom: 4px;">User Pulse &amp; Satisfaction</h1>
+    <p style="opacity:.7; margin-bottom: 24px;">
+      <span class="live-dot"></span>Live frustration signal plus CSAT survey results.
+      Auto-refreshes every 20 seconds.
+    </p>
+
+    <!-- CSAT KPI bar -->
+    <div class="pulse-grid" id="csat-kpis">
+      <div class="kpi-card"><div class="kpi-label">CSAT</div><div class="kpi-value" id="kpi-csat">--</div><div class="kpi-sub">% rating 4-5</div></div>
+      <div class="kpi-card"><div class="kpi-label">Avg Score</div><div class="kpi-value" id="kpi-avg">--</div><div class="kpi-sub">out of 5</div></div>
+      <div class="kpi-card"><div class="kpi-label">Responses</div><div class="kpi-value" id="kpi-responses">--</div><div class="kpi-sub" id="kpi-window"></div></div>
+      <div class="kpi-card"><div class="kpi-label">Frustrated Now</div><div class="kpi-value kpi-red" id="kpi-frustrated">--</div><div class="kpi-sub">live signal</div></div>
+    </div>
+
+    <!-- Live frustrated users -->
+    <div class="pulse-section">
+      <h2>Frustrated Right Now</h2>
+      <p style="opacity:.65; font-size:14px; margin-bottom:12px;">
+        Users with a live frustration score &ge; 60. Reach out before they churn.
+      </p>
+      <div class="table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>User</th><th>Tier</th><th>Score</th><th>Band</th><th>Why</th></tr></thead>
+          <tbody id="pulse-rows"><tr><td colspan="5" class="pulse-empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- CSAT trend -->
+    <div class="pulse-section">
+      <h2>Satisfaction Trend</h2>
+      <div class="table-wrap" style="padding:16px;">
+        <canvas id="csat-trend" height="90"></canvas>
+      </div>
+    </div>
+
+    <!-- Recent comments -->
+    <div class="pulse-section">
+      <h2>Recent Comments</h2>
+      <div class="table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>When</th><th>User</th><th>Score</th><th>Context</th><th>Comment</th></tr></thead>
+          <tbody id="comment-rows"><tr><td colspan="5" class="pulse-empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+    var trendChart = null;
+
+    function esc(s) {
+      var d = document.createElement('div');
+      d.textContent = s == null ? '' : String(s);
+      return d.innerHTML;
+    }
+
+    async function fetchJSON(url) {
+      try {
+        var resp = await fetch(url, { credentials: 'same-origin' });
+        if (resp.ok) return await resp.json();
+      } catch (e) {}
+      return null;
+    }
+
+    function setText(id, txt) {
+      var el = document.getElementById(id);
+      if (el) el.textContent = txt;
+    }
+
+    function bandClass(band) {
+      return band === 'frustrated' ? 'band-frustrated'
+           : band === 'neutral' ? 'band-neutral' : 'band-happy';
+    }
+
+    function scoreColor(score) {
+      if (score >= 60) return '#dc2626';
+      if (score >= 25) return '#ca8a04';
+      return '#16a34a';
+    }
+
+    function renderPulse(data) {
+      var tbody = document.getElementById('pulse-rows');
+      var users = (data && data.users) || [];
+      setText('kpi-frustrated', data ? (data.frustrated_count || 0) : '--');
+      if (!users.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="pulse-empty">'
+          + 'No frustrated users right now. All calm.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = users.map(function (u) {
+        var reasons = (u.reasons || []).map(function (r) {
+          return '<span class="reason-chip">' + esc(r.signal)
+            + ' &times;' + r.count + ' (' + r.points + 'pt)</span>';
+        }).join('');
+        return '<tr>'
+          + '<td>' + esc(u.email || u.user_id) + '</td>'
+          + '<td>' + esc(u.tier || '-') + '</td>'
+          + '<td><div style="display:flex;align-items:center;gap:8px;">'
+          +   '<strong>' + u.score + '</strong>'
+          +   '<div class="score-bar"><div class="score-fill" style="width:'
+          +     u.score + '%;background:' + scoreColor(u.score) + '"></div></div>'
+          + '</div></td>'
+          + '<td><span class="pulse-band ' + bandClass(u.band) + '">'
+          +   esc(u.band) + '</span></td>'
+          + '<td>' + (reasons || '<span style="opacity:.5">—</span>') + '</td>'
+          + '</tr>';
+      }).join('');
+    }
+
+    function renderCSAT(data) {
+      if (!data) return;
+      setText('kpi-csat', (data.csat_percent != null ? data.csat_percent : 0) + '%');
+      setText('kpi-avg', data.avg_score != null ? data.avg_score : 0);
+      setText('kpi-responses', data.responses != null ? data.responses : 0);
+      setText('kpi-window', 'last ' + (data.window_days || 90) + ' days');
+
+      var trend = data.trend || [];
+      var labels = trend.map(function (t) { return t.date; });
+      var csat = trend.map(function (t) { return t.csat; });
+      var ctx = document.getElementById('csat-trend');
+      if (!ctx) return;
+      if (trendChart) trendChart.destroy();
+      trendChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'CSAT %', data: csat,
+            borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,.15)',
+            fill: true, tension: 0.3,
+          }],
+        },
+        options: {
+          responsive: true,
+          scales: { y: { beginAtZero: true, max: 100 } },
+          plugins: { legend: { display: false } },
+        },
+      });
+
+      var crows = document.getElementById('comment-rows');
+      var comments = data.recent_comments || [];
+      if (!comments.length) {
+        crows.innerHTML = '<tr><td colspan="5" class="pulse-empty">No comments yet.</td></tr>';
+        return;
+      }
+      crows.innerHTML = comments.map(function (c) {
+        return '<tr>'
+          + '<td>' + esc((c.created_at || '').slice(0, 16).replace('T', ' ')) + '</td>'
+          + '<td>' + esc(c.email) + '</td>'
+          + '<td>' + esc(c.score) + '/5</td>'
+          + '<td>' + esc(c.context || '-') + '</td>'
+          + '<td>' + esc(c.comment) + '</td>'
+          + '</tr>';
+      }).join('');
+    }
+
+    async function refreshPulse() {
+      renderPulse(await fetchJSON('/admin/metrics/pulse'));
+    }
+
+    async function refreshCSAT() {
+      renderCSAT(await fetchJSON('/admin/metrics/feedback?days=90'));
+    }
+
+    async function init() {
+      if (typeof CLSAuth !== 'undefined' && CLSAuth.requireAdmin) {
+        await CLSAuth.requireAdmin();
+      }
+      await Promise.all([refreshPulse(), refreshCSAT()]);
+      // Live signal: refresh the frustration list frequently, CSAT slower.
+      setInterval(refreshPulse, 20000);
+      setInterval(refreshCSAT, 120000);
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+  })();
+  </script>
+</body>
+</html>

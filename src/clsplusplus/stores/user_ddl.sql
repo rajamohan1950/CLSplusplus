@@ -130,3 +130,22 @@ CREATE INDEX IF NOT EXISTS idx_pending_reg_token ON pending_registrations(token_
 ALTER TABLE revenue_events DROP CONSTRAINT IF EXISTS revenue_events_user_id_fkey;
 ALTER TABLE revenue_events ADD CONSTRAINT revenue_events_user_id_fkey
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+
+-- User feedback / satisfaction (CSAT).
+-- One row per explicit feedback submission. `score` is a 1-5 rating;
+-- `sentiment` is the coarse thumbs up/down a one-click widget can send
+-- without forcing a number. `context` is a free-form tag for where the
+-- feedback came from (e.g. 'integrate-page', 'memory-viewer'). CSAT is
+-- computed as the share of 4-5 scores; trend is bucketed by day.
+CREATE TABLE IF NOT EXISTS user_feedback (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    score       SMALLINT NOT NULL CHECK (score BETWEEN 1 AND 5),
+    sentiment   TEXT NOT NULL CHECK (sentiment IN ('up', 'down')),
+    comment     TEXT,
+    context     TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_feedback_user ON user_feedback(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_feedback_created ON user_feedback(created_at DESC);

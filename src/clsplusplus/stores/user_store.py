@@ -663,3 +663,106 @@ class UserStore:
                 limit,
             )
             return [_row_to_dict(r) for r in rows]
+
+    # =========================================================================
+    # User feedback / satisfaction (CSAT)
+    # =========================================================================
+
+    async def record_feedback(
+        self,
+        user_id: str,
+        score: int,
+        sentiment: str,
+        comment: Optional[str] = None,
+        context: Optional[str] = None,
+    ) -> dict:
+        """Persist one explicit feedback submission."""
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO user_feedback (user_id, score, sentiment, comment, context)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING *
+                """,
+                user_id, score, sentiment, comment, context,
+            )
+            return _row_to_dict(row)
+
+    async def get_feedback_summary(self, days: int = 90) -> dict:
+        """Aggregate CSAT over the trailing window.
+
+        CSAT is the share of 4-5 scores. `trend` is a per-day series so
+        the admin page can plot satisfaction over time. `recent` carries
+        the latest commented feedback for qualitative review.
+        """
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            totals = await conn.fetchrow(
+                """
+                SELECT
+                    COUNT(*)                                    AS responses,
+                    COUNT(*) FILTER (WHERE score >= 4)           AS satisfied,
+                    COALESCE(AVG(score), 0)                      AS avg_score,
+                    COUNT(*) FILTER (WHERE sentiment = 'down')   AS thumbs_down
+                FROM user_feedback
+                WHERE created_at >= NOW() - INTERVAL '1 day' * $1
+                """,
+                days,
+            )
+            trend_rows = await conn.fetch(
+                """
+                SELECT DATE(created_at) AS day,
+                       COUNT(*)                          AS responses,
+                       COUNT(*) FILTER (WHERE score >= 4) AS satisfied,
+                       COALESCE(AVG(score), 0)           AS avg_score
+                FROM user_feedback
+                WHERE created_at >= NOW() - INTERVAL '1 day' * $1
+                GROUP BY DATE(created_at)
+                ORDER BY day
+                """,
+                days,
+            )
+            recent_rows = await conn.fetch(
+                """
+                SELECT f.id, f.score, f.sentiment, f.comment, f.context,
+                       f.created_at, u.email
+                FROM user_feedback f
+                JOIN users u ON u.id = f.user_id
+                WHERE f.comment IS NOT NULL AND f.comment <> ''
+                ORDER BY f.created_at DESC
+                LIMIT 30
+                """,
+            )
+
+        responses = int(totals["responses"] or 0)
+        satisfied = int(totals["satisfied"] or 0)
+        csat = round(satisfied / responses * 100, 1) if responses else 0.0
+        trend = [
+            {
+                "date": str(r["day"]),
+                "responses": int(r["responses"]),
+                "csat": round(int(r["satisfied"]) / int(r["responses"]) * 100, 1)
+                        if r["responses"] else 0.0,
+                "avg_score": round(float(r["avg_score"]), 2),
+            }
+            for r in trend_rows
+        ]
+        recent = []
+        for r in recent_rows:
+            d = dict(r)
+            for k, v in d.items():
+                if hasattr(v, "hex") and hasattr(v, "int"):
+                    d[k] = str(v)
+                elif isinstance(v, datetime):
+                    d[k] = v.isoformat()
+            recent.append(d)
+        return {
+            "window_days": days,
+            "responses": responses,
+            "csat_percent": csat,
+            "avg_score": round(float(totals["avg_score"] or 0), 2),
+            "thumbs_down": int(totals["thumbs_down"] or 0),
+            "trend": trend,
+            "recent_comments": recent,
+        }
