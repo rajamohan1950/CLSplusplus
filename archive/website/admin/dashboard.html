@@ -71,6 +71,8 @@
           <a href="#" class="sidebar-item" data-section="sec-users">Per-User Breakdown</a>
           <a href="#" class="sidebar-item" data-section="sec-waitlist">Launch Waitlist</a>
           <a href="#" class="sidebar-item" data-section="sec-testing">Testing</a>
+          <a href="/admin/admin-funnel.html" class="sidebar-item sidebar-link">Traffic &amp; Funnel</a>
+          <a href="/admin/api-usage.html" class="sidebar-item sidebar-link">API Usage Analytics</a>
         </nav>
       </aside>
 
@@ -359,9 +361,11 @@
   </div>
 
   <script>
-    // Sidebar navigation — show/hide sections
+    // Sidebar navigation — show/hide sections.
+    // .sidebar-link items are real navigation links (e.g. Traffic & Funnel)
+    // and are skipped so the browser follows their href normally.
     (function() {
-      var items = document.querySelectorAll('.sidebar-item');
+      var items = document.querySelectorAll('.sidebar-item:not(.sidebar-link)');
       var sections = document.querySelectorAll('.admin-section');
       items.forEach(function(item) {
         item.addEventListener('click', function(e) {

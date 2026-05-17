@@ -2140,6 +2140,114 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         if not getattr(request.state, "is_admin", False):
             raise HTTPException(status_code=403, detail="Admin access required")
 
+    # =========================================================================
+    # User Feedback + Satisfaction (CSAT) + Live Pulse
+    # =========================================================================
+
+    @app.post("/v1/feedback")
+    async def submit_feedback(request: Request):
+        """Authenticated user submits feedback: {score 1-5, sentiment up|down,
+        comment?, context?}. Persisted to user_feedback for CSAT, and a
+        thumbs-down also feeds the live frustration pulse immediately."""
+        user_id = getattr(request.state, "user_id", None)
+        if not user_id:
+            # Feedback must attach to a real account so CSAT is per-user.
+            raise HTTPException(
+                status_code=401,
+                detail="Sign in to submit feedback.",
+            )
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+        score = body.get("score")
+        if not isinstance(score, int) or not (1 <= score <= 5):
+            raise HTTPException(
+                status_code=400,
+                detail="`score` must be an integer 1-5.",
+            )
+        sentiment = body.get("sentiment")
+        if sentiment not in ("up", "down"):
+            raise HTTPException(
+                status_code=400,
+                detail="`sentiment` must be 'up' or 'down'.",
+            )
+        comment = body.get("comment")
+        if comment is not None:
+            comment = str(comment).strip()[:2000] or None
+        context = body.get("context")
+        if context is not None:
+            context = str(context).strip()[:200] or None
+
+        try:
+            row = await user_service.store.record_feedback(
+                user_id, score, sentiment, comment, context,
+            )
+        except Exception as e:
+            logger.error("Feedback record error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="Could not save feedback")
+
+        # An explicit thumbs-down is the strongest survey-side frustration
+        # tell — feed it into the live pulse so the admin sees it at once.
+        # Fail-open: a pulse hiccup must not fail the feedback write.
+        if sentiment == "down":
+            try:
+                from clsplusplus.user_pulse import record_signal
+                await record_signal(user_id, "thumbs_down", settings)
+            except Exception:
+                pass
+
+        return {"status": "ok", "id": row["id"]}
+
+    @app.get("/admin/metrics/feedback")
+    async def admin_feedback(request: Request, days: int = 90):
+        """CSAT aggregate: % satisfied (4-5), average score, daily trend,
+        and recent commented feedback."""
+        _require_admin(request)
+        try:
+            days = max(1, min(int(days), 365))
+            return await user_service.store.get_feedback_summary(days=days)
+        except Exception as e:
+            logger.error("Admin feedback error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="Feedback data unavailable")
+
+    @app.get("/admin/metrics/pulse")
+    async def admin_pulse(request: Request):
+        """Live frustration signal: users currently in the 'frustrated'
+        band with their 0-100 score and the signal breakdown (why)."""
+        _require_admin(request)
+        try:
+            from clsplusplus.user_pulse import list_frustrated_users
+            frustrated = await list_frustrated_users(settings)
+            # Resolve emails so the operator knows who to reach out to.
+            enriched = []
+            for p in frustrated:
+                user = None
+                try:
+                    user = await user_service.store.get_by_id(p["user_id"])
+                except Exception:
+                    user = None
+                enriched.append({
+                    **p,
+                    "email": user["email"] if user else None,
+                    "tier": user["tier"] if user else None,
+                })
+            return {
+                "frustrated_count": len(enriched),
+                "users": enriched,
+            }
+        except Exception as e:
+            logger.error("Admin pulse error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="Pulse data unavailable")
+
+    # Website-traffic + conversion-funnel analytics. Endpoints live in their
+    # own module (funnel_routes) to keep this file's footprint small:
+    #   POST /v1/events/track       (public capture)
+    #   GET  /admin/metrics/funnel  (admin aggregation)
+    from clsplusplus.funnel_routes import register_funnel_routes
+    register_funnel_routes(app, settings, _require_admin)
+
     @app.patch("/admin/users/{user_id}")
     async def admin_update_user(request: Request, user_id: str = Path(...)):
         """Admin: update user fields (name, email, tier, is_admin)."""
@@ -2252,6 +2360,33 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         except Exception as e:
             logger.error("Admin extension analytics error: %s: %s", type(e).__name__, e)
             raise HTTPException(status_code=500, detail="Extension analytics unavailable")
+
+    @app.get("/admin/metrics/api-usage")
+    async def admin_api_usage(request: Request):
+        """API-key consumption analytics: key counts, per-user ops, active hours."""
+        _require_admin(request)
+        try:
+            from clsplusplus.api_usage_analytics import build_api_usage_report
+            return await build_api_usage_report(
+                _integration_store.get_pool, settings=settings,
+            )
+        except Exception as e:
+            logger.error("Admin api-usage error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="API usage data unavailable")
+
+    @app.get("/admin/metrics/cost")
+    async def admin_cost(request: Request):
+        """Infrastructure cost dashboard: recent daily cost + 7-day Monte Carlo forecast."""
+        _require_admin(request)
+        try:
+            from clsplusplus.cost_forecast import build_cost_report, fetch_usage_history
+
+            pool = await user_service.store.get_pool()
+            rows = await fetch_usage_history(pool)
+            return build_cost_report(rows)
+        except Exception as e:
+            logger.error("Admin cost forecast error: %s: %s", type(e).__name__, e)
+            raise HTTPException(status_code=500, detail="Cost forecast unavailable")
 
     @app.get("/v1/stats/extension")
     async def public_extension_stats():

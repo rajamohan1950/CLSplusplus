@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Usage Analytics | CLS++ Admin</title>
+  <link rel="stylesheet" href="../styles.css?v=2">
+  <link rel="stylesheet" href="styles.css?v=2">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="../auth.js" defer></script>
+  <style>
+    .au-wrap { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
+    .au-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; margin-bottom: 28px; }
+    .au-card { background: var(--bg-elevated); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 18px 20px; }
+    .au-label { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+    .au-value { font-size: 30px; font-weight: 700; margin-top: 6px; color: var(--text); }
+    .au-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+    .au-section { background: var(--bg-elevated); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 22px; margin-bottom: 24px; }
+    .au-section h2 { margin: 0 0 4px; font-size: 18px; }
+    .au-section p.sub { margin: 0 0 16px; font-size: 13px; color: var(--text-muted); }
+    table.au-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    table.au-table th { text-align: left; padding: 8px 10px; color: var(--text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    table.au-table td { padding: 9px 10px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    table.au-table tr:hover td { background: rgba(255,255,255,0.02); }
+    .au-rank { color: var(--text-muted); width: 36px; }
+    .au-ops { font-weight: 600; text-align: right; }
+    .au-chart-wrap { position: relative; height: 320px; }
+    .au-banner { font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 20px; }
+    .au-banner.redis { background: rgba(234,179,8,0.12); color: #eab308; }
+    .au-banner.empty { background: rgba(139,139,154,0.12); color: var(--text-muted); }
+    .au-empty { color: var(--text-muted); padding: 16px 0; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="video-bg"><video autoplay muted loop playsinline poster="../beach-bg.jpg"><source src="../sunrise-ocean.mp4" type="video/mp4"></video></div>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="/admin/dashboard.html">Admin Dashboard</a>
+        <a href="/admin/api-usage.html">API Usage</a>
+        <div id="nav-auth" class="nav-auth"></div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="au-wrap">
+    <h1 style="margin:0 0 6px;">API Usage Analytics</h1>
+    <p style="color:var(--text-muted);margin:0 0 24px;">API-key consumption, per-user operation totals, and when usage happens.</p>
+
+    <div id="au-banner"></div>
+
+    <div class="au-kpis" id="au-kpis">
+      <div class="au-card">
+        <div class="au-label">Total API Keys</div>
+        <div class="au-value" id="kpi-total">--</div>
+        <div class="au-sub">Non-revoked credentials</div>
+      </div>
+      <div class="au-card">
+        <div class="au-label">Active Keys</div>
+        <div class="au-value" id="kpi-active">--</div>
+        <div class="au-sub">Status = active</div>
+      </div>
+      <div class="au-card">
+        <div class="au-label">Actively Consumed</div>
+        <div class="au-value" id="kpi-consumed">--</div>
+        <div class="au-sub">Active keys with traffic</div>
+      </div>
+      <div class="au-card">
+        <div class="au-label">Total Operations</div>
+        <div class="au-value" id="kpi-ops">--</div>
+        <div class="au-sub">Across all users</div>
+      </div>
+    </div>
+
+    <div class="au-section">
+      <h2>Active Hours</h2>
+      <p class="sub">Operations broken down by hour of day (UTC). Shows when your API is busiest.</p>
+      <div class="au-chart-wrap"><canvas id="chart-hours"></canvas></div>
+    </div>
+
+    <div class="au-section">
+      <h2>Per-User Consumption</h2>
+      <p class="sub">Top users by operation count. Most active at the top, least active at the bottom.</p>
+      <table class="au-table">
+        <thead>
+          <tr>
+            <th class="au-rank">#</th>
+            <th>User</th>
+            <th>Tier</th>
+            <th>Keys Used</th>
+            <th>Last Active</th>
+            <th style="text-align:right;">Operations</th>
+          </tr>
+        </thead>
+        <tbody id="au-user-rows">
+          <tr><td colspan="6" class="au-empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var hourChart = null;
+
+      async function fetchJSON(url) {
+        var resp = await fetch(url, { credentials: 'same-origin' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status + ' for ' + url);
+        return resp.json();
+      }
+
+      function fmt(n) {
+        return (n == null ? 0 : n).toLocaleString();
+      }
+
+      function escapeHtml(s) {
+        return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+        });
+      }
+
+      function renderBanner(source) {
+        var el = document.getElementById('au-banner');
+        if (source === 'redis') {
+          el.className = 'au-banner redis';
+          el.textContent = 'Durable metering log unavailable — showing current-period Redis counters. ' +
+            'Per-user rows are grouped by billing subject and active-hours data is not available.';
+        } else if (source === 'empty') {
+          el.className = 'au-banner empty';
+          el.textContent = 'No usage events recorded yet. Key counts are live; consumption fills in once metering records traffic.';
+        } else {
+          el.className = '';
+          el.textContent = '';
+        }
+      }
+
+      function renderKpis(data) {
+        var k = data.api_keys || {};
+        document.getElementById('kpi-total').textContent = fmt(k.total);
+        document.getElementById('kpi-active').textContent = fmt(k.active);
+        document.getElementById('kpi-consumed').textContent = fmt(k.consumed);
+        document.getElementById('kpi-ops').textContent = fmt(data.total_operations);
+      }
+
+      function renderHours(buckets) {
+        var labels = buckets.map(function (b) {
+          return String(b.hour).padStart(2, '0') + ':00';
+        });
+        var values = buckets.map(function (b) { return b.operations; });
+        var ctx = document.getElementById('chart-hours').getContext('2d');
+        if (hourChart) hourChart.destroy();
+        hourChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Operations',
+              data: values,
+              backgroundColor: 'rgba(255,107,53,0.7)',
+              borderRadius: 4
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { ticks: { color: '#8b8b9a' }, grid: { display: false } },
+              y: { beginAtZero: true, ticks: { color: '#8b8b9a' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+          }
+        });
+      }
+
+      function renderUsers(rows) {
+        var tbody = document.getElementById('au-user-rows');
+        if (!rows || !rows.length) {
+          tbody.innerHTML = '<tr><td colspan="6" class="au-empty">No per-user consumption recorded yet.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = rows.map(function (r, i) {
+          var last = r.last_active ? new Date(r.last_active).toLocaleString() : '—';
+          var who = escapeHtml(r.email || r.user_id || '(unknown)');
+          var name = r.name ? ' <span style="color:var(--text-muted);">(' + escapeHtml(r.name) + ')</span>' : '';
+          return '<tr>' +
+            '<td class="au-rank">' + (i + 1) + '</td>' +
+            '<td>' + who + name + '</td>' +
+            '<td>' + escapeHtml(r.tier || '—') + '</td>' +
+            '<td>' + fmt(r.keys_used) + '</td>' +
+            '<td>' + escapeHtml(last) + '</td>' +
+            '<td class="au-ops">' + fmt(r.operations) + '</td>' +
+            '</tr>';
+        }).join('');
+      }
+
+      async function load() {
+        try {
+          var data = await fetchJSON('/admin/metrics/api-usage');
+          renderBanner(data.source);
+          renderKpis(data);
+          renderHours(data.active_hours || []);
+          renderUsers(data.per_user || []);
+        } catch (e) {
+          document.getElementById('au-banner').className = 'au-banner empty';
+          document.getElementById('au-banner').textContent =
+            'Failed to load API usage analytics: ' + e.message + '. Admin access required.';
+          document.getElementById('au-user-rows').innerHTML =
+            '<tr><td colspan="6" class="au-empty">Unavailable.</td></tr>';
+        }
+      }
+
+      load();
+    })();
+  </script>
+</body>
+</html>
