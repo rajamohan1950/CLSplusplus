@@ -1275,6 +1275,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
+            if _is_db_saturation(e):
+                logger.error("Registration DB saturation: %s: %s", type(e).__name__, e)
+                raise HTTPException(
+                    status_code=503,
+                    detail="Service is busy. Please retry in a few seconds.",
+                    headers={"Retry-After": "5"},
+                )
             logger.error("Registration error: %s: %s", type(e).__name__, e)
             raise HTTPException(status_code=500, detail="Registration service unavailable")
         return JSONResponse(content=result)
@@ -1297,6 +1304,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         except WaitlistError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
+            if _is_db_saturation(e):
+                logger.error("Waitlist join DB saturation: %s: %s", type(e).__name__, e)
+                raise HTTPException(
+                    status_code=503,
+                    detail="Service is busy. Please retry in a few seconds.",
+                    headers={"Retry-After": "5"},
+                )
             logger.error("Waitlist join error: %s: %s", type(e).__name__, e)
             raise HTTPException(status_code=500, detail="Waitlist service unavailable")
         return JSONResponse(content=result)
