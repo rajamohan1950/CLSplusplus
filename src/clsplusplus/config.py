@@ -242,6 +242,14 @@ class Settings(BaseSettings):
     launch_country: str = "IN"          # CLS_LAUNCH_COUNTRY (ISO-2)
     geo_gating_enabled: bool = True     # CLS_GEO_GATING_ENABLED
 
+    # ── Abuse guard ───────────────────────────────────────────────────────
+    # MVP abuse-detection harness: Redis-backed blocklist + cheap heuristic
+    # signals checked as the outermost middleware. See abuse_guard.py.
+    abuse_guard_enabled: bool = True          # CLS_ABUSE_GUARD_ENABLED
+    abuse_block_ttl_seconds: int = 86400      # CLS_ABUSE_BLOCK_TTL_SECONDS (24h)
+    abuse_auth_fail_threshold: int = 20       # CLS_ABUSE_AUTH_FAIL_THRESHOLD (per IP / 5 min)
+    abuse_burst_threshold: int = 200          # CLS_ABUSE_BURST_THRESHOLD (requests / 10s)
+
     # Demo LLM keys (optional; demo uses these for real Claude/OpenAI/Gemini)
     anthropic_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None

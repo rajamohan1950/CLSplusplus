@@ -23,6 +23,7 @@ from clsplusplus.integration_service import IntegrationService
 from clsplusplus.memory_service import MemoryService
 from clsplusplus.user_service import UserService
 from clsplusplus.middleware import AuthMiddleware, QuotaMiddleware, RateLimitMiddleware, RequestIdMiddleware, TracingMiddleware
+from clsplusplus.abuse_guard import AbuseGuardMiddleware
 from clsplusplus.tracer import tracer
 from clsplusplus.models import (
     AdjudicateRequest,
@@ -240,12 +241,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         expose_headers=["X-Request-Id", "X-RateLimit-Limit", "X-RateLimit-Remaining"],
     )
     # Middleware execution order: outermost (added last) runs first.
-    # TracingMiddleware → RequestId → RateLimit → Auth → Quota → route handler
+    # AbuseGuard → Tracing → RequestId → RateLimit → Auth → Quota → route handler
     app.add_middleware(QuotaMiddleware, settings=settings, tier_resolver=_tier_resolver)
     app.add_middleware(AuthMiddleware, settings=settings, integration_store=_integration_store)
     app.add_middleware(RateLimitMiddleware, settings=settings)
     app.add_middleware(RequestIdMiddleware)
-    app.add_middleware(TracingMiddleware)  # outermost: traces every /v1/* request
+    app.add_middleware(TracingMiddleware)
+    app.add_middleware(AbuseGuardMiddleware, settings=settings)  # outermost: blocklist check first
 
     # Structured error handler (blueprint: error messages that teach)
     @app.exception_handler(HTTPException)
@@ -2386,6 +2388,24 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             logger.error("admin expire-due: %s: %s", type(exc).__name__, exc)
             raise HTTPException(status_code=500, detail="Watchdog run failed")
         return result
+
+    @app.post("/admin/abuse/unblock")
+    async def admin_abuse_unblock(request: Request):
+        """Admin: remove an identifier from the abuse-guard blocklist.
+
+        Body: {"identifier": "ip:1.2.3.4"} or {"identifier": "key:<hash>"}.
+        """
+        _require_admin(request)
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+        identifier = str(body.get("identifier", "")).strip()
+        if not identifier:
+            raise HTTPException(status_code=400, detail="identifier is required")
+        from clsplusplus.abuse_guard import unblock as _abuse_unblock
+        removed = await _abuse_unblock(identifier, settings)
+        return {"identifier": identifier, "unblocked": removed}
 
     @app.post("/admin/metering/reconcile")
     async def admin_metering_reconcile(request: Request, period: Optional[str] = None):
