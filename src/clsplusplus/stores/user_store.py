@@ -7,7 +7,7 @@ Auto-creates tables on first connection using user_ddl.sql.
 import asyncio
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import asyncpg
@@ -25,6 +25,13 @@ def _parse_db_url(url: str) -> str:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+# Every new free user gets a 30-day launch-quota trial window. After it
+# elapses they stay free but the effective monthly cap drops (see
+# tiers.effective_free_cap). 'trial' is purely informational — the cap
+# switch is driven by subscription_expires_at, not by this status.
+TRIAL_DAYS = 30
 
 
 def _row_to_dict(row: asyncpg.Record) -> dict:
@@ -54,8 +61,8 @@ class UserStore:
                 if self._pool is None:
                     self._pool = await asyncpg.create_pool(
                         _parse_db_url(self.settings.database_url),
-                        min_size=1,
-                        max_size=5,
+                        min_size=self.settings.db_pool_min,
+                        max_size=self.settings.db_pool_max,
                         command_timeout=60,
                     )
                     async with self._pool.acquire() as conn:
@@ -92,14 +99,20 @@ class UserStore:
         avatar_url: Optional[str] = None,
     ) -> dict:
         pool = await self.get_pool()
+        # Stamp the 30-day free-tier launch trial. Tier stays 'free'; the
+        # trial window only governs which free monthly cap applies.
+        trial_expires_at = _now() + timedelta(days=TRIAL_DAYS)
         async with pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                INSERT INTO users (email, password_hash, google_id, github_id, name, avatar_url)
-                VALUES ($1, $2, $3, $4, $5, $6)
+                INSERT INTO users (email, password_hash, google_id, github_id,
+                                   name, avatar_url,
+                                   subscription_expires_at, subscription_status)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, 'trial')
                 RETURNING *
                 """,
                 email, password_hash, google_id, github_id, name, avatar_url,
+                trial_expires_at,
             )
             return _row_to_dict(row)
 

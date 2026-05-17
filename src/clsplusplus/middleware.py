@@ -196,6 +196,32 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             self._metrics = None
 
     async def dispatch(self, request: Request, call_next) -> Response:
+        # Public auth endpoints (login/register/waitlist) bypass the per-key
+        # limiter below because they're in _PUBLIC_PATHS. Apply a dedicated
+        # tight per-IP throttle here so an unauthenticated storm is throttled.
+        if _is_auth_throttled(request.url.path, request.method):
+            ip = request.client.host if request.client else "unknown"
+            a_allowed, _a_count, a_limit = await check_auth_rate_limit(ip, self.settings)
+            if not a_allowed:
+                try:
+                    if self._metrics:
+                        asyncio.create_task(self._metrics.emit("system", "auth_rate_limit_429"))
+                except Exception:
+                    pass
+                retry_after = self.settings.auth_rate_limit_window_seconds
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "detail": "Too many auth requests from your IP. Slow down.",
+                        "retry_after": retry_after,
+                    },
+                    headers={
+                        "X-RateLimit-Limit": str(a_limit),
+                        "X-RateLimit-Remaining": "0",
+                        "Retry-After": str(retry_after),
+                    },
+                )
+
         if _is_public(request.url.path, request.method):
             return await call_next(request)
 
@@ -290,8 +316,11 @@ class QuotaMiddleware(BaseHTTPMiddleware):
             # the key can't be resolved — which only happens for legacy keys
             # not yet in the integrations table.
             tier_str: Optional[str] = None
+            subscription_expires_at = None
             if self._tier_resolver is not None:
-                tier_str = await self._tier_resolver.resolve(api_key)
+                tier_str, subscription_expires_at = (
+                    await self._tier_resolver.resolve_effective(api_key)
+                )
             if not tier_str:
                 tier_str = self.settings.tier
             try:
@@ -308,7 +337,9 @@ class QuotaMiddleware(BaseHTTPMiddleware):
                 from clsplusplus.usage import make_subject
                 subject = make_subject(None, api_key)
 
-            allowed, usage, limit = await check_quota(subject, tier, self.settings)
+            allowed, usage, limit = await check_quota(
+                subject, tier, self.settings, subscription_expires_at,
+            )
             if not allowed:
                 return JSONResponse(
                     status_code=402,

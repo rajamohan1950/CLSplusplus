@@ -77,8 +77,8 @@ class IntegrationStore:
                 if self._pool is None:
                     self._pool = await asyncpg.create_pool(
                         _parse_db_url(self.settings.database_url),
-                        min_size=1,
-                        max_size=5,
+                        min_size=self.settings.db_pool_min,
+                        max_size=self.settings.db_pool_max,
                         command_timeout=60,
                     )
                     async with self._pool.acquire() as conn:
@@ -126,10 +126,26 @@ class IntegrationStore:
         (free) or over-cap (pay-as-you-go). Returns None when any hop is
         missing (stale key, deleted integration, orphaned integration).
         """
+        row = await self._resolve_tier_row(raw_key)
+        return row["tier"] if row else None
+
+    async def resolve_tier_and_expiry_from_key(self, raw_key: str):
+        """Resolve an API key to (tier, subscription_expires_at).
+
+        Same join chain as `resolve_tier_from_key`. The quota check needs
+        the owning user's trial-window expiry to pick the launch vs
+        post-trial free cap. Returns (None, None) when the key is unknown.
+        """
+        row = await self._resolve_tier_row(raw_key)
+        if not row:
+            return (None, None)
+        return (row["tier"], row["subscription_expires_at"])
+
+    async def _resolve_tier_row(self, raw_key: str):
         key_hash = _sha256_hex(raw_key)
         pool = await self.get_pool()
-        row = await pool.fetchrow(
-            """SELECT u.tier
+        return await pool.fetchrow(
+            """SELECT u.tier, u.subscription_expires_at
                FROM integrations i
                JOIN api_credentials ac ON i.id = ac.integration_id
                JOIN users u           ON u.email = i.owner_email
@@ -140,7 +156,6 @@ class IntegrationStore:
                  AND (ac.status = 'active' OR ac.grace_until > now())""",
             key_hash,
         )
-        return row["tier"] if row else None
 
     async def resolve_owner_email_from_key(self, raw_key: str) -> Optional[str]:
         """Resolve an API key to its integration's owner email.

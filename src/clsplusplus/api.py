@@ -1417,6 +1417,14 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         except ValueError as e:
             raise HTTPException(status_code=401, detail=str(e))
         except Exception as e:
+            if _is_db_saturation(e):
+                logger.error("Login DB saturation: %s: %s", type(e).__name__, e)
+                raise HTTPException(
+                    status_code=503,
+                    detail="Service is busy. Please retry in a few seconds.",
+                    headers={"Retry-After": "5"},
+                )
+            logger.error("Login error: %s: %s", type(e).__name__, e)
             raise HTTPException(status_code=500, detail="Login service unavailable")
         response = JSONResponse(content=user)
         return _set_session_cookie(response, token)
