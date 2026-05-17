@@ -1906,62 +1906,18 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.post("/v1/billing/checkout")
     async def billing_checkout(req: TierUpgradeRequest, request: Request):
-        """Create a Stripe Checkout session for tier upgrade."""
-        user_id = getattr(request.state, "user_id", None)
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        try:
-            from clsplusplus.stripe_service import create_checkout_session
-            session_url = await create_checkout_session(
-                user_id=user_id,
-                tier=req.tier,
-                settings=settings,
-            )
-            return {"url": session_url}
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-        except Exception as e:
-            logger.error("Stripe checkout error: %s", e)
-            raise HTTPException(status_code=500, detail="Billing service unavailable")
+        """Stripe billing is disabled. Use the Razorpay billing endpoints instead."""
+        raise HTTPException(status_code=503, detail="Stripe billing is disabled")
 
     @app.get("/v1/billing/portal")
     async def billing_portal(request: Request):
-        """Create a Stripe Customer Portal session for subscription management."""
-        user_id = getattr(request.state, "user_id", None)
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        try:
-            from clsplusplus.stripe_service import create_portal_session
-            portal_url = await create_portal_session(
-                user_id=user_id,
-                settings=settings,
-            )
-            return {"url": portal_url}
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-        except Exception as e:
-            logger.error("Stripe portal error: %s", e)
-            raise HTTPException(status_code=500, detail="Billing service unavailable")
+        """Stripe billing is disabled. Use the Razorpay billing endpoints instead."""
+        raise HTTPException(status_code=503, detail="Stripe billing is disabled")
 
     @app.post("/v1/billing/webhook")
     async def billing_webhook(request: Request):
-        """Handle Stripe webhook events."""
-        payload = await request.body()
-        sig = request.headers.get("stripe-signature", "")
-        try:
-            from clsplusplus.stripe_service import handle_webhook
-            await handle_webhook(
-                payload=payload,
-                sig=sig,
-                settings=settings,
-                user_service=user_service,
-            )
-            return {"status": "ok"}
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-        except Exception as e:
-            logger.error("Stripe webhook error: %s", e)
-            raise HTTPException(status_code=500, detail="Webhook processing failed")
+        """Stripe billing is disabled."""
+        raise HTTPException(status_code=503, detail="Stripe billing is disabled")
 
     # =========================================================================
     # Billing — Razorpay (active payment gateway)
