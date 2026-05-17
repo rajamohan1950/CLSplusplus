@@ -73,11 +73,14 @@ class FakeConn:
         if "INTO usage_events" in sql and self.owner.writer_fails_with:
             raise RuntimeError(self.owner.writer_fails_with)
         if "INTO usage_events" in sql:
+            # INSERT column order: idempotency_key, actor_kind, actor_id,
+            # user_id, api_key_id, namespace, billing_subject, event_type,
+            # quantity, unit_cost_cents, occurred_at, raw.
             self.owner.roundtrip_row = {
-                "event_type": args[6],
-                "quantity": args[7],
-                "unit_cost_cents": args[8],
-                "recorded_at": args[9],
+                "event_type": args[7],
+                "quantity": args[8],
+                "unit_cost_cents": args[9],
+                "recorded_at": args[10],
             }
 
 

@@ -205,6 +205,35 @@ class EmailService:
 </html>"""
         return await self._send(to, "Reset your CLS++ password", html)
 
+    async def send_overage_invoice(
+        self, to: str, period: str, amount_cents: int, pay_url: str
+    ) -> bool:
+        """Email a usage-overage payment link for a billing period."""
+        amount = f"${amount_cents / 100:.2f}"
+        html = f"""
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;background:#fafafa;padding:40px 20px;">
+  <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:48px 40px;box-shadow:0 2px 20px rgba(0,0,0,0.06);">
+    <div style="text-align:center;margin-bottom:32px;">
+      <span style="font-size:24px;font-weight:700;color:#1d1d1f;">CLS</span><span style="font-size:24px;font-weight:700;color:#ff6b35;">++</span>
+    </div>
+    <h1 style="font-size:22px;font-weight:600;color:#1d1d1f;text-align:center;margin-bottom:8px;">Usage overage for {period}</h1>
+    <p style="color:#86868b;text-align:center;font-size:15px;margin-bottom:32px;">You used CLS++ beyond your plan's included operations last month. Here's the pay-as-you-go total.</p>
+    <div style="background:#f5f5f7;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px;">
+      <span style="font-size:36px;font-weight:700;color:#1d1d1f;">{amount}</span>
+    </div>
+    <div style="text-align:center;margin-bottom:32px;">
+      <a href="{pay_url}" style="display:inline-block;background:#ff6b35;color:#fff;padding:14px 32px;border-radius:980px;text-decoration:none;font-weight:600;font-size:15px;">Pay {amount}</a>
+    </div>
+    <hr style="border:none;border-top:1px solid #f0f0f0;margin:32px 0 16px;">
+    <p style="color:#c0c0c0;text-align:center;font-size:11px;">Questions about this charge? Just reply to this email.</p>
+  </div>
+</body>
+</html>"""
+        return await self._send(to, f"CLS++ usage overage — {period}", html)
+
     async def send_metering_alert(self, to: str, subject: str, html: str) -> bool:
         """Send an on-call alert for the metering dead-letter digest.
 

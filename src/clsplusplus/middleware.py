@@ -276,7 +276,16 @@ class QuotaMiddleware(BaseHTTPMiddleware):
             except ValueError:
                 tier = Tier.free
 
-            allowed, usage, limit = await check_quota(api_key, tier, self.settings)
+            # Resolve the per-user billing subject so usage from every api
+            # key a user owns aggregates onto one quota counter. Falls back
+            # to a per-key subject for legacy keys with no resolvable owner.
+            if self._tier_resolver is not None:
+                subject = await self._tier_resolver.resolve_subject(api_key)
+            else:
+                from clsplusplus.usage import make_subject
+                subject = make_subject(None, api_key)
+
+            allowed, usage, limit = await check_quota(subject, tier, self.settings)
             if not allowed:
                 return JSONResponse(
                     status_code=402,

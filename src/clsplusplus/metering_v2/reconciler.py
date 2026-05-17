@@ -3,10 +3,13 @@
 
 Why this exists
 ---------------
-Step 2 dual-writes every metered call to both Redis (`cls:ops:{api_key}:{period}`,
+Step 2 dual-writes every metered call to both Redis (`cls:ops:{subject}:{period}`,
 fast counter) and Postgres (`usage_events`, durable log). They should
 agree to the last op. If they don't — a write dropped, a retry
 double-counted, a schema drift ate a field — billing is at risk.
+
+Both views are keyed on the per-user billing subject (see
+`usage.make_subject`), so the comparison aggregates per-user.
 
 The reconciler compares the two views and pages on-call when drift
 crosses a configurable tolerance. Drift findings are written into the
@@ -21,7 +24,6 @@ prior period on every cycle, giving the on-call at most 48 h to react.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
 from dataclasses import dataclass, asdict
@@ -43,11 +45,6 @@ POLL_INTERVAL_SECONDS = 24 * 60 * 60
 
 PoolGetter = Callable[[], Awaitable[Any]]
 RedisGetter = Callable[[], Awaitable[Any]]
-
-
-def _hash_key(raw_key: str) -> str:
-    """Match MeteringWriter's api_key_id column: first 16 hex of SHA-256."""
-    return hashlib.sha256(raw_key.encode()).hexdigest()[:16]
 
 
 def _period_window(period: str) -> tuple[datetime, datetime]:
@@ -75,7 +72,7 @@ def _prior_period() -> str:
 
 @dataclass
 class DriftFinding:
-    api_key_hash: str
+    subject: str
     period: str
     redis_count: int
     postgres_count: int
@@ -187,10 +184,11 @@ class MeteringReconciler:
             await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
     async def _scan_redis(self, period: str) -> dict[str, int]:
-        """Return {api_key_hash: ops_count} from Redis for the period.
+        """Return {billing_subject: ops_count} from Redis for the period.
 
-        Keys in Redis are `cls:ops:{RAW_api_key}:{period}` — we hash the
-        raw key on our side to match the writer's api_key_id scheme.
+        Keys in Redis are `cls:ops:{subject}:{period}` — the subject is
+        already the per-user billing key, so it matches the Postgres
+        `billing_subject` column directly with no hashing.
         """
         client = await self._redis_getter()
         if client is None:
@@ -199,13 +197,13 @@ class MeteringReconciler:
         pattern = f"cls:ops:*:{period}"
         try:
             async for key in client.scan_iter(match=pattern, count=500):
-                # key = "cls:ops:{raw_api_key}:{period}"
-                # Strip prefix + suffix to get the raw key.
+                # key = "cls:ops:{subject}:{period}"
+                # Strip prefix + suffix to get the subject.
                 suffix = f":{period}"
                 if not key.endswith(suffix):
                     continue
-                raw_key = key[len("cls:ops:"):-len(suffix)]
-                if not raw_key:
+                subject = key[len("cls:ops:"):-len(suffix)]
+                if not subject:
                     continue
                 val = await client.get(key)
                 try:
@@ -213,29 +211,29 @@ class MeteringReconciler:
                 except (TypeError, ValueError):
                     n = 0
                 if n > 0:
-                    counts[_hash_key(raw_key)] = counts.get(_hash_key(raw_key), 0) + n
+                    counts[subject] = counts.get(subject, 0) + n
         except Exception as exc:
             logger.error("reconciler: redis scan failed: %s: %s",
                          type(exc).__name__, exc)
         return counts
 
     async def _aggregate_postgres(self, period: str) -> dict[str, int]:
-        """Return {api_key_id: sum(quantity)} from usage_events for the period."""
+        """Return {billing_subject: sum(quantity)} from usage_events."""
         start, end = _period_window(period)
         pool = await self._pool_getter()
         async with pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT api_key_id, SUM(quantity)::BIGINT AS total
+                SELECT billing_subject, SUM(quantity)::BIGINT AS total
                 FROM usage_events
-                WHERE api_key_id IS NOT NULL
+                WHERE billing_subject IS NOT NULL
                   AND occurred_at >= $1
                   AND occurred_at <  $2
-                GROUP BY api_key_id
+                GROUP BY billing_subject
                 """,
                 start, end,
             )
-        return {r["api_key_id"]: int(r["total"]) for r in rows if r["api_key_id"]}
+        return {r["billing_subject"]: int(r["total"]) for r in rows if r["billing_subject"]}
 
     def _compare(
         self,
@@ -244,10 +242,10 @@ class MeteringReconciler:
         pg_counts: dict[str, int],
     ) -> list[DriftFinding]:
         findings: list[DriftFinding] = []
-        all_hashes = set(redis_counts) | set(pg_counts)
-        for h in all_hashes:
-            r = redis_counts.get(h, 0)
-            p = pg_counts.get(h, 0)
+        all_subjects = set(redis_counts) | set(pg_counts)
+        for subject in all_subjects:
+            r = redis_counts.get(subject, 0)
+            p = pg_counts.get(subject, 0)
             drift = abs(r - p)
             if drift <= self._min_abs:
                 continue
@@ -256,7 +254,7 @@ class MeteringReconciler:
             if pct <= self._drift_pct:
                 continue
             findings.append(DriftFinding(
-                api_key_hash=h,
+                subject=subject,
                 period=period,
                 redis_count=r,
                 postgres_count=p,
@@ -280,7 +278,7 @@ class MeteringReconciler:
                         """,
                         "ReconciliationDrift",
                         (
-                            f"period={f.period} key={f.api_key_hash} "
+                            f"period={f.period} subject={f.subject} "
                             f"redis={f.redis_count} pg={f.postgres_count} "
                             f"drift={f.drift} ({f.drift_pct * 100:.3f}%)"
                         )[:500],

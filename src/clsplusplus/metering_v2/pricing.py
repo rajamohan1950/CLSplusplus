@@ -94,7 +94,10 @@ class MeteringPricer:
             logger.warning("pricer: unknown tier %r, treating as free", tier)
             return 0
         cap = TIER_LIMITS[tier_enum]["ops_per_month"]
-        current = await self._get_ops(api_key, self.settings)
+        # Price against the same per-user counter the quota middleware reads,
+        # so the pricer and the cap always agree on "how many ops so far".
+        subject = await self._tier_resolver.resolve_subject(api_key)
+        current = await self._get_ops(subject, self.settings)
         return compute_unit_cost_cents(
             tier, event_type, current, cap, self.settings.overage_rates_cents,
         )

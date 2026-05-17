@@ -27,6 +27,11 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- `raw` carries event-specific extras (e.g. model_name, tokens, site_hash).
 -- Raw site URLs MUST be hashed before being put in here (owner decision:
 -- treating site URLs as PII).
+--
+-- `billing_subject` is the per-user counter key (see usage.make_subject):
+-- `owner:{hash}` for keys that resolve to a user, `key:{hash}` for legacy
+-- keys. The reconciler and the overage biller group on this column so
+-- usage from every api key a user owns aggregates onto one quota/invoice.
 
 CREATE TABLE IF NOT EXISTS usage_events (
     id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -37,6 +42,7 @@ CREATE TABLE IF NOT EXISTS usage_events (
     user_id           UUID         REFERENCES users(id) ON DELETE SET NULL,
     api_key_id        TEXT,
     namespace         TEXT,
+    billing_subject   TEXT,
     event_type        TEXT         NOT NULL,
     quantity          INTEGER      NOT NULL DEFAULT 1 CHECK (quantity > 0),
     unit_cost_cents   INTEGER      NOT NULL DEFAULT 0 CHECK (unit_cost_cents >= 0),
@@ -45,6 +51,9 @@ CREATE TABLE IF NOT EXISTS usage_events (
     raw               JSONB        NOT NULL DEFAULT '{}'::jsonb
 );
 
+-- Migration for tables created before billing_subject existed.
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS billing_subject TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_usage_events_actor_time
     ON usage_events(actor_id, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS idx_usage_events_type_time
@@ -52,6 +61,9 @@ CREATE INDEX IF NOT EXISTS idx_usage_events_type_time
 CREATE INDEX IF NOT EXISTS idx_usage_events_user_time
     ON usage_events(user_id, occurred_at DESC)
     WHERE user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_usage_events_subject_time
+    ON usage_events(billing_subject, occurred_at DESC)
+    WHERE billing_subject IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_usage_events_occurred_at
     ON usage_events(occurred_at DESC);
 

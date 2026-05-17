@@ -142,6 +142,30 @@ class IntegrationStore:
         )
         return row["tier"] if row else None
 
+    async def resolve_owner_email_from_key(self, raw_key: str) -> Optional[str]:
+        """Resolve an API key to its integration's owner email.
+
+        Follows api_credentials → integrations.owner_email. Used to build
+        the per-user billing subject so usage from every key a user owns
+        aggregates onto one quota counter. Returns None when the key is
+        unknown or the integration has no owner recorded (legacy keys) —
+        the caller then falls back to a per-key subject.
+        """
+        key_hash = _sha256_hex(raw_key)
+        pool = await self.get_pool()
+        row = await pool.fetchrow(
+            """SELECT i.owner_email
+               FROM integrations i
+               JOIN api_credentials ac ON i.id = ac.integration_id
+               WHERE ac.key_hash = $1
+                 AND ac.status IN ('active', 'rotated')
+                 AND i.status != 'deleted'
+                 AND (ac.expires_at IS NULL OR ac.expires_at > now())
+                 AND (ac.status = 'active' OR ac.grace_until > now())""",
+            key_hash,
+        )
+        return row["owner_email"] if row else None
+
     # =========================================================================
     # Integrations CRUD
     # =========================================================================

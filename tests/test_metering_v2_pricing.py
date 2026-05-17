@@ -90,6 +90,11 @@ class FakeTierResolver:
             return None
         return self.mapping.get(api_key)
 
+    async def resolve_subject(self, api_key: str) -> str:
+        # Tests key the ops-counter fake on the api_key directly, so the
+        # subject is just the api_key here.
+        return api_key or ""
+
     def invalidate(self, api_key: Optional[str] = None) -> None:
         self.invalidated.append(api_key)
 

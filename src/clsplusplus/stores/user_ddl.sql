@@ -67,6 +67,20 @@ CREATE TABLE IF NOT EXISTS revenue_events (
 CREATE INDEX IF NOT EXISTS idx_revenue_events_user ON revenue_events(user_id);
 CREATE INDEX IF NOT EXISTS idx_revenue_events_created ON revenue_events(created_at DESC);
 
+-- Overage billing: pay-as-you-go usage past the tier cap is invoiced as a
+-- one-time 'overage' revenue event. `period` (YYYY-MM) + the partial unique
+-- index below make the billing job idempotent — re-running it never
+-- double-invoices a user for the same month.
+ALTER TABLE revenue_events ADD COLUMN IF NOT EXISTS period TEXT;
+ALTER TABLE revenue_events ADD COLUMN IF NOT EXISTS razorpay_order_id TEXT;
+ALTER TABLE revenue_events ADD COLUMN IF NOT EXISTS amount_cents INTEGER;
+ALTER TABLE revenue_events DROP CONSTRAINT IF EXISTS revenue_events_event_type_check;
+ALTER TABLE revenue_events ADD CONSTRAINT revenue_events_event_type_check
+    CHECK (event_type IN ('upgrade', 'downgrade', 'cancel', 'overage'));
+CREATE UNIQUE INDEX IF NOT EXISTS idx_revenue_events_overage_period
+    ON revenue_events(user_id, period)
+    WHERE event_type = 'overage';
+
 -- Password reset tokens
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

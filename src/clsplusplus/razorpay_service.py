@@ -102,6 +102,44 @@ async def create_order(
     }
 
 
+async def create_overage_payment_link(
+    user_id: str,
+    email: str,
+    amount_cents: int,
+    period: str,
+    settings: "Settings",
+    currency: str = "USD",
+) -> dict:
+    """Create a Razorpay Payment Link for a usage-overage invoice.
+
+    Razorpay has no native metered billing and we hold no saved payment
+    method, so overage is collected via an emailed payment link the user
+    clicks. The `notes` carry kind=overage + period so the payment.captured
+    webhook can record the charge against the right billing month.
+    """
+    if amount_cents <= 0:
+        raise ValueError("Overage amount must be positive")
+
+    client = _get_client(settings)
+    link = client.payment_link.create({
+        "amount": int(amount_cents),
+        "currency": (currency or "USD").upper(),
+        "accept_partial": False,
+        "description": f"CLS++ usage overage — {period}",
+        "customer": {"email": email},
+        "notify": {"email": True, "sms": False},
+        "reminder_enable": True,
+        "notes": {"user_id": user_id, "kind": "overage", "period": period},
+    })
+    return {
+        "id": link["id"],
+        "short_url": link.get("short_url", ""),
+        "amount": link["amount"],
+        "currency": link["currency"],
+        "status": link.get("status", ""),
+    }
+
+
 async def _upgrade_and_stamp_expiry(
     user_service: "UserService",
     user_id: str,
@@ -202,7 +240,30 @@ async def handle_webhook(
         user_id = notes.get("user_id")
         tier = notes.get("tier")
 
-        if event_type == "payment.captured" and user_id and tier:
+        if event_type == "payment.captured" and notes.get("kind") == "overage":
+            # Overage payment-link settled — record the invoice. Idempotent:
+            # the overage biller may have already recorded this row.
+            period = notes.get("period")
+            if user_id and period:
+                try:
+                    amount = int(entity.get("amount") or 0)
+                    order_id = entity.get("order_id") or entity.get("id")
+                    await user_service.store.record_overage_event(
+                        user_id, period, amount, order_id,
+                    )
+                    logger.info(
+                        "Razorpay: overage paid — user %s period %s (%d cents)",
+                        user_id, period, amount,
+                    )
+                except Exception as exc:
+                    logger.error("Failed to record overage for user %s: %s",
+                                 user_id, exc)
+                    raise
+            else:
+                logger.warning(
+                    "Razorpay: overage payment.captured missing user_id/period",
+                )
+        elif event_type == "payment.captured" and user_id and tier:
             try:
                 await _upgrade_and_stamp_expiry(user_service, user_id, tier)
                 logger.info(

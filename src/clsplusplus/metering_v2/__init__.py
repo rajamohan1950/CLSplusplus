@@ -8,6 +8,7 @@ Rollout defined in docs/adr/0001-metering-data-lake.md. Steps landed:
     step 3   — daily reconciliation vs Redis (this package)
 """
 
+from clsplusplus.metering_v2.billing import BillingResult, OverageBiller
 from clsplusplus.metering_v2.healthcheck import (
     CheckResult,
     HealthReport,
@@ -38,6 +39,8 @@ __all__ = [
     "MeteringPricer",
     "MeteringReconciler",
     "MeteringHealthCheck",
+    "OverageBiller",
+    "BillingResult",
     "DriftFinding",
     "ReconciliationResult",
     "HealthReport",

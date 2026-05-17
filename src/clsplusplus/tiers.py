@@ -65,13 +65,15 @@ def get_limits(tier: Tier) -> dict:
 
 
 async def check_quota(
-    api_key: str,
+    subject: str,
     tier: Tier,
     settings: Settings,
 ) -> tuple[bool, int, int]:
-    """Check if api_key is within monthly operation quota.
+    """Check if a billing subject is within its monthly operation quota.
 
-    Returns (allowed, current_usage, limit).
+    `subject` is the per-user billing subject (see `usage.make_subject`),
+    so all api keys a user owns share one quota. Returns
+    (allowed, current_usage, limit).
     """
     limits = TIER_LIMITS[tier]
     cap = limits["ops_per_month"]
@@ -80,21 +82,24 @@ async def check_quota(
 
     from clsplusplus.usage import get_operation_count
 
-    current = await get_operation_count(api_key, settings)
+    current = await get_operation_count(subject, settings)
     return (current < cap, current, cap)
 
 
 async def get_quota_status(
-    api_key: str,
+    subject: str,
     tier: Tier,
     settings: Settings,
 ) -> dict:
-    """Full quota status for the /v1/usage response."""
+    """Full quota status for the /v1/usage response.
+
+    `subject` is the per-user billing subject (see `usage.make_subject`).
+    """
     from clsplusplus.usage import get_operation_count, get_usage, _period_key
 
     limits = TIER_LIMITS[tier]
-    ops = await get_operation_count(api_key, settings)
-    legacy = await get_usage(api_key, settings)
+    ops = await get_operation_count(subject, settings)
+    legacy = await get_usage(subject, settings)
 
     return {
         "tier": tier.value,

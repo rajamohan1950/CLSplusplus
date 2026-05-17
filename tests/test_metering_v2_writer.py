@@ -140,16 +140,26 @@ async def test_writer_happy_path_inserts_into_usage_events(settings_on, pool):
     assert len(pool.events) == 1
     assert pool.dead_letter == []
     # Ordered args: (idempotency_key, actor_kind, actor_id, user_id, api_key_id,
-    #                namespace, event_type, quantity, unit_cost_cents,
-    #                occurred_at, raw_json)
+    #                namespace, billing_subject, event_type, quantity,
+    #                unit_cost_cents, occurred_at, raw_json)
     args = pool.events[0]
     assert args[0] == "req-1:write"
     assert args[1] == "user"
-    assert args[6] == "write"
-    assert args[7] == 1              # quantity
-    assert args[8] == 0              # unit_cost_cents default
+    assert args[6] is None           # billing_subject (not set on this event)
+    assert args[7] == "write"
+    assert args[8] == 1              # quantity
+    assert args[9] == 0              # unit_cost_cents default
     # raw is json-serialised dict
-    assert json.loads(args[10])["request_id"] == "req-1"
+    assert json.loads(args[11])["request_id"] == "req-1"
+
+
+@pytest.mark.asyncio
+async def test_writer_persists_billing_subject(settings_on, pool):
+    writer = MeteringWriter(settings_on, _const_getter(pool))
+    ok = await writer.record_sync(_event(billing_subject="owner:abc123"))
+    assert ok is True
+    args = pool.events[0]
+    assert args[6] == "owner:abc123"
 
 
 @pytest.mark.asyncio

@@ -3,6 +3,10 @@
 Fakes for both Postgres and Redis so the whole file runs without infra.
 Covers the pure comparison logic, the scan loop, drift-to-dead-letter
 enqueue, tolerance thresholds, and the daily period helpers.
+
+Both views key on the per-user billing subject (usage.make_subject), so
+Redis `cls:ops:{subject}:{period}` and Postgres `billing_subject` match
+directly with no hashing.
 """
 
 from __future__ import annotations
@@ -17,7 +21,6 @@ from clsplusplus.metering_v2.reconciler import (
     DriftFinding,
     MeteringReconciler,
     _current_period,
-    _hash_key,
     _period_window,
     _prior_period,
 )
@@ -32,7 +35,7 @@ class FakeRedis:
     """Minimal subset of redis.asyncio.Redis we use in reconciler."""
 
     def __init__(self, keys: dict[str, int]):
-        # keys maps the full Redis key (e.g. "cls:ops:k1:2026-04") to count.
+        # keys maps the full Redis key (e.g. "cls:ops:owner:abc:2026-04") to count.
         self.keys = dict(keys)
 
     async def scan_iter(self, match: str, count: int = 500):
@@ -54,7 +57,8 @@ class FakeConn:
     async def fetch(self, sql: str, *args):
         if "FROM usage_events" in sql:
             return [
-                {"api_key_id": h, "total": n} for h, n in self.owner.pg_counts.items()
+                {"billing_subject": s, "total": n}
+                for s, n in self.owner.pg_counts.items()
             ]
         return []
 
@@ -138,13 +142,6 @@ def test_prior_period_january_rolls_to_previous_year():
         assert (y1, m1) == (y2, m2 - 1)
 
 
-def test_hash_key_matches_writer_scheme():
-    # Writer uses sha256()[:16] — exact same scheme must match.
-    assert _hash_key("abcd") == _hash_key("abcd")
-    assert len(_hash_key("abcd")) == 16
-    assert _hash_key("a") != _hash_key("b")
-
-
 # --------------------------------------------------------------------------- #
 # Reconciliation logic
 # --------------------------------------------------------------------------- #
@@ -152,9 +149,8 @@ def test_hash_key_matches_writer_scheme():
 
 @pytest.mark.asyncio
 async def test_no_drift_when_both_views_agree():
-    h_k1 = _hash_key("k1")
-    redis = {"cls:ops:k1:2026-04": 10_000}
-    pg = {h_k1: 10_000}
+    redis = {"cls:ops:owner:k1:2026-04": 10_000}
+    pg = {"owner:k1": 10_000}
     rec, pool = _make_reconciler(redis, pg)
     result = await rec.reconcile_once("2026-04")
     assert result.findings == []
@@ -166,9 +162,8 @@ async def test_no_drift_when_both_views_agree():
 @pytest.mark.asyncio
 async def test_small_absolute_drift_is_ignored():
     """Abs drift under min_abs_drift is noise from async write lag."""
-    h_k1 = _hash_key("k1")
-    redis = {"cls:ops:k1:2026-04": 10_000}
-    pg = {h_k1: 10_003}  # drift=3 < min_abs=5 default
+    redis = {"cls:ops:owner:k1:2026-04": 10_000}
+    pg = {"owner:k1": 10_003}  # drift=3 < min_abs=5 default
     rec, pool = _make_reconciler(redis, pg)
     result = await rec.reconcile_once("2026-04")
     assert result.findings == []
@@ -178,9 +173,8 @@ async def test_small_absolute_drift_is_ignored():
 @pytest.mark.asyncio
 async def test_small_percent_drift_is_ignored():
     """Drift above min_abs but under the percent threshold is allowed."""
-    h_k1 = _hash_key("k1")
-    redis = {"cls:ops:k1:2026-04": 100_000}
-    pg = {h_k1: 100_050}  # 0.05% drift, under 0.1% threshold
+    redis = {"cls:ops:owner:k1:2026-04": 100_000}
+    pg = {"owner:k1": 100_050}  # 0.05% drift, under 0.1% threshold
     rec, pool = _make_reconciler(redis, pg)
     result = await rec.reconcile_once("2026-04")
     assert result.findings == []
@@ -188,14 +182,13 @@ async def test_small_percent_drift_is_ignored():
 
 @pytest.mark.asyncio
 async def test_large_drift_flags_finding():
-    h_k1 = _hash_key("k1")
-    redis = {"cls:ops:k1:2026-04": 10_000}
-    pg = {h_k1: 5_000}  # 50% drift, well over threshold
+    redis = {"cls:ops:owner:k1:2026-04": 10_000}
+    pg = {"owner:k1": 5_000}  # 50% drift, well over threshold
     rec, pool = _make_reconciler(redis, pg)
     result = await rec.reconcile_once("2026-04")
     assert len(result.findings) == 1
     f = result.findings[0]
-    assert f.api_key_hash == h_k1
+    assert f.subject == "owner:k1"
     assert f.redis_count == 10_000
     assert f.postgres_count == 5_000
     assert f.drift == 5_000
@@ -208,11 +201,10 @@ async def test_large_drift_flags_finding():
 
 
 @pytest.mark.asyncio
-async def test_postgres_only_hash_flags_drift():
-    """Hash in PG but NOT in Redis means PG over-counted (or Redis was wiped)."""
-    rogue = _hash_key("ghost")
+async def test_postgres_only_subject_flags_drift():
+    """Subject in PG but NOT in Redis means PG over-counted (or Redis was wiped)."""
     redis = {}
-    pg = {rogue: 1_000}
+    pg = {"owner:ghost": 1_000}
     rec, pool = _make_reconciler(redis, pg)
     result = await rec.reconcile_once("2026-04")
     assert len(result.findings) == 1
@@ -222,42 +214,41 @@ async def test_postgres_only_hash_flags_drift():
 
 
 @pytest.mark.asyncio
-async def test_redis_only_hash_flags_drift():
-    """Hash in Redis but NOT in PG means a write was dropped — THE money bug."""
-    redis = {"cls:ops:lost:2026-04": 5_000}
+async def test_redis_only_subject_flags_drift():
+    """Subject in Redis but NOT in PG means a write was dropped — THE money bug."""
+    redis = {"cls:ops:owner:lost:2026-04": 5_000}
     pg = {}
     rec, pool = _make_reconciler(redis, pg)
     result = await rec.reconcile_once("2026-04")
     assert len(result.findings) == 1
     f = result.findings[0]
-    assert f.api_key_hash == _hash_key("lost")
+    assert f.subject == "owner:lost"
     assert f.redis_count == 5_000
     assert f.postgres_count == 0
 
 
 @pytest.mark.asyncio
-async def test_multiple_hashes_compared_independently():
-    h1, h2, h3 = _hash_key("k1"), _hash_key("k2"), _hash_key("k3")
+async def test_multiple_subjects_compared_independently():
     redis = {
-        "cls:ops:k1:2026-04": 100,         # matches pg
-        "cls:ops:k2:2026-04": 200,         # drifts
-        "cls:ops:k3:2026-04": 1000,        # matches pg
+        "cls:ops:owner:k1:2026-04": 100,         # matches pg
+        "cls:ops:owner:k2:2026-04": 200,         # drifts
+        "cls:ops:owner:k3:2026-04": 1000,        # matches pg
     }
-    pg = {h1: 100, h2: 500, h3: 1000}
+    pg = {"owner:k1": 100, "owner:k2": 500, "owner:k3": 1000}
     rec, pool = _make_reconciler(redis, pg)
     result = await rec.reconcile_once("2026-04")
-    drift_hashes = {f.api_key_hash for f in result.findings}
-    assert drift_hashes == {h2}
+    drift_subjects = {f.subject for f in result.findings}
+    assert drift_subjects == {"owner:k2"}
 
 
 @pytest.mark.asyncio
 async def test_scan_ignores_keys_from_other_periods():
     """Pattern match is strict — don't pull prior-period keys into this window."""
     redis = {
-        "cls:ops:k1:2026-04": 100,
-        "cls:ops:k1:2026-03": 999_999,  # wrong period
+        "cls:ops:owner:k1:2026-04": 100,
+        "cls:ops:owner:k1:2026-03": 999_999,  # wrong period
     }
-    pg = {_hash_key("k1"): 100}
+    pg = {"owner:k1": 100}
     rec, pool = _make_reconciler(redis, pg)
     result = await rec.reconcile_once("2026-04")
     assert result.findings == []
@@ -276,9 +267,8 @@ async def test_reconciler_disabled_still_returns_structure():
 @pytest.mark.asyncio
 async def test_custom_thresholds():
     """Caller can tighten or relax tolerance."""
-    h_k1 = _hash_key("k1")
-    redis = {"cls:ops:k1:2026-04": 1_000_000}
-    pg = {h_k1: 1_000_100}  # 0.01% drift, 100 absolute
+    redis = {"cls:ops:owner:k1:2026-04": 1_000_000}
+    pg = {"owner:k1": 1_000_100}  # 0.01% drift, 100 absolute
     # Default threshold: 0.1% + min_abs=5 — drift pct too small → no finding
     rec_default, _ = _make_reconciler(redis, pg)
     assert (await rec_default.reconcile_once("2026-04")).findings == []

@@ -89,7 +89,7 @@ class TestRazorpayService:
         }
 
         with patch("clsplusplus.razorpay_service._get_client", return_value=mock_client):
-            result = await create_order("user-123", "pro", billing_settings)
+            result = await create_order("user-123", "pro", billing_settings, currency="INR")
 
         assert result["order_id"] == "order_test_123"
         assert result["amount"] == 74900
@@ -145,7 +145,6 @@ class TestPaymentVerification:
         sig = self._make_signature(order_id, payment_id)
 
         mock_user_service = AsyncMock()
-        mock_user_service.update_tier = AsyncMock()
 
         result = await verify_payment(
             order_id=order_id,
@@ -158,7 +157,12 @@ class TestPaymentVerification:
         )
 
         assert result is True
-        mock_user_service.update_tier.assert_called_once_with("user-123", "pro")
+        # A verified payment stamps tier + expiry via set_subscription.
+        mock_user_service.store.set_subscription.assert_called_once()
+        call = mock_user_service.store.set_subscription.call_args
+        assert call[0][0] == "user-123"
+        assert call[1]["tier"] == "pro"
+        assert call[1]["status"] == "active"
 
     @pytest.mark.asyncio
     async def test_verify_invalid_signature(self, billing_settings):
@@ -226,10 +230,13 @@ class TestWebhookHandling:
 
         sig = self._make_webhook_sig(payload)
         mock_user_service = AsyncMock()
-        mock_user_service.update_tier = AsyncMock()
 
         await handle_webhook(payload, sig, billing_settings, mock_user_service)
-        mock_user_service.update_tier.assert_called_once_with("user-789", "pro")
+        # payment.captured stamps tier + expiry via set_subscription.
+        mock_user_service.store.set_subscription.assert_called_once()
+        call = mock_user_service.store.set_subscription.call_args
+        assert call[0][0] == "user-789"
+        assert call[1]["tier"] == "pro"
 
     @pytest.mark.asyncio
     async def test_webhook_payment_failed(self, billing_settings):
@@ -271,6 +278,81 @@ class TestWebhookHandling:
 
         with pytest.raises(ValueError, match="not configured"):
             await handle_webhook(b"{}", "sig", no_billing_settings, AsyncMock())
+
+    @pytest.mark.asyncio
+    async def test_webhook_overage_payment_records_invoice(self, billing_settings):
+        """payment.captured with kind=overage records a revenue event, no upgrade."""
+        from clsplusplus.razorpay_service import handle_webhook
+
+        payload = json.dumps({
+            "event": "payment.captured",
+            "payload": {
+                "payment": {
+                    "entity": {
+                        "amount": 1234,
+                        "order_id": "order_ov_1",
+                        "notes": {
+                            "user_id": "user-555",
+                            "kind": "overage",
+                            "period": "2026-04",
+                        },
+                    }
+                }
+            }
+        }).encode()
+
+        sig = self._make_webhook_sig(payload)
+        mock_user_service = AsyncMock()
+
+        await handle_webhook(payload, sig, billing_settings, mock_user_service)
+        # Overage path records the invoice, does NOT touch the subscription.
+        mock_user_service.store.record_overage_event.assert_called_once_with(
+            "user-555", "2026-04", 1234, "order_ov_1",
+        )
+        mock_user_service.store.set_subscription.assert_not_called()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Overage payment links
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestOveragePaymentLink:
+
+    @pytest.mark.asyncio
+    async def test_create_overage_payment_link(self, billing_settings):
+        from clsplusplus.razorpay_service import create_overage_payment_link
+
+        mock_client = MagicMock()
+        mock_client.payment_link.create.return_value = {
+            "id": "plink_abc",
+            "short_url": "https://rzp.io/i/abc",
+            "amount": 1500,
+            "currency": "USD",
+            "status": "created",
+        }
+
+        with patch("clsplusplus.razorpay_service._get_client", return_value=mock_client):
+            result = await create_overage_payment_link(
+                "user-1", "alice@example.com", 1500, "2026-04", billing_settings,
+            )
+
+        assert result["id"] == "plink_abc"
+        assert result["short_url"] == "https://rzp.io/i/abc"
+        sent = mock_client.payment_link.create.call_args[0][0]
+        assert sent["amount"] == 1500
+        assert sent["customer"]["email"] == "alice@example.com"
+        assert sent["notes"] == {
+            "user_id": "user-1", "kind": "overage", "period": "2026-04",
+        }
+
+    @pytest.mark.asyncio
+    async def test_create_overage_payment_link_rejects_zero(self, billing_settings):
+        from clsplusplus.razorpay_service import create_overage_payment_link
+
+        with pytest.raises(ValueError, match="positive"):
+            await create_overage_payment_link(
+                "user-1", "alice@example.com", 0, "2026-04", billing_settings,
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

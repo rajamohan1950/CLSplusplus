@@ -358,12 +358,14 @@ class TestUsageCounter:
             assert count == 3
 
     @pytest.mark.asyncio
-    async def test_record_operation_noop_when_tracking_disabled(self, in_memory_store):
-        """When track_usage=False, nothing is recorded."""
+    async def test_record_operation_records_even_when_track_usage_disabled(self, in_memory_store):
+        """The ops counter is billing-critical: quota enforcement reads it,
+        so record_operation must write regardless of track_usage."""
         from clsplusplus.usage import record_operation, get_operation_count
 
         settings = Settings(track_usage=False)
         with patch("clsplusplus.usage._redis_client", return_value=in_memory_store):
             await record_operation("test-key", settings)
+            await record_operation("test-key", settings)
             count = await get_operation_count("test-key", settings)
-            assert count == 0
+            assert count == 2

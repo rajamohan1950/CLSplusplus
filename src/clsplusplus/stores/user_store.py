@@ -338,6 +338,48 @@ class UserStore:
             )
             return _row_to_dict(row)
 
+    async def record_overage_event(
+        self,
+        user_id: str,
+        period: str,
+        amount_cents: int,
+        razorpay_order_id: Optional[str] = None,
+    ) -> Optional[dict]:
+        """Record a one-time overage invoice for a billing period.
+
+        Idempotent: the partial unique index on (user_id, period) WHERE
+        event_type='overage' means a re-run for the same month is a no-op
+        and returns None.
+        """
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO revenue_events
+                    (user_id, event_type, from_tier, to_tier, monthly_revenue,
+                     period, razorpay_order_id, amount_cents)
+                VALUES ($1, 'overage', '', '', 0, $2, $3, $4)
+                ON CONFLICT (user_id, period) WHERE event_type = 'overage'
+                DO NOTHING
+                RETURNING *
+                """,
+                user_id, period, razorpay_order_id, amount_cents,
+            )
+            return _row_to_dict(row) if row else None
+
+    async def get_billed_overage_user_ids(self, period: str) -> set[str]:
+        """Return the set of user_ids already invoiced for a period's overage."""
+        pool = await self.get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT user_id FROM revenue_events
+                WHERE event_type = 'overage' AND period = $1
+                """,
+                period,
+            )
+        return {str(r["user_id"]) for r in rows}
+
     # =========================================================================
     # Password reset tokens
     # =========================================================================

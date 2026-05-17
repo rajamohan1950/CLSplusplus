@@ -137,6 +137,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     # picks it up. Flag-off startup is a no-op.
     _metering_notifier = None
     _metering_reconciler = None
+    _overage_biller = None
     _subscription_watchdog = None
 
     async def _metering_redis():
@@ -151,12 +152,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.on_event("startup")
     async def _metering_startup():
-        nonlocal _metering_notifier, _metering_reconciler
+        nonlocal _metering_notifier, _metering_reconciler, _overage_biller
         if not settings.metering_v2_write_enabled:
             return
         try:
             from clsplusplus.metering_v2 import (
-                MeteringNotifier, MeteringReconciler, apply_if_enabled,
+                MeteringNotifier, MeteringReconciler, OverageBiller,
+                apply_if_enabled,
             )
             # Ensure the schema exists before the workers touch it.
             pool = await user_service.store.get_pool()
@@ -169,7 +171,14 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 settings, _metering_pool, _metering_redis,
             )
             _metering_reconciler.start()
-            logger.info("metering v2: notifier (60s) + reconciler (24h) started")
+            _overage_biller = OverageBiller(
+                settings, _metering_pool, user_service,
+            )
+            _overage_biller.start()
+            logger.info(
+                "metering v2: notifier (60s) + reconciler (24h) "
+                "+ overage biller (24h) started",
+            )
         except Exception as exc:
             logger.error("metering v2: startup failed: %s: %s",
                          type(exc).__name__, exc)
@@ -202,6 +211,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             await _metering_notifier.stop()
         if _metering_reconciler is not None:
             await _metering_reconciler.stop()
+        if _overage_biller is not None:
+            await _overage_biller.stop()
         if _subscription_watchdog is not None:
             await _subscription_watchdog.stop()
 
@@ -330,17 +341,23 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         """Fire-and-forget usage tracking. Must never crash a user request."""
         try:
             api_key = getattr(request.state, "api_key", None)
-            if api_key and settings.track_usage:
+            subject = None
+            if api_key:
                 from clsplusplus.usage import record_usage, record_operation
-                await record_usage(api_key, operation, settings)
-                await record_operation(api_key, settings)
+                subject = await _tier_resolver.resolve_subject(api_key)
+                # The unified ops counter is billing-critical (quota reads
+                # it) — always written, regardless of track_usage. The
+                # per-operation breakdown stays opt-in via track_usage.
+                await record_operation(subject, settings)
+                if settings.track_usage:
+                    await record_usage(subject, operation, settings)
             # Per-user metrics (emit even without track_usage for admin visibility)
             user_id = getattr(request.state, "user_id", None)
             if user_id:
                 await _metrics.emit(user_id, operation)
             # Metering v2 durable log — no-op when flag is off.
             if _metering_writer.enabled:
-                event = _build_usage_event(operation, request, user_id, api_key)
+                event = _build_usage_event(operation, request, user_id, api_key, subject)
                 # Stamp pay-as-you-go cost at write time; rates default to 0
                 # so this is a safe no-op until CLS_OVERAGE_RATES_CENTS is set.
                 event.unit_cost_cents = await _metering_pricer.price_event(
@@ -355,12 +372,14 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         request: Request,
         user_id: Optional[str],
         api_key: Optional[str],
+        billing_subject: Optional[str] = None,
     ) -> "UsageEvent":
         """Translate the request-scoped context into a UsageEvent.
 
         Idempotency key is `{request_id}:{operation}` so a client retry of
         the same request does not double-count, while distinct operations
-        within one request each get their own row.
+        within one request each get their own row. `billing_subject` is
+        the per-user counter key the reconciler and overage biller group on.
         """
         request_id = getattr(request.state, "request_id", None) or "no-req-id"
         namespace = getattr(request.state, "namespace", None)
@@ -380,6 +399,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             user_id=str(user_id) if user_id else None,
             api_key_id=_hash_actor(api_key) if api_key else None,
             namespace=namespace,
+            billing_subject=billing_subject,
             raw={"request_id": request_id},
         )
 
@@ -1082,9 +1102,20 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         api_key = getattr(request.state, "api_key", None) or get_api_key_from_request(request.headers.get("Authorization"))
         if settings.require_api_key and not api_key:
             raise HTTPException(status_code=401, detail="API key required")
-        from clsplusplus.tiers import get_tier, get_quota_status
+        from clsplusplus.tiers import Tier, get_tier, get_quota_status
+        # Per-user tier + per-user billing subject, so the reported quota
+        # matches what QuotaMiddleware actually enforces.
         tier = get_tier(settings)
-        return await get_quota_status(api_key or "anonymous", tier, settings)
+        subject = "anonymous"
+        if api_key:
+            tier_str = await _tier_resolver.resolve(api_key)
+            if tier_str:
+                try:
+                    tier = Tier(tier_str)
+                except ValueError:
+                    pass
+            subject = await _tier_resolver.resolve_subject(api_key)
+        return await get_quota_status(subject, tier, settings)
 
     @app.get("/v1/billing/usage")
     async def billing_usage(request: Request):
@@ -1576,9 +1607,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         from clsplusplus.tiers import Tier, get_quota_status
+        from clsplusplus.usage import make_subject
         tier = Tier(user["tier"])
-        namespace = f"user-{user_id[:8]}"
-        return await get_quota_status(namespace, tier, settings)
+        # Usage counters key on the owner-email billing subject — the same
+        # subject every api key this user owns writes to.
+        subject = make_subject(user.get("email"), "")
+        return await get_quota_status(subject, tier, settings)
 
     @app.post("/v1/user/upgrade")
     async def upgrade_tier(req: TierUpgradeRequest, request: Request):
@@ -1599,14 +1633,24 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.get("/v1/user/usage/history")
     async def user_usage_history(request: Request):
-        """Usage history for the last 6 months for the authenticated user."""
+        """Usage history for the last 6 months for the authenticated user.
+
+        Reads from the durable usage_events log when metering v2 is on
+        (Redis counters only retain ~35 days).
+        """
         user_id = getattr(request.state, "user_id", None)
         if not user_id:
             raise HTTPException(status_code=401, detail="Not authenticated")
-        namespace = f"user-{user_id[:8]}"
-        from clsplusplus.usage import get_usage_history
+        user = await user_service.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        from clsplusplus.usage import get_usage_history, make_subject
+        subject = make_subject(user.get("email"), "")
         try:
-            return await get_usage_history(namespace, months=6, settings=settings)
+            return await get_usage_history(
+                subject, months=6, settings=settings,
+                pool_getter=user_service.store.get_pool,
+            )
         except Exception:
             return []
 
@@ -2198,6 +2242,29 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             **result.summary(),
             "drift_findings": [f.to_payload() for f in result.findings[:50]],
         }
+
+    @app.post("/admin/metering/bill-overage")
+    async def admin_metering_bill_overage(request: Request, period: Optional[str] = None):
+        """Run the overage biller on demand and return the summary.
+
+        Query param `period=YYYY-MM` selects the billing month (default:
+        prior month). Aggregates over-cap usage from usage_events, creates
+        a Razorpay payment link per user, and records the invoice in
+        revenue_events. Idempotent — re-running never double-invoices.
+        """
+        _require_admin(request)
+        if not settings.metering_v2_write_enabled:
+            raise HTTPException(status_code=409,
+                                detail="Metering v2 write path is disabled")
+        if _overage_biller is None:
+            raise HTTPException(status_code=503,
+                                detail="Overage biller not initialised")
+        try:
+            result = await _overage_biller.bill_once(period)
+        except Exception as exc:
+            logger.error("admin bill-overage: %s: %s", type(exc).__name__, exc)
+            raise HTTPException(status_code=500, detail="Overage billing failed")
+        return result.summary()
 
     @app.post("/admin/tests/waitlist/run")
     async def admin_run_waitlist_tests(request: Request):

@@ -40,8 +40,9 @@ class UsageEvent:
     user_id: Optional[str] = None
     api_key_id: Optional[str] = None
     namespace: Optional[str] = None
+    billing_subject: Optional[str] = None  # per-user counter key; see usage.make_subject
     quantity: int = 1
-    unit_cost_cents: int = 0  # pricer lands in a follow-up step; always 0 for now
+    unit_cost_cents: int = 0  # stamped by MeteringPricer at write time
     raw: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -115,9 +116,9 @@ class MeteringWriter:
                 """
                 INSERT INTO usage_events
                     (idempotency_key, actor_kind, actor_id, user_id,
-                     api_key_id, namespace, event_type, quantity,
-                     unit_cost_cents, occurred_at, raw)
-                VALUES ($1, $2, $3, $4::uuid, $5, $6, $7, $8, $9, $10, $11::jsonb)
+                     api_key_id, namespace, billing_subject, event_type,
+                     quantity, unit_cost_cents, occurred_at, raw)
+                VALUES ($1, $2, $3, $4::uuid, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
                 ON CONFLICT (idempotency_key) DO NOTHING
                 """,
                 event.idempotency_key,
@@ -126,6 +127,7 @@ class MeteringWriter:
                 event.user_id,
                 event.api_key_id,
                 event.namespace,
+                event.billing_subject,
                 event.event_type,
                 event.quantity,
                 event.unit_cost_cents,
@@ -154,6 +156,7 @@ class MeteringWriter:
                         "user_id": event.user_id,
                         "api_key_id": event.api_key_id,
                         "namespace": event.namespace,
+                        "billing_subject": event.billing_subject,
                         "event_type": event.event_type,
                         "quantity": event.quantity,
                         "unit_cost_cents": event.unit_cost_cents,
