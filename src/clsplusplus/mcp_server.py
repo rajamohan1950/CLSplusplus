@@ -24,7 +24,11 @@ Usage in Claude Code:
     }
   }
 
-Generate your API key at: https://www.clsplusplus.com/profile.html#keys
+One-click connect (recommended): the dashboard "Connect to Claude Code" button
+calls GET /v1/mcp/connect, which mints a fresh API key and returns this exact
+config block pre-filled — plus a one-line `claude mcp add ...` command.
+
+Generate your API key manually at: https://www.clsplusplus.com/profile.html#keys
 Usage in Cursor/Windsurf: same pattern, different config file location.
 """
 
