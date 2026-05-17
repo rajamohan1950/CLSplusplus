@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Operational Health | CLS++ Admin</title>
+  <link rel="stylesheet" href="../styles.css?v=2">
+  <link rel="stylesheet" href="styles.css?v=2">
+  <script src="../auth.js" defer></script>
+  <style>
+    .ops-wrap { max-width: 1100px; margin: 0 auto; padding: 28px 20px 80px; }
+    .ops-head { display:flex; align-items:baseline; justify-content:space-between;
+                flex-wrap:wrap; gap:12px; margin-bottom:18px; }
+    .ops-head h1 { margin:0; font-size:26px; }
+    .ops-meta { font-size:13px; color:var(--text-muted,#888); }
+    .ops-controls { display:flex; gap:10px; align-items:center; }
+    .ops-controls select, .ops-controls button {
+      padding:7px 12px; border-radius:8px; border:1px solid rgba(255,255,255,.18);
+      background:rgba(255,255,255,.06); color:inherit; font-size:13px; cursor:pointer; }
+    .kpi-bar { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px; }
+    .kpi-card { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1);
+                border-radius:12px; padding:16px; }
+    .kpi-label { font-size:12px; text-transform:uppercase; letter-spacing:.04em;
+                 color:var(--text-muted,#999); }
+    .kpi-value { font-size:30px; font-weight:700; margin-top:6px; }
+    .kpi-sub { font-size:12px; color:var(--text-muted,#999); margin-top:4px; }
+    .kpi-green { color:#22c55e; } .kpi-red { color:#ef4444; } .kpi-amber { color:#eab308; }
+    .section-card { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1);
+                    border-radius:12px; padding:18px; margin-bottom:18px; }
+    .section-card h2 { margin:0 0 12px; font-size:17px; }
+    table.ops { width:100%; border-collapse:collapse; font-size:13px; }
+    table.ops th, table.ops td { text-align:left; padding:8px 10px;
+                                 border-bottom:1px solid rgba(255,255,255,.08); }
+    table.ops th { color:var(--text-muted,#999); font-weight:600;
+                   text-transform:uppercase; font-size:11px; letter-spacing:.04em; }
+    table.ops td.num { text-align:right; font-variant-numeric:tabular-nums; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px;
+            font-size:12px; font-weight:600; }
+    .pill-4xx { background:rgba(234,179,8,.15); color:#eab308; }
+    .pill-5xx { background:rgba(239,68,68,.15); color:#ef4444; }
+    .empty { color:var(--text-muted,#999); font-size:13px; padding:8px 0; }
+    .banner { background:rgba(239,68,68,.12); border:1px solid rgba(239,68,68,.4);
+              color:#ef4444; border-radius:8px; padding:10px 14px; font-size:13px;
+              margin-bottom:16px; display:none; }
+    @media (max-width:720px){ .kpi-bar{grid-template-columns:repeat(2,1fr);} }
+  </style>
+</head>
+<body>
+  <div class="video-bg"><video autoplay muted loop playsinline poster="../beach-bg.jpg"><source src="../sunrise-ocean.mp4" type="video/mp4"></video></div>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="/admin/dashboard.html">Admin Dashboard</a>
+        <a href="/admin/health.html">Ops Health</a>
+        <div id="nav-auth" class="nav-auth"></div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="ops-wrap">
+    <div class="ops-head">
+      <div>
+        <h1>Operational Health</h1>
+        <div class="ops-meta" id="ops-meta">Loading live request metrics…</div>
+      </div>
+      <div class="ops-controls">
+        <select id="ops-window">
+          <option value="5">Last 5 min</option>
+          <option value="15">Last 15 min</option>
+          <option value="60" selected>Last 60 min</option>
+        </select>
+        <button id="ops-refresh">Refresh</button>
+      </div>
+    </div>
+
+    <div class="banner" id="ops-banner">
+      Metrics backend degraded — showing last-known/empty data.
+    </div>
+
+    <div class="kpi-bar">
+      <div class="kpi-card">
+        <div class="kpi-label">Request Volume</div>
+        <div class="kpi-value" id="k-volume">--</div>
+        <div class="kpi-sub" id="k-rpm">-- req/min</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Error Rate</div>
+        <div class="kpi-value" id="k-errrate">--</div>
+        <div class="kpi-sub" id="k-errsplit">4xx -- · 5xx --</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Latency p95</div>
+        <div class="kpi-value" id="k-p95">--</div>
+        <div class="kpi-sub" id="k-platency">p50 -- · p99 --</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Latency Samples</div>
+        <div class="kpi-value" id="k-samples">--</div>
+        <div class="kpi-sub">in the window</div>
+      </div>
+    </div>
+
+    <div class="kpi-bar">
+      <div class="kpi-card">
+        <div class="kpi-label">402 — Quota Exceeded</div>
+        <div class="kpi-value kpi-amber" id="k-402">--</div>
+        <div class="kpi-sub">monthly cap hit</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">429 — Rate Limited</div>
+        <div class="kpi-value kpi-amber" id="k-429">--</div>
+        <div class="kpi-sub">throttled requests</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">403 — Blocked</div>
+        <div class="kpi-value kpi-red" id="k-403">--</div>
+        <div class="kpi-sub">abuse-guard / forbidden</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">5xx Server Errors</div>
+        <div class="kpi-value kpi-red" id="k-5xx">--</div>
+        <div class="kpi-sub">needs attention</div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <h2>Top Error Status Codes</h2>
+      <table class="ops">
+        <thead><tr><th>Status</th><th>Class</th><th class="num">Count</th></tr></thead>
+        <tbody id="t-errors"></tbody>
+      </table>
+    </div>
+
+    <div class="section-card">
+      <h2>Slowest Routes (by mean latency)</h2>
+      <table class="ops">
+        <thead><tr><th>Route</th><th class="num">Requests</th><th class="num">Avg ms</th></tr></thead>
+        <tbody id="t-slow"></tbody>
+      </table>
+    </div>
+
+    <div class="section-card">
+      <h2>Full Status Breakdown</h2>
+      <table class="ops">
+        <thead><tr><th>Status</th><th class="num">Count</th></tr></thead>
+        <tbody id="t-status"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="../footer.js"></script>
+  <script>
+    (function () {
+      var $ = function (id) { return document.getElementById(id); };
+
+      function fmtMs(v) { return (v == null ? 0 : v).toLocaleString() + ' ms'; }
+      function fmtPct(v) { return (v == null ? 0 : v).toFixed(2) + '%'; }
+      function clsClass(code) { return code >= 500 ? '5xx' : '4xx'; }
+
+      function emptyRow(tbody, cols, msg) {
+        tbody.innerHTML = '<tr><td colspan="' + cols + '" class="empty">' + msg + '</td></tr>';
+      }
+
+      function render(d) {
+        $('ops-banner').style.display = d.degraded ? 'block' : 'none';
+        $('ops-meta').textContent =
+          'Window: ' + d.window_minutes + ' min · generated ' +
+          new Date(d.generated_at).toLocaleTimeString();
+
+        $('k-volume').textContent = (d.total_requests || 0).toLocaleString();
+        $('k-rpm').textContent = (d.requests_per_minute || 0).toLocaleString() + ' req/min';
+
+        var er = d.error_rate || 0;
+        var kEr = $('k-errrate');
+        kEr.textContent = fmtPct(er);
+        kEr.className = 'kpi-value ' + (er >= 5 ? 'kpi-red' : er >= 1 ? 'kpi-amber' : 'kpi-green');
+        $('k-errsplit').textContent =
+          '4xx ' + fmtPct(d.error_rate_4xx) + ' · 5xx ' + fmtPct(d.error_rate_5xx);
+
+        var lat = d.latency_ms || {};
+        $('k-p95').textContent = fmtMs(lat.p95);
+        $('k-platency').textContent = 'p50 ' + fmtMs(lat.p50) + ' · p99 ' + fmtMs(lat.p99);
+        $('k-samples').textContent = (lat.sample_size || 0).toLocaleString();
+
+        var g = d.guard_counts || {};
+        $('k-402').textContent = (g.quota_402 || 0).toLocaleString();
+        $('k-429').textContent = (g.rate_limit_429 || 0).toLocaleString();
+        $('k-403').textContent = (g.blocked_403 || 0).toLocaleString();
+
+        var sb = d.status_breakdown || {};
+        var fiveXx = 0;
+        Object.keys(sb).forEach(function (c) {
+          if (parseInt(c, 10) >= 500) fiveXx += sb[c];
+        });
+        $('k-5xx').textContent = fiveXx.toLocaleString();
+
+        var te = $('t-errors');
+        var errs = d.top_error_codes || [];
+        if (!errs.length) { emptyRow(te, 3, 'No 4xx/5xx responses in this window.'); }
+        else {
+          te.innerHTML = errs.map(function (e) {
+            var k = clsClass(e.status);
+            return '<tr><td><span class="pill pill-' + k + '">' + e.status +
+              '</span></td><td>' + k + '</td><td class="num">' +
+              e.count.toLocaleString() + '</td></tr>';
+          }).join('');
+        }
+
+        var ts = $('t-slow');
+        var slow = d.slowest_routes || [];
+        if (!slow.length) { emptyRow(ts, 3, 'No requests recorded yet.'); }
+        else {
+          ts.innerHTML = slow.map(function (r) {
+            return '<tr><td>' + r.route + '</td><td class="num">' +
+              r.requests.toLocaleString() + '</td><td class="num">' +
+              r.avg_latency_ms.toLocaleString() + '</td></tr>';
+          }).join('');
+        }
+
+        var tst = $('t-status');
+        var keys = Object.keys(sb).sort(function (a, b) { return a - b; });
+        if (!keys.length) { emptyRow(tst, 2, 'No requests recorded yet.'); }
+        else {
+          tst.innerHTML = keys.map(function (c) {
+            return '<tr><td>' + c + '</td><td class="num">' +
+              sb[c].toLocaleString() + '</td></tr>';
+          }).join('');
+        }
+      }
+
+      async function load() {
+        var win = $('ops-window').value;
+        $('ops-meta').textContent = 'Loading live request metrics…';
+        try {
+          var r = await fetch('/admin/metrics/ops-health?window_minutes=' + win,
+                              { credentials: 'same-origin' });
+          if (r.status === 403) {
+            $('ops-meta').textContent = 'Admin access required — please sign in as an admin.';
+            return;
+          }
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          render(await r.json());
+        } catch (e) {
+          $('ops-banner').style.display = 'block';
+          $('ops-meta').textContent = 'Could not load metrics: ' + e.message;
+        }
+      }
+
+      $('ops-refresh').addEventListener('click', load);
+      $('ops-window').addEventListener('change', load);
+      load();
+      setInterval(load, 30000);
+    })();
+  </script>
+</body>
+</html>

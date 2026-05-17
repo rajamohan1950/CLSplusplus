@@ -413,6 +413,44 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class HealthMetricsMiddleware(BaseHTTPMiddleware):
+    """Record per-request status/route/latency for the ops-health dashboard.
+
+    Pure instrumentation: it times the request, then fire-and-forgets the
+    sample into Redis via `health_metrics.record_request`. All recording is
+    wrapped so a Redis hiccup never slows or fails a live request.
+    """
+
+    def __init__(self, app, settings: Settings):
+        super().__init__(app)
+        self.settings = settings
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        start = time.monotonic()
+        status_code = 500
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            return response
+        except Exception:
+            status_code = 500
+            raise
+        finally:
+            try:
+                latency_ms = (time.monotonic() - start) * 1000.0
+                from clsplusplus.health_metrics import record_request, route_template
+                asyncio.create_task(
+                    record_request(
+                        self.settings.redis_url,
+                        route_template(request),
+                        status_code,
+                        latency_ms,
+                    )
+                )
+            except Exception:
+                pass
+
+
 # Paths/prefixes that produce too much noise to trace.
 # /v1/memory/traces   — trace list/detail polling (memory UI)
 # /v1/demo/status     — demo.js warmup ping fires 5× on page load, every 30s

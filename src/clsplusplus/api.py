@@ -22,7 +22,7 @@ from clsplusplus.config import Settings
 from clsplusplus.integration_service import IntegrationService
 from clsplusplus.memory_service import MemoryService
 from clsplusplus.user_service import UserService
-from clsplusplus.middleware import AuthMiddleware, QuotaMiddleware, RateLimitMiddleware, RequestIdMiddleware, TracingMiddleware
+from clsplusplus.middleware import AuthMiddleware, HealthMetricsMiddleware, QuotaMiddleware, RateLimitMiddleware, RequestIdMiddleware, TracingMiddleware
 from clsplusplus.abuse_guard import AbuseGuardMiddleware
 from clsplusplus.tracer import tracer
 from clsplusplus.models import (
@@ -241,13 +241,16 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         expose_headers=["X-Request-Id", "X-RateLimit-Limit", "X-RateLimit-Remaining"],
     )
     # Middleware execution order: outermost (added last) runs first.
-    # AbuseGuard → Tracing → RequestId → RateLimit → Auth → Quota → route handler
+    # HealthMetrics → AbuseGuard → Tracing → RequestId → RateLimit → Auth → Quota → route handler
     app.add_middleware(QuotaMiddleware, settings=settings, tier_resolver=_tier_resolver)
     app.add_middleware(AuthMiddleware, settings=settings, integration_store=_integration_store)
     app.add_middleware(RateLimitMiddleware, settings=settings)
     app.add_middleware(RequestIdMiddleware)
     app.add_middleware(TracingMiddleware)
-    app.add_middleware(AbuseGuardMiddleware, settings=settings)  # outermost: blocklist check first
+    app.add_middleware(AbuseGuardMiddleware, settings=settings)  # blocklist check first
+    # Outermost: time the true end-to-end request so 402/429/403 emitted by
+    # inner middleware are captured for the ops-health dashboard.
+    app.add_middleware(HealthMetricsMiddleware, settings=settings)
 
     # Structured error handler (blueprint: error messages that teach)
     @app.exception_handler(HTTPException)
@@ -2103,6 +2106,24 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         except Exception as e:
             logger.error("Admin operations error: %s: %s", type(e).__name__, e)
             raise HTTPException(status_code=500, detail="Operations data unavailable")
+
+    @app.get("/admin/metrics/ops-health")
+    async def admin_ops_health(request: Request):
+        """Live request-health metrics for the operational dashboard.
+
+        Aggregates the Redis rolling window written by HealthMetricsMiddleware:
+        error rate (4xx/5xx), latency p50/p95/p99, request volume, top error
+        status codes, 402/429/403 guard counts, and slowest routes. Distinct
+        from `/admin/metering/health` (the metering-pipeline self-check).
+        Returns zeros gracefully when there is no data yet.
+        """
+        _require_admin(request)
+        from clsplusplus.health_metrics import aggregate_health, DEFAULT_WINDOW_MINUTES
+        try:
+            window = int(request.query_params.get("window_minutes", DEFAULT_WINDOW_MINUTES))
+        except (ValueError, TypeError):
+            window = DEFAULT_WINDOW_MINUTES
+        return await aggregate_health(settings.redis_url, window)
 
     @app.get("/admin/metrics/users")
     async def admin_users(request: Request):
