@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Traffic & Funnel | CLS++ Admin</title>
+  <link rel="stylesheet" href="../styles.css?v=2">
+  <script src="../posthog.js" defer></script>
+  <script src="../variant-loader.js"></script>
+  <script src="../feedback-widget.js" defer></script>
+  <script src="../auth.js" defer></script>
+  <link rel="stylesheet" href="styles.css?v=2">
+</head>
+<body>
+  <div class="video-bg"><video autoplay muted loop playsinline poster="../beach-bg.jpg"><source src="../sunrise-ocean.mp4" type="video/mp4"></video></div>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">CLS<span class="logo-plus">++</span></a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/admin/dashboard.html">Admin Dashboard</a>
+        <a href="/docs.html">API</a>
+        <div id="nav-auth" class="nav-auth"></div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="admin-container">
+    <div class="section-card" style="margin-bottom:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div>
+          <h2 style="margin:0;">Website Traffic &amp; Conversion Funnel</h2>
+          <p class="section-sub" style="margin:4px 0 0;">First-party analytics — how visitors move from the site to signup to active use.</p>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <label style="font-size:12px;color:var(--text-muted);">Window</label>
+          <select id="funnel-days" style="padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-elevated);color:inherit;">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+            <option value="365">Last year</option>
+          </select>
+          <button id="funnel-refresh" class="btn" style="padding:8px 16px;background:#ff6b35;color:#fff;border:none;border-radius:10px;font-weight:600;cursor:pointer;">Refresh</button>
+        </div>
+      </div>
+      <div id="funnel-status" style="margin-top:8px;font-size:12px;color:var(--text-muted);"></div>
+    </div>
+
+    <!-- TRAFFIC KPIs -->
+    <div class="kpi-bar" style="margin-bottom:20px;">
+      <div class="kpi-card">
+        <div class="kpi-label">Unique Visitors</div>
+        <div class="kpi-value" id="kpi-visitors">--</div>
+        <div class="kpi-sub">Distinct browser sessions</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Page Views</div>
+        <div class="kpi-value" id="kpi-pageviews">--</div>
+        <div class="kpi-sub">Total in window</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Clicks</div>
+        <div class="kpi-value" id="kpi-clicks">--</div>
+        <div class="kpi-sub">Total interactions</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Visitor → Active</div>
+        <div class="kpi-value kpi-green" id="kpi-conv">--</div>
+        <div class="kpi-sub">End-to-end conversion</div>
+      </div>
+    </div>
+
+    <!-- FUNNEL -->
+    <div class="section-card" style="margin-bottom:20px;">
+      <h2>Conversion Funnel</h2>
+      <p class="section-sub">Visitor → Signup → Active user. Active = signed up and owns a live API credential.</p>
+      <div id="funnel-stages" style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
+        <div class="funnel-stage" data-stage="visitors">
+          <div class="funnel-bar" style="background:#3b82f6;"></div>
+          <div class="funnel-meta"><span class="funnel-name">Visitors</span><span class="funnel-num" id="fn-visitors">--</span></div>
+        </div>
+        <div class="funnel-stage" data-stage="signups">
+          <div class="funnel-bar" style="background:#f59e0b;"></div>
+          <div class="funnel-meta"><span class="funnel-name">Signups <span class="funnel-rate" id="fn-rate-signup"></span></span><span class="funnel-num" id="fn-signups">--</span></div>
+        </div>
+        <div class="funnel-stage" data-stage="active">
+          <div class="funnel-bar" style="background:#10b981;"></div>
+          <div class="funnel-meta"><span class="funnel-name">Active users <span class="funnel-rate" id="fn-rate-active"></span></span><span class="funnel-num" id="fn-active">--</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOP PAGES -->
+    <div class="section-card" style="margin-bottom:20px;">
+      <h2>Most-Clicked Pages</h2>
+      <p class="section-sub">Pages ranked by click volume, with page views alongside.</p>
+      <div class="table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr><th>Page</th><th style="text-align:right;">Clicks</th><th style="text-align:right;">Page Views</th></tr>
+          </thead>
+          <tbody id="pages-tbody">
+            <tr><td colspan="3" style="text-align:center;color:var(--text-muted);">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ENGAGEMENT -->
+    <div class="section-card">
+      <h2>Where Users Show Interest</h2>
+      <p class="section-sub">Most-engaged sections and call-to-action targets, by click count.</p>
+      <div class="table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr><th>Target / CTA</th><th style="text-align:right;">Clicks</th></tr>
+          </thead>
+          <tbody id="engagement-tbody">
+            <tr><td colspan="2" style="text-align:center;color:var(--text-muted);">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .funnel-stage { position:relative; }
+    .funnel-bar { height:44px; border-radius:8px; min-width:6%; transition:width .4s ease; }
+    .funnel-meta {
+      position:absolute; inset:0; display:flex; align-items:center;
+      justify-content:space-between; padding:0 16px; font-weight:600; color:#fff;
+      text-shadow:0 1px 2px rgba(0,0,0,.35);
+    }
+    .funnel-rate { font-size:12px; opacity:.85; font-weight:500; }
+    .funnel-num { font-variant-numeric:tabular-nums; }
+  </style>
+
+  <script>
+    function escapeHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function fmt(n) { return (n == null ? 0 : n).toLocaleString(); }
+
+    var statusEl = document.getElementById('funnel-status');
+    var daysSel = document.getElementById('funnel-days');
+    var refreshBtn = document.getElementById('funnel-refresh');
+
+    async function loadFunnel() {
+      statusEl.textContent = 'Loading…';
+      try {
+        var r = await fetch('/admin/metrics/funnel?days=' + daysSel.value, { credentials: 'same-origin' });
+        if (r.status === 403) throw new Error('Admin access required — please sign in as an admin.');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var d = await r.json();
+        render(d);
+        statusEl.textContent = 'Updated ' + new Date().toLocaleTimeString() + ' · window: ' + d.window_days + ' days';
+      } catch (e) {
+        statusEl.textContent = 'Error: ' + e.message;
+      }
+    }
+
+    function render(d) {
+      var t = d.traffic || {}, f = d.funnel || {};
+      document.getElementById('kpi-visitors').textContent = fmt(t.unique_visitors);
+      document.getElementById('kpi-pageviews').textContent = fmt(t.total_pageviews);
+      document.getElementById('kpi-clicks').textContent = fmt(t.total_clicks);
+      document.getElementById('kpi-conv').textContent = (f.visitor_to_active_pct || 0) + '%';
+
+      document.getElementById('fn-visitors').textContent = fmt(f.visitors);
+      document.getElementById('fn-signups').textContent = fmt(f.signups);
+      document.getElementById('fn-active').textContent = fmt(f.active_users);
+      document.getElementById('fn-rate-signup').textContent =
+        '(' + (f.visitor_to_signup_pct || 0) + '% of visitors)';
+      document.getElementById('fn-rate-active').textContent =
+        '(' + (f.signup_to_active_pct || 0) + '% of signups)';
+
+      // Width of each funnel bar relative to the visitor count.
+      var base = Math.max(f.visitors || 0, 1);
+      function setBar(stage, value) {
+        var pct = Math.max(6, Math.round(100 * (value || 0) / base));
+        document.querySelector('.funnel-stage[data-stage="' + stage + '"] .funnel-bar').style.width = pct + '%';
+      }
+      setBar('visitors', f.visitors);
+      setBar('signups', f.signups);
+      setBar('active', f.active_users);
+
+      var pagesBody = document.getElementById('pages-tbody');
+      var pages = d.top_pages || [];
+      pagesBody.innerHTML = pages.length
+        ? pages.map(function (p) {
+            return '<tr><td>' + escapeHtml(p.page) + '</td>' +
+              '<td style="text-align:right;">' + fmt(p.clicks) + '</td>' +
+              '<td style="text-align:right;">' + fmt(p.pageviews) + '</td></tr>';
+          }).join('')
+        : '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);">No page events captured yet.</td></tr>';
+
+      var engBody = document.getElementById('engagement-tbody');
+      var eng = d.top_engagement || [];
+      engBody.innerHTML = eng.length
+        ? eng.map(function (e) {
+            return '<tr><td>' + escapeHtml(e.target) + '</td>' +
+              '<td style="text-align:right;">' + fmt(e.clicks) + '</td></tr>';
+          }).join('')
+        : '<tr><td colspan="2" style="text-align:center;color:var(--text-muted);">No click targets captured yet.</td></tr>';
+    }
+
+    refreshBtn.addEventListener('click', loadFunnel);
+    daysSel.addEventListener('change', loadFunnel);
+    loadFunnel();
+  </script>
+  <script src="../footer.js"></script>
+</body>
+</html>
