@@ -39,7 +39,10 @@ class ChatSessionStore:
                     dsn = self.settings.database_url
                     if not dsn:
                         raise RuntimeError("CLS_DATABASE_URL not configured")
-                    self._pool = await asyncpg.create_pool(dsn, min_size=1, max_size=3)
+                    # command_timeout so a stuck query can't hang the request.
+                    self._pool = await asyncpg.create_pool(
+                        dsn, min_size=1, max_size=3, command_timeout=60,
+                    )
                     async with self._pool.acquire() as conn:
                         ddl_path = os.path.join(os.path.dirname(__file__), "chat_sessions_ddl.sql")
                         with open(ddl_path) as f:

@@ -32,6 +32,9 @@ class L0WorkingBuffer(BaseStore):
             self._client = redis.from_url(
                 self.settings.redis_url,
                 decode_responses=True,
+                socket_timeout=2.0,
+                socket_connect_timeout=2.0,
+                health_check_interval=30,
             )
         return self._client
 

@@ -51,11 +51,38 @@ def _compute_expiry(tier: str, now: Optional[datetime] = None) -> datetime:
     return now + timedelta(days=days)
 
 
+# The Razorpay SDK uses a `requests.Session` and never passes a `timeout`,
+# so a stuck Razorpay endpoint would hang the request forever. This Session
+# subclass injects a default timeout into every call the SDK makes.
+class _TimeoutSession:
+    """Wraps a requests.Session so every request gets a default timeout."""
+
+    _DEFAULT_TIMEOUT = (5.0, 20.0)  # (connect, read) seconds
+
+    def __init__(self, session):
+        self._session = session
+
+    def __getattr__(self, name):
+        attr = getattr(self._session, name)
+        if name in ("get", "post", "put", "patch", "delete", "head", "request"):
+            def _with_timeout(*args, **kwargs):
+                kwargs.setdefault("timeout", self._DEFAULT_TIMEOUT)
+                return attr(*args, **kwargs)
+            return _with_timeout
+        return attr
+
+
 def _get_client(settings: "Settings") -> razorpay.Client:
-    """Create a Razorpay client from settings."""
+    """Create a Razorpay client from settings.
+
+    The client's HTTP session is wrapped so every Razorpay API call has an
+    explicit connect/read timeout and cannot hang the request indefinitely.
+    """
     if not settings.razorpay_key_id or not settings.razorpay_key_secret:
         raise ValueError("Razorpay is not configured (CLS_RAZORPAY_KEY_ID or CLS_RAZORPAY_KEY_SECRET missing)")
-    return razorpay.Client(auth=(settings.razorpay_key_id, settings.razorpay_key_secret))
+    client = razorpay.Client(auth=(settings.razorpay_key_id, settings.razorpay_key_secret))
+    client.session = _TimeoutSession(client.session)
+    return client
 
 
 async def create_order(

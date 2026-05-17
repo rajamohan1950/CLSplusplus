@@ -250,6 +250,13 @@ class Settings(BaseSettings):
     abuse_auth_fail_threshold: int = 20       # CLS_ABUSE_AUTH_FAIL_THRESHOLD (per IP / 5 min)
     abuse_burst_threshold: int = 200          # CLS_ABUSE_BURST_THRESHOLD (requests / 10s)
 
+    # ── Resilience: circuit breakers for flaky external dependencies ──────
+    # Shared by the GeoIP / email / Razorpay / demo-LLM call sites via
+    # clsplusplus.resilience. After N consecutive failures a breaker OPENS
+    # and fails fast for the cooldown, then probes once before closing.
+    circuit_failure_threshold: int = 5        # CLS_CIRCUIT_FAILURE_THRESHOLD
+    circuit_recovery_seconds: float = 30.0    # CLS_CIRCUIT_RECOVERY_SECONDS
+
     # Demo LLM keys (optional; demo uses these for real Claude/OpenAI/Gemini)
     anthropic_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None

@@ -210,8 +210,10 @@ class UserService:
         Returns (user_dict, jwt_token).
         Raises ValueError on OAuth failure.
         """
-        # Exchange authorization code for access token
-        async with httpx.AsyncClient() as client:
+        # Exchange authorization code for access token. Explicit timeout so a
+        # stuck Google OAuth endpoint can't hang the sign-in request forever.
+        from clsplusplus.resilience import http_timeout
+        async with httpx.AsyncClient(timeout=http_timeout(connect=5.0, read=10.0)) as client:
             token_resp = await client.post(GOOGLE_TOKEN_URL, data={
                 "code": code,
                 "client_id": self.settings.google_client_id,
@@ -280,7 +282,9 @@ class UserService:
         Returns (user_dict, jwt_token).
         Raises ValueError on OAuth failure (bad code, missing verified email).
         """
-        async with httpx.AsyncClient() as client:
+        # Explicit timeout so a stuck GitHub OAuth endpoint can't hang sign-in.
+        from clsplusplus.resilience import http_timeout
+        async with httpx.AsyncClient(timeout=http_timeout(connect=5.0, read=10.0)) as client:
             token_resp = await client.post(
                 GITHUB_TOKEN_URL,
                 data={

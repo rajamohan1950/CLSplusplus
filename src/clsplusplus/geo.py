@@ -79,6 +79,31 @@ def _normalize_country(raw: Optional[str]) -> Optional[str]:
     return None
 
 
+async def _geoip_lookup(ip: str) -> Optional[str]:
+    """Single GeoIP HTTP lookup, behind a circuit breaker + retry.
+
+    The breaker means that once ipapi.co is down, requests stop trying
+    (and stop waiting the 2s timeout) until it recovers — they just fail
+    open instantly. Retry smooths transient blips.
+    """
+    from clsplusplus.resilience import (
+        get_breaker, guarded_call, http_timeout,
+    )
+
+    async def _do_lookup() -> Optional[str]:
+        async with httpx.AsyncClient(
+            timeout=http_timeout(connect=2.0, read=_GEOIP_TIMEOUT_SECONDS)
+        ) as client:
+            resp = await client.get(_GEOIP_URL.format(ip=ip))
+        resp.raise_for_status()
+        return _normalize_country(resp.text)
+
+    breaker = get_breaker("geoip", failure_threshold=5, recovery_seconds=30.0)
+    return await guarded_call(
+        breaker, _do_lookup, attempts=2, base_delay=0.2, max_delay=1.0,
+    )
+
+
 async def resolve_country(request) -> Optional[str]:
     """Resolve the request's origin country as an ISO-2 code, else None.
 
@@ -102,10 +127,7 @@ async def resolve_country(request) -> Optional[str]:
 
     country: Optional[str] = None
     try:
-        async with httpx.AsyncClient(timeout=_GEOIP_TIMEOUT_SECONDS) as client:
-            resp = await client.get(_GEOIP_URL.format(ip=ip))
-        if resp.status_code == 200:
-            country = _normalize_country(resp.text)
+        country = await _geoip_lookup(ip)
     except Exception as e:  # noqa: BLE001 — any GeoIP failure must fail open.
         logger.warning("GeoIP lookup failed for %s: %s", ip, e)
         country = None

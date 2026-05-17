@@ -22,7 +22,15 @@ _redis_client_cache: dict[str, object] = {}
 def _redis_client(redis_url: str):
     import redis.asyncio as redis
     if redis_url not in _redis_client_cache:
-        _redis_client_cache[redis_url] = redis.from_url(redis_url, decode_responses=True)
+        # Socket + connect timeouts so a dead/slow Redis fails fast instead
+        # of hanging every billing call; callers already fail soft on error.
+        _redis_client_cache[redis_url] = redis.from_url(
+            redis_url,
+            decode_responses=True,
+            socket_timeout=2.0,
+            socket_connect_timeout=2.0,
+            health_check_interval=30,
+        )
     return _redis_client_cache[redis_url]
 
 

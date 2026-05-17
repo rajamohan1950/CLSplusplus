@@ -24,12 +24,13 @@ class EmailService:
     def _enabled(self) -> bool:
         return bool(self.settings.resend_api_key)
 
-    async def _send(self, to: str, subject: str, html: str) -> bool:
-        """Send an email via Resend API. Returns True on success, raises on failure."""
-        if not self._enabled:
-            raise RuntimeError("Resend not configured (CLS_RESEND_API_KEY not set)")
+    async def _post_resend(self, to: str, subject: str, html: str) -> bool:
+        """One Resend API POST. Explicit timeout; raises on transient faults."""
+        from clsplusplus.resilience import http_timeout
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(
+            timeout=http_timeout(connect=5.0, read=15.0)
+        ) as client:
             resp = await client.post(
                 RESEND_API_URL,
                 headers={
@@ -42,15 +43,32 @@ class EmailService:
                     "subject": subject,
                     "html": html,
                 },
-                timeout=15.0,
             )
-            if resp.status_code in (200, 201):
-                logger.info("Email sent to %s: %s", to, subject)
-                return True
-            else:
-                error_body = resp.text
-                logger.error("Resend API error %d: %s", resp.status_code, error_body)
-                raise RuntimeError(f"Resend API {resp.status_code}: {error_body}")
+        if resp.status_code in (200, 201):
+            logger.info("Email sent to %s: %s", to, subject)
+            return True
+        # raise_for_status surfaces 5xx/429 as retryable HTTPStatusError.
+        resp.raise_for_status()
+        error_body = resp.text
+        logger.error("Resend API error %d: %s", resp.status_code, error_body)
+        raise RuntimeError(f"Resend API {resp.status_code}: {error_body}")
+
+    async def _send(self, to: str, subject: str, html: str) -> bool:
+        """Send an email via Resend, behind a circuit breaker + retry.
+
+        A dead/slow Resend fails fast (breaker open) instead of stalling
+        the caller; transient 5xx/timeouts are retried with backoff.
+        """
+        if not self._enabled:
+            raise RuntimeError("Resend not configured (CLS_RESEND_API_KEY not set)")
+
+        from clsplusplus.resilience import breaker_from_settings, guarded_call
+
+        breaker = breaker_from_settings("resend_email", self.settings)
+        return await guarded_call(
+            breaker, self._post_resend, to, subject, html,
+            attempts=3, base_delay=0.5, max_delay=4.0,
+        )
 
     async def send_verification_email(
         self, to: str, otp_code: str, verify_link: str

@@ -1,10 +1,28 @@
-"""LLM API calls - no Redis/Postgres. Used by demo_local and demo_llm."""
+"""LLM API calls - no Redis/Postgres. Used by demo_local and demo_llm.
+
+Every provider call has an explicit request timeout (so a stuck LLM
+endpoint cannot hang the demo request) and runs behind a per-provider
+circuit breaker (so once a provider is down the demo fails fast with a
+friendly message instead of stalling on the full timeout every time).
+"""
 import asyncio
 import logging
 
 from clsplusplus.config import Settings
+from clsplusplus.resilience import CircuitOpenError, get_breaker
 
 logger = logging.getLogger(__name__)
+
+# Per-provider LLM request timeout (seconds) and breaker tuning. The demo
+# is latency-sensitive; a dead provider should be detected quickly.
+_LLM_TIMEOUT_SECONDS = 30.0
+
+
+def _llm_breaker(provider: str):
+    """Process-wide breaker for one demo LLM provider."""
+    return get_breaker(
+        f"demo_llm:{provider}", failure_threshold=4, recovery_seconds=60.0,
+    )
 
 
 async def call_claude(settings: Settings, system: str, user: str) -> str:
@@ -15,7 +33,7 @@ async def call_claude(settings: Settings, system: str, user: str) -> str:
         key = getattr(settings, "anthropic_api_key", None) or ""
         if not key:
             return "Claude: Add CLS_ANTHROPIC_API_KEY to env."
-        client = anthropic.Anthropic(api_key=key)
+        client = anthropic.Anthropic(api_key=key, timeout=_LLM_TIMEOUT_SECONDS)
         # Retry on transient 529/overloaded errors
         for attempt in range(6):
             try:
@@ -37,7 +55,10 @@ async def call_claude(settings: Settings, system: str, user: str) -> str:
         raise RuntimeError("Claude API overloaded after 6 retries")
 
     try:
-        return await asyncio.to_thread(_sync)
+        return await _llm_breaker("claude").call(asyncio.to_thread, _sync)
+    except CircuitOpenError:
+        logger.warning("Claude breaker open — failing fast")
+        return "Claude: temporarily unavailable — please retry shortly."
     except Exception as e:
         logger.error("Claude call failed: %s", e)
         err = str(e).lower()
@@ -52,7 +73,7 @@ async def call_openai(settings: Settings, system: str, user: str) -> str:
         key = getattr(settings, "openai_api_key", None) or ""
         if not key:
             return "OpenAI: Add CLS_OPENAI_API_KEY to env."
-        client = OpenAI(api_key=key)
+        client = OpenAI(api_key=key, timeout=_LLM_TIMEOUT_SECONDS)
         resp = client.chat.completions.create(
             model="gpt-4o-mini",
             max_tokens=512,
@@ -64,7 +85,10 @@ async def call_openai(settings: Settings, system: str, user: str) -> str:
         return resp.choices[0].message.content or ""
 
     try:
-        return await asyncio.to_thread(_sync)
+        return await _llm_breaker("openai").call(asyncio.to_thread, _sync)
+    except CircuitOpenError:
+        logger.warning("OpenAI breaker open — failing fast")
+        return "OpenAI: temporarily unavailable — please retry shortly."
     except Exception as e:
         logger.error("OpenAI call failed: %s", e)
         err = str(e).lower()
@@ -89,7 +113,9 @@ async def call_gemini(settings: Settings, system: str, user: str) -> str:
             "gemini-2.0-flash",
             system_instruction=system,
         )
-        resp = model.generate_content(user)
+        resp = model.generate_content(
+            user, request_options={"timeout": _LLM_TIMEOUT_SECONDS},
+        )
         try:
             return resp.text or "No response"
         except (ValueError, AttributeError):
@@ -98,7 +124,10 @@ async def call_gemini(settings: Settings, system: str, user: str) -> str:
             return "Gemini: No response (content may have been blocked)."
 
     try:
-        return await asyncio.to_thread(_sync)
+        return await _llm_breaker("gemini").call(asyncio.to_thread, _sync)
+    except CircuitOpenError:
+        logger.warning("Gemini breaker open — failing fast")
+        return "Gemini: temporarily unavailable — please retry shortly."
     except Exception as e:
         logger.error("Gemini call failed: %s", e)
         err = str(e).lower()
