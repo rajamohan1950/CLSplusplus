@@ -66,25 +66,27 @@ class TestCheckQuota:
 
     @pytest.mark.asyncio
     async def test_under_quota_allowed(self):
+        # Free with no trial expiry → post-trial cap (800 by default).
         s = Settings(track_usage=True)
         with patch("clsplusplus.usage.get_operation_count", new_callable=AsyncMock, return_value=500):
             allowed, usage, limit = await check_quota("key", Tier.free, s)
             assert allowed is True
             assert usage == 500
-            assert limit == 1_000
+            assert limit == s.free_posttrial_monthly_cap
 
     @pytest.mark.asyncio
     async def test_at_quota_blocked(self):
         s = Settings(track_usage=True)
-        with patch("clsplusplus.usage.get_operation_count", new_callable=AsyncMock, return_value=1_000):
+        with patch("clsplusplus.usage.get_operation_count", new_callable=AsyncMock,
+                   return_value=s.free_posttrial_monthly_cap):
             allowed, usage, limit = await check_quota("key", Tier.free, s)
             assert allowed is False
-            assert usage == 1_000
 
     @pytest.mark.asyncio
     async def test_over_quota_blocked(self):
         s = Settings(track_usage=True)
-        with patch("clsplusplus.usage.get_operation_count", new_callable=AsyncMock, return_value=1_500):
+        with patch("clsplusplus.usage.get_operation_count", new_callable=AsyncMock,
+                   return_value=s.free_posttrial_monthly_cap + 500):
             allowed, usage, limit = await check_quota("key", Tier.free, s)
             assert allowed is False
 
@@ -102,7 +104,8 @@ class TestGetQuotaStatus:
             status = await get_quota_status("key", Tier.free, s)
             assert status["tier"] == "free"
             assert status["operations"] == 42
-            assert status["operations_limit"] == 1_000
+            # No trial expiry → post-trial free cap.
+            assert status["operations_limit"] == s.free_posttrial_monthly_cap
             assert status["writes"] == 20
             assert status["reads"] == 22
             assert status["namespaces_limit"] == 1
@@ -153,7 +156,8 @@ class TestQuotaMiddleware:
                 assert resp.status_code == 402
                 body = resp.json()
                 assert body["tier"] == "free"
-                assert body["limit"] == 1_000
+                # Unresolved key → free + no trial expiry → post-trial cap.
+                assert body["limit"] == settings.free_posttrial_monthly_cap
 
     @pytest.mark.asyncio
     async def test_get_requests_not_metered(self):
@@ -187,9 +191,9 @@ class TestQuotaMiddleware:
 class TestQuotaPerUserTier:
     """The middleware must read the OWNING USER's tier, not `settings.tier`.
 
-    These tests patch `TierResolver.resolve` so the middleware sees a specific
-    tier regardless of the DB, then assert the quota math is done against
-    that tier's cap.
+    These tests patch `TierResolver.resolve_effective` so the middleware sees
+    a specific (tier, expiry) regardless of the DB, then assert the quota math
+    is done against that tier's cap.
     """
 
     @pytest.mark.asyncio
@@ -206,8 +210,8 @@ class TestQuotaPerUserTier:
         app = create_app(settings)
         transport = ASGITransport(app=app)
 
-        with patch("clsplusplus.tier_resolver.TierResolver.resolve",
-                   new_callable=AsyncMock, return_value="pro"), \
+        with patch("clsplusplus.tier_resolver.TierResolver.resolve_effective",
+                   new_callable=AsyncMock, return_value=("pro", None)), \
              patch("clsplusplus.usage.get_operation_count",
                    new_callable=AsyncMock, return_value=30_000):
             async with AsyncClient(
@@ -235,8 +239,8 @@ class TestQuotaPerUserTier:
         app = create_app(settings)
         transport = ASGITransport(app=app)
 
-        with patch("clsplusplus.tier_resolver.TierResolver.resolve",
-                   new_callable=AsyncMock, return_value="pro"), \
+        with patch("clsplusplus.tier_resolver.TierResolver.resolve_effective",
+                   new_callable=AsyncMock, return_value=("pro", None)), \
              patch("clsplusplus.usage.get_operation_count",
                    new_callable=AsyncMock, return_value=60_000):
             async with AsyncClient(
@@ -264,8 +268,8 @@ class TestQuotaPerUserTier:
         app = create_app(settings)
         transport = ASGITransport(app=app)
 
-        with patch("clsplusplus.tier_resolver.TierResolver.resolve",
-                   new_callable=AsyncMock, return_value=None), \
+        with patch("clsplusplus.tier_resolver.TierResolver.resolve_effective",
+                   new_callable=AsyncMock, return_value=(None, None)), \
              patch("clsplusplus.usage.get_operation_count",
                    new_callable=AsyncMock, return_value=1_500):
             async with AsyncClient(

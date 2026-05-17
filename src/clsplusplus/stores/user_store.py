@@ -29,7 +29,7 @@ def _now() -> datetime:
 
 # Every new free user gets a 30-day launch-quota trial window. After it
 # elapses they stay free but the effective monthly cap drops (see
-# tiers.effective_free_cap). 'trial' is purely informational — the cap
+# tiers.effective_monthly_cap). 'trial' is purely informational — the cap
 # switch is driven by subscription_expires_at, not by this status.
 TRIAL_DAYS = 30
 
