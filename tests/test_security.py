@@ -254,7 +254,7 @@ class TestRequestSizeLimits:
 class TestCORSSecurity:
 
     @pytest.mark.asyncio
-    async def test_no_credentials_in_cors(self, client):
+    async def test_unlisted_origin_not_reflected(self, client):
         resp = await client.options(
             "/",
             headers={
@@ -262,9 +262,11 @@ class TestCORSSecurity:
                 "Access-Control-Request-Method": "GET",
             },
         )
-        # allow_credentials is False in the app
-        creds = resp.headers.get("access-control-allow-credentials", "false")
-        assert creds.lower() != "true"
+        # Credentials are enabled, but only for allowlisted origins. The real
+        # guarantee: an unlisted origin is never reflected back in
+        # Access-Control-Allow-Origin, so a browser will not expose a
+        # credentialed response to it.
+        assert resp.headers.get("access-control-allow-origin") != "http://evil.com"
 
 
 # ---------------------------------------------------------------------------

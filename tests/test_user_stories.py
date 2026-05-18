@@ -330,7 +330,8 @@ class TestStoryWebhookBackup:
                            content=b'{}',
                            headers={"Content-Type": "application/json",
                                     "stripe-signature": "test"})
-        assert resp.status_code in (200, 400, 500)
+        # Stripe is parked — the webhook endpoint returns 503 by design.
+        assert resp.status_code in (200, 400, 500, 503)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

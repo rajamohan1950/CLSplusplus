@@ -999,6 +999,16 @@ async def launch_browser():
 # request includes CLS++ context.  These mock endpoints validate that the
 # rewritten body still has the expected shape and that the memory text is present.
 
+# Phrases that mark a CLS++ memory-injection preamble in a prompt. The
+# post-intercept body the extension sends opens with one of these.
+_INJECTION_PROOF = ("verified user facts", "the user has shared the following")
+
+
+def _has_injection(text: str) -> bool:
+    low = (text or "").lower()
+    return any(marker in low for marker in _INJECTION_PROOF)
+
+
 @app.post("/backend-api/conversation")
 async def mock_chatgpt_echo(request: Request):
     """Mock ChatGPT backend — checks that CLS++ injection is present."""
@@ -1009,7 +1019,7 @@ async def mock_chatgpt_echo(request: Request):
         content = m.get("content", {})
         parts = content.get("parts", []) if isinstance(content, dict) else []
         for p in parts:
-            if isinstance(p, str) and "verified user facts" in p.lower():
+            if isinstance(p, str) and _has_injection(p):
                 injection_ok = True
                 break
     return {"injection_ok": injection_ok, "messages_count": len(messages)}
@@ -1020,7 +1030,7 @@ async def mock_claude_echo(conversation_id: str, request: Request):
     """Mock Claude API — checks that CLS++ injection is present."""
     body = await request.json()
     prompt = body.get("prompt", "")
-    injection_ok = "verified user facts" in prompt.lower()
+    injection_ok = _has_injection(prompt)
     return {"injection_ok": injection_ok, "conversation_id": conversation_id}
 
 

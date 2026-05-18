@@ -7,7 +7,9 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  # In-process unit / regression tests. Each test builds its own app via
+  # create_app() and talks to the Redis + Postgres service containers.
+  unit:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -42,13 +44,14 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # Server runtime deps (the set Render actually deploys) + test tooling.
-          # The base package only declares the lightweight SDK deps, so the app
-          # and its tests need requirements-render.txt on top of the dev extra.
+          # Server runtime deps (what Render deploys) + the embedding model
+          # package (excluded from requirements-render.txt for the free tier,
+          # but the embedding unit tests need it) + test tooling.
           pip install -r requirements-render.txt
+          pip install sentence-transformers
           pip install -e ".[dev]"
 
-      - name: Run tests
+      - name: Run unit + regression tests
         env:
           CLS_REDIS_URL: redis://localhost:6379/0
           CLS_DATABASE_URL: postgresql://postgres:test@localhost:5432/clsplusplus
@@ -57,7 +60,85 @@ jobs:
           CLS_MINIO_SECRET_KEY: ""
           CLS_MINIO_BUCKET: ""
           CLS_REQUIRE_API_KEY: "false"
-        run: pytest tests/ -v --tb=short
+        # The functional / smoke / journey suites are blackbox — they need a
+        # live server and run in the `integration` job below. The load suite
+        # asserts latency budgets and is not suitable for shared CI runners.
+        run: |
+          pytest tests/ \
+            --ignore=tests/functional \
+            --ignore=tests/smoke \
+            --ignore=tests/journey \
+            --ignore=tests/load \
+            -v --tb=short
+
+  # Blackbox suites: a real server on :18080 backed by Redis + Postgres.
+  integration:
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: clsplusplus
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-render.txt
+          pip install -e ".[dev]"
+
+      - name: Start API server on :18080
+        env:
+          CLS_PORT: "18080"
+          CLS_REDIS_URL: redis://localhost:6379/0
+          CLS_DATABASE_URL: postgresql://postgres:test@localhost:5432/clsplusplus
+          CLS_REQUIRE_API_KEY: "false"
+          CLS_TEST_MODE: "true"
+          CLS_JWT_SECRET: test-jwt-secret-not-for-prod-aaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          CLS_MAX_ACTIVE_USERS: "100000"
+          CLS_COOKIE_SECURE: "false"
+        run: |
+          python -m clsplusplus.main > /tmp/server.log 2>&1 &
+          echo $! > /tmp/server.pid
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:18080/health > /dev/null; then
+              echo "server is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "server did not become healthy in 60s"
+          cat /tmp/server.log
+          exit 1
+
+      - name: Run integration suites (functional + smoke + journey)
+        env:
+          CLS_TEST_API_URL: http://localhost:18080
+        run: pytest tests/functional tests/smoke tests/journey -v --tb=short
+
+      - name: Server log (on failure)
+        if: failure()
+        run: cat /tmp/server.log || true
 
   extension-lint:
     runs-on: ubuntu-latest

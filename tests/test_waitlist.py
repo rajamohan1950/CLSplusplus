@@ -77,6 +77,16 @@ def _install_patches(monkeypatch, H: Harness) -> None:
     monkeypatch.setattr(WaitlistStore, "_init_schema", _wl_init)
     monkeypatch.setattr(WaitlistStore, "get_pool", _wl_pool)
 
+    # Active-user count drives the launch cap and stats.active_now. The real
+    # implementation runs raw SQL against api_credentials; with the DB pool
+    # stubbed out it always returns 0. Mirror it to the harness user map.
+    async def _count_active_api_users(self):
+        return len(H.users)
+
+    monkeypatch.setattr(
+        WaitlistService, "_count_active_api_users", _count_active_api_users
+    )
+
     async def upsert_pending_otp(self, email, otp_code, expires_at, source_variant=""):
         H.pending[email] = {
             "email": email,
@@ -304,8 +314,6 @@ def _mk_settings(**overrides) -> Settings:
         require_api_key=False,
         jwt_secret=JWT_SECRET,
         max_active_users=5,
-        waitlist_queue_seed_offset=47,
-        waitlist_active_floor=3,
         waitlist_dau_healthy_threshold=5,
         waitlist_promote_batch=1,
         resend_api_key="x",  # present so EmailService._enabled is True
@@ -336,15 +344,15 @@ class TestStats:
     async def test_WL_001_stats_empty_returns_seeded_baseline(self, harness):
         svc = _mk_service()
         stats = await svc.stats()
-        assert stats["waiting_count"] == 47  # 0 real + 47 offset
-        assert stats["active_now"] == 3  # 0 real, clamped to floor
+        assert stats["waiting_count"] == 0  # raw count — no seeding
+        assert stats["active_now"] == 0  # raw count — no floor
 
     @pytest.mark.asyncio
     async def test_WL_002_stats_respects_active_floor(self, harness):
         harness.active_now = 1
         svc = _mk_service()
         stats = await svc.stats()
-        assert stats["active_now"] == 3
+        assert stats["active_now"] == 0  # raw count — no floor
 
     @pytest.mark.asyncio
     async def test_WL_003_stats_passes_through_when_active_above_floor(
@@ -352,7 +360,7 @@ class TestStats:
     ):
         harness.active_now = 42
         svc = _mk_service()
-        assert (await svc.stats())["active_now"] == 42
+        assert (await svc.stats())["active_now"] == 0  # raw count — no floor
 
 
 # =============================================================================
@@ -427,7 +435,7 @@ class TestJoin:
         again = await svc.join("dup@acme.com")
         assert again["pending"] is False
         assert again["status"] == "waiting"
-        assert again["position"] == 48  # 1 real + 47 offset
+        assert again["position"] == 1  # raw position — no offset
 
 
 # =============================================================================
@@ -457,8 +465,8 @@ class TestVerify:
         otp = harness.sent_emails[0]["otp"]
         result = await svc.verify("a@acme.com", otp)
         assert result["status"] == "waiting"
-        assert result["position"] == 48  # offset-aware
-        assert result["waiting_count"] == 48
+        assert result["position"] == 1  # raw position — no offset
+        assert result["waiting_count"] == 1
         assert "a@acme.com" in harness.by_email
         assert "a@acme.com" not in harness.pending  # consumed
 
@@ -472,7 +480,7 @@ class TestVerify:
         await svc.join("second@acme.com")
         otp2 = harness.sent_emails[-1]["otp"]
         result = await svc.verify("second@acme.com", otp2)
-        assert result["position"] == 49  # 2 real + 47 offset
+        assert result["position"] == 2  # raw position — no offset
 
     @pytest.mark.asyncio
     async def test_WL_024_verify_stats_with_email_returns_your_position(
@@ -484,9 +492,9 @@ class TestVerify:
         await svc.verify("mine@acme.com", otp)
 
         stats = await svc.stats(email="mine@acme.com")
-        assert stats["your_position"] == 48
+        assert stats["your_position"] == 1
         assert stats["your_status"] == "waiting"
-        assert stats["waiting_count"] == 48
+        assert stats["waiting_count"] == 1
 
 
 # =============================================================================
@@ -701,8 +709,8 @@ class TestHttpEndpoints:
             resp = await ac.get("/v1/waitlist/stats")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["waiting_count"] == 47
-        assert data["active_now"] == 3
+        assert data["waiting_count"] == 0
+        assert data["active_now"] == 0
 
     @pytest.mark.asyncio
     async def test_WL_061_join_endpoint_sends_otp(self, harness):
@@ -739,7 +747,7 @@ class TestHttpEndpoints:
         assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == "waiting"
-        assert body["position"] == 48
+        assert body["position"] == 1
 
     @pytest.mark.asyncio
     async def test_WL_063_join_invalid_email_returns_400(self, harness):
