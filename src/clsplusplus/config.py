@@ -279,6 +279,8 @@ class Settings(BaseSettings):
     # Error tracking (Sentry). Leave empty to disable — when set, unhandled
     # exceptions are reported to Sentry with request context.
     sentry_dsn: str = ""                      # CLS_SENTRY_DSN
+    # Sentry project URL — the "Errors" deep-link on the admin metrics page.
+    sentry_url: str = "https://sentry.io"     # CLS_SENTRY_URL
 
     # Demo LLM keys (optional; demo uses these for real Claude/OpenAI/Gemini)
     anthropic_api_key: Optional[str] = None
