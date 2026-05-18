@@ -61,6 +61,7 @@ server = [
     "razorpay>=1.4.0",
     "minio>=7.2.0",
     "pyarrow>=14.0.0",
+    "posthog>=3.5.0",
 ]
 dev = [
     "pytest>=7.4.0",

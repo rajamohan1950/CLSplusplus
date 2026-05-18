@@ -147,6 +147,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     _overage_biller = None
     _subscription_watchdog = None
 
+    # Weblab auto-rollback watcher — polls ops-health and disables a PostHog
+    # flag when its metrics breach thresholds. Started in startup() below.
+    from clsplusplus.weblab_watcher import WeblabWatcher
+    _weblab_watcher = WeblabWatcher(settings)
+
     async def _metering_redis():
         """Lazy Redis client for the reconciler. Returns None if unavailable."""
         try:
@@ -401,6 +406,41 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     async def analytics_dashboard_config():
         """Return PostHog shared dashboard URL from environment. No auth required (admin-only page)."""
         return {"dashboard_url": os.environ.get("POSTHOG_DASHBOARD_URL", "")}
+
+    @app.get("/v1/config/flags")
+    async def weblab_flags(request: Request):
+        """Evaluated weblab feature flags for the calling identity.
+
+        The extension fetches this with its API key; treatment assignment is
+        keyed on the caller's namespace so a user always sees the same arm.
+        """
+        from clsplusplus import weblab
+        distinct_id = (
+            getattr(request.state, "namespace", None)
+            or getattr(request.state, "user_id", None)
+            or "anonymous"
+        )
+        return {
+            "flags": weblab.all_flags(distinct_id, settings),
+            "distinct_id": distinct_id,
+        }
+
+    @app.get("/admin/weblab")
+    async def admin_weblab_status(request: Request):
+        """Weblab control status — watched flags + latest green/red verdict."""
+        _require_admin(request)
+        verdict = await _weblab_watcher.evaluate()
+        return {
+            "launch_flag": settings.weblab_launch_flag,
+            "auto_rollback_enabled": settings.weblab_auto_rollback_enabled,
+            "thresholds": {
+                "error_rate_5xx_pct": settings.weblab_rollback_5xx_pct,
+                "p95_ms": settings.weblab_rollback_p95_ms,
+                "min_requests": settings.weblab_rollback_min_requests,
+            },
+            "verdict": verdict,
+            "last_watcher_result": _weblab_watcher.last_result,
+        }
 
     # Per-user metrics emitter (shared across all endpoints)
     from clsplusplus.metrics import MetricsEmitter
@@ -1257,6 +1297,25 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         if not is_region_allowed(_country, settings):
             return JSONResponse(
                 content=await queue_out_of_region(waitlist_service, req.email)
+            )
+
+        # launch-rollout weblab: the PostHog flag is the percentage dial for
+        # who gets an active account now vs. the waitlist. Fails OPEN (default
+        # True) so a PostHog outage never blocks signups — the cap below is
+        # still the hard ceiling.
+        from clsplusplus import weblab
+        if not weblab.enabled(settings.weblab_launch_flag, req.email, settings,
+                              default=True):
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": "launch_wave",
+                    "message": (
+                        "We're releasing CLS++ in small waves. Join the "
+                        "waitlist and we'll email you the moment your wave opens."
+                    ),
+                    "waitlist": True,
+                },
             )
 
         try:
@@ -3438,9 +3497,24 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
         asyncio.create_task(_waitlist_promoter_loop())
 
+        # ── 4. Weblab auto-rollback watcher ────────────────────────────────
+        try:
+            _weblab_watcher.start()
+            _api_logger.info(
+                "weblab watcher: started (poll=%ss, auto_rollback=%s)",
+                settings.weblab_metric_poll_seconds,
+                settings.weblab_auto_rollback_enabled,
+            )
+        except Exception as e:
+            _api_logger.warning("weblab watcher: start failed: %s", e)
+
     @app.on_event("shutdown")
     async def shutdown():
         """Cleanly close all connection pools on shutdown."""
+        try:
+            await _weblab_watcher.stop()
+        except Exception:
+            pass
         for store in [memory_service.l1, memory_service.l2]:
             if hasattr(store, "close"):
                 try:

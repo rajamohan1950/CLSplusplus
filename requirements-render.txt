@@ -22,3 +22,4 @@ PyJWT>=2.8.0
 stripe>=8.0.0
 razorpay>=1.4.0
 sentry-sdk[fastapi]>=2.0.0
+posthog>=3.5.0
