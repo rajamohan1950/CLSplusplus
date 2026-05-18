@@ -8,6 +8,19 @@ Brain-inspired, model-agnostic persistent memory for Large Language Models.
 npm install clsplusplus
 ```
 
+## Get an API key
+
+Every call needs an API key — without one the first `learn()` returns `401`.
+
+1. Sign up at **https://www.clsplusplus.com** and open your profile page.
+2. Copy your key (`cls_live_…`) and expose it to the SDK:
+
+```bash
+export CLS_API_KEY="cls_live_xxxxxxxxxxxx"
+```
+
+Or pass it explicitly — see [Configuration](#configuration) below.
+
 ## Quick Start
 
 ```ts
