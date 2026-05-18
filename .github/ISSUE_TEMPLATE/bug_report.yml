@@ -1,0 +1,96 @@
+name: Bug report
+description: Report a bug. One central tracker for every source — Sentry, logs, metrics, audits, and customer reports.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Every bug lands here regardless of source. After filing, a triager
+        applies the `severity:*`, `priority:*` and `source:*` labels.
+        **Customer-reported bugs are `prod-cx` — must-fix, never backlogged.**
+
+  - type: dropdown
+    id: source
+    attributes:
+      label: Source
+      description: Where did this bug come from?
+      options:
+        - User-reported (prod-cx — must-fix)
+        - Sentry (runtime exception)
+        - Render / application logs
+        - Metrics (ops-health / weblab breach)
+        - Internal audit / review
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: Impact if left unfixed.
+      options:
+        - Critical — outage / data loss / customers fully blocked
+        - High — core flow broken for many users
+        - Medium — degraded but workable
+        - Low — minor / cosmetic
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: Urgency to fix. Customer-reported (prod-cx) bugs are P1 or higher.
+      options:
+        - P0 — fix now, drop everything
+        - P1 — fix this week
+        - P2 — post-launch / backlog
+        - P3 — nice to have
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: A clear description of the bug and its customer impact.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps so anyone can hit the bug.
+      placeholder: |
+        1. Go to …
+        2. Call / click …
+        3. Observe …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+      description: What should have happened, and what actually happened.
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: URL / endpoint, browser or client, SDK / API version, user or namespace if relevant.
+    validations:
+      required: false
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs / Sentry link / screenshots
+      description: Sentry issue link, log excerpt, request id, or a screenshot.
+    validations:
+      required: false
