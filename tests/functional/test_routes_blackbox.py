@@ -76,6 +76,7 @@ ADMIN_ROUTES: list[tuple[str, str, tuple[int, ...]]] = [
     ("GET",  "/admin/metrics/users",                (200, 401, 403)),
     ("GET",  "/admin/metrics/extension",            (200, 401, 403)),
     ("GET",  "/admin/metrics/storage",              (200, 401, 403)),
+    ("GET",  "/admin/metrics/overview",             (200, 401, 403)),
     ("GET",  "/admin/rbac/scopes",                  (200, 401, 403)),
     ("GET",  "/admin/rbac/roles",                   (200, 401, 403)),
     ("GET",  "/admin/rbac/groups",                  (200, 401, 403)),

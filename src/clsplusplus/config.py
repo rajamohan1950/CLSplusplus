@@ -257,9 +257,30 @@ class Settings(BaseSettings):
     circuit_failure_threshold: int = 5        # CLS_CIRCUIT_FAILURE_THRESHOLD
     circuit_recovery_seconds: float = 30.0    # CLS_CIRCUIT_RECOVERY_SECONDS
 
+    # ── Weblab: PostHog-backed staged rollouts + auto-rollback ────────────
+    # A "weblab" is a PostHog feature flag — a percentage dial with optional
+    # treatments (control / T1 / T2). `weblab_launch_flag` gates the share of
+    # new signups that get an active account vs. the waitlist. The watcher
+    # polls ops-health and disables a flag when its metrics breach thresholds.
+    posthog_api_key: str = ""                 # CLS_POSTHOG_API_KEY (project key)
+    posthog_personal_api_key: str = ""        # CLS_POSTHOG_PERSONAL_API_KEY (mgmt API + local eval)
+    posthog_project_id: str = ""              # CLS_POSTHOG_PROJECT_ID (for the management API)
+    posthog_host: str = "https://us.i.posthog.com"    # CLS_POSTHOG_HOST (SDK / flag eval)
+    posthog_api_host: str = "https://us.posthog.com"  # CLS_POSTHOG_API_HOST (management API)
+    weblab_launch_flag: str = "launch-rollout"        # CLS_WEBLAB_LAUNCH_FLAG
+    weblab_auto_rollback_enabled: bool = False        # CLS_WEBLAB_AUTO_ROLLBACK_ENABLED
+    weblab_watched_flags: str = "launch-rollout"      # CLS_WEBLAB_WATCHED_FLAGS (comma-separated)
+    weblab_metric_poll_seconds: int = 300             # CLS_WEBLAB_METRIC_POLL_SECONDS
+    weblab_health_window_minutes: int = 60            # CLS_WEBLAB_HEALTH_WINDOW_MINUTES
+    weblab_rollback_5xx_pct: float = 2.0              # CLS_WEBLAB_ROLLBACK_5XX_PCT
+    weblab_rollback_p95_ms: int = 3000                # CLS_WEBLAB_ROLLBACK_P95_MS
+    weblab_rollback_min_requests: int = 50            # CLS_WEBLAB_ROLLBACK_MIN_REQUESTS
+
     # Error tracking (Sentry). Leave empty to disable — when set, unhandled
     # exceptions are reported to Sentry with request context.
     sentry_dsn: str = ""                      # CLS_SENTRY_DSN
+    # Sentry project URL — the "Errors" deep-link on the admin metrics page.
+    sentry_url: str = "https://sentry.io"     # CLS_SENTRY_URL
 
     # Demo LLM keys (optional; demo uses these for real Claude/OpenAI/Gemini)
     anthropic_api_key: Optional[str] = None

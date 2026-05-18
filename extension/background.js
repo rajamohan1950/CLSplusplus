@@ -142,6 +142,36 @@ async function updateBadge() {
 updateBadge();
 setInterval(updateBadge, 60000);
 
+// ── Weblab feature flags ──
+// Fetches the evaluated PostHog flags for this user and caches them so
+// content scripts can branch on a treatment (control / T1 / T2) without an
+// extension redeploy. Fails silent — no flags just means default behaviour.
+async function fetchFlags() {
+  const key = await getKey();
+  if (!key) return {};
+  try {
+    const r = await fetch(`${API}/v1/config/flags`, {
+      headers: { 'Authorization': `Bearer ${key}` },
+    });
+    if (r.ok) {
+      const d = await r.json();
+      const flags = d.flags || {};
+      await chrome.storage.local.set({ cls_weblab_flags: flags });
+      return flags;
+    }
+  } catch (_) {}
+  return {};
+}
+
+async function getFlag(name, fallback) {
+  const { cls_weblab_flags } = await chrome.storage.local.get('cls_weblab_flags');
+  const flags = cls_weblab_flags || {};
+  return (name in flags) ? flags[name] : (fallback !== undefined ? fallback : false);
+}
+
+fetchFlags();
+setInterval(fetchFlags, 600000);  // refresh every 10 minutes
+
 // ── Message handler ──
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // CORE — store memory (proven path from v5.1.0)
@@ -203,6 +233,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     incrementDailyCounter('cls_daily_injected');
     sendResponse({ ok: true });
     return false;
+  }
+
+  // Weblab — read a cached feature-flag treatment (control / T1 / T2 / bool)
+  if (msg.type === 'GET_FLAG') {
+    getFlag(msg.name, msg.fallback).then(value => sendResponse({ value }));
+    return true;
   }
 
   // Popup — verify API key
