@@ -152,7 +152,7 @@ class TestCORS:
         resp = await client.options(
             "/v1/memory/write",
             headers={
-                "Origin": "http://example.com",
+                "Origin": "https://www.clsplusplus.com",
                 "Access-Control-Request-Method": "POST",
             },
         )
@@ -160,7 +160,7 @@ class TestCORS:
         assert "access-control-allow-origin" in resp.headers
 
     @pytest.mark.asyncio
-    async def test_cors_allows_all_origins(self, client):
+    async def test_cors_rejects_unlisted_origin(self, client):
         resp = await client.options(
             "/",
             headers={
@@ -168,9 +168,10 @@ class TestCORS:
                 "Access-Control-Request-Method": "GET",
             },
         )
-        # With allow_credentials=True, CORS reflects the origin instead of "*"
+        # CORS is locked to an explicit allowlist — an unlisted origin must
+        # never be echoed back in Access-Control-Allow-Origin.
         origin = resp.headers.get("access-control-allow-origin")
-        assert origin in ("*", "http://malicious-site.com")
+        assert origin not in ("*", "http://malicious-site.com")
 
 
 # ---------------------------------------------------------------------------

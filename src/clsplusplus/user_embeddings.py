@@ -579,7 +579,10 @@ class UserEmbeddingSpace:
             return y
 
         import random as _rng
-        _rng.seed(42 + hash(self.user_id) % 10000)
+        import zlib
+        # zlib.crc32 is a stable hash — unlike builtin hash(), which is
+        # randomized per process, so the SVD init was non-deterministic.
+        _rng.seed(42 + zlib.crc32(self.user_id.encode()) % 10000)
 
         if warm_basis is not None and len(warm_basis) == dims:
             basis = warm_basis

@@ -222,6 +222,30 @@ def in_memory_store():
     return InMemoryStore()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_rate_limit_redis():
+    """Clear rate-limit / auth-throttle keys before every test.
+
+    The whole suite runs in one process against a single shared Redis. The
+    rate limiter's sliding-window counters would otherwise accumulate across
+    tests, so a later test trips the limiter and gets HTTP 429 instead of the
+    status it expects. This is surgical — only the limiter's own keys are
+    removed, so data a test sets up itself is untouched.
+    """
+    try:
+        import redis as _redis
+
+        client = _redis.from_url(Settings().redis_url)
+        for pattern in ("cls:ratelimit:*", "cls:authlimit:*"):
+            keys = list(client.scan_iter(match=pattern, count=500))
+            if keys:
+                client.delete(*keys)
+        client.close()
+    except Exception:
+        pass  # Redis unavailable — test will surface that on its own.
+    yield
+
+
 # ---------------------------------------------------------------------------
 # Mock stores that don't need Redis/Postgres
 # ---------------------------------------------------------------------------
@@ -385,6 +409,7 @@ def mock_memory_service(mock_l0, mock_l1, mock_l2, mock_l3, mock_embedding_servi
     svc.l1 = mock_l1
     svc.l2 = mock_l2
     svc._webhook_dispatcher = None
+    svc._metrics = None  # real __init__ sets this; usage sites are None-guarded
     # Internal state required by MemoryService methods
     svc._loaded_namespaces = set()
     svc._loading_namespaces = set()

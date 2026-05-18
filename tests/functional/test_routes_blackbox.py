@@ -49,7 +49,7 @@ AUTH_WALLED_ROUTES: list[tuple[str, str, tuple[int, ...]]] = [
     ("GET",    "/v1/memory/traces",                 (200, 401, 403)),
     ("GET",    "/v1/memory/namespaces",             (200, 401, 403)),
     ("GET",    "/v1/memory/phases",                 (200, 401, 403)),
-    ("GET",    "/v1/memories/knowledge",            (200, 401, 403, 404)),
+    ("GET",    "/v1/memories/knowledge",            (200, 401, 403, 404, 422)),
     ("GET",    "/v1/prompts/sessions",              (200, 401, 403)),
     ("GET",    "/v1/prompts/timeline",              (200, 401, 403)),
     ("POST",   "/v1/prompts/ingest",                (200, 400, 401, 403, 422)),

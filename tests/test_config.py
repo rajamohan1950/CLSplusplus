@@ -135,7 +135,12 @@ class TestSettingsTypeCoercion:
 
 class TestSettingsSecurityConstraints:
 
-    def test_minio_defaults_not_production(self):
+    def test_minio_defaults_not_production(self, monkeypatch):
+        # CI sets CLS_MINIO_* env vars to empty strings; this test asserts the
+        # in-code DEFAULTS, so it must be isolated from the environment.
+        for k in ("CLS_MINIO_ENDPOINT", "CLS_MINIO_ACCESS_KEY",
+                  "CLS_MINIO_SECRET_KEY", "CLS_MINIO_BUCKET"):
+            monkeypatch.delenv(k, raising=False)
         s = Settings()
         assert s.minio_access_key == "minioadmin"
         assert s.minio_secure is False
