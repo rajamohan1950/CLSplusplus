@@ -2537,85 +2537,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 overview[name] = {"error": e.detail}
             except Exception as e:  # noqa: BLE001
                 overview[name] = {"error": str(e)}
+        overview["links"] = {
+            "sentry": settings.sentry_url,
+            "posthog": os.environ.get("POSTHOG_DASHBOARD_URL", ""),
+        }
         return overview
-
-    @app.get("/admin/metrics/dashboard", response_class=HTMLResponse)
-    async def admin_metrics_dashboard(request: Request):
-        """Server-rendered single-pane metrics dashboard.
-
-        Consolidates the internal metrics inline; Sentry and PostHog (the
-        other two surfaces) are reached via deep-link buttons.
-        """
-        _require_admin(request)
-        data = await admin_metrics_overview(request)
-
-        oh = data.get("ops_health", {}) or {}
-        sm = data.get("summary", {}) or {}
-        wl = data.get("weblab", {}) or {}
-        verdict = wl.get("verdict") or {}
-        lat = oh.get("latency_ms") or {}
-        signups = (data.get("signups", {}) or {}).get("signups", []) or []
-        last7 = sum((s.get("count", 0) for s in signups[-7:])) if signups else 0
-
-        status = str(verdict.get("status", "unknown"))
-        status_color = {"green": "#1a7f37", "red": "#cf222e"}.get(status, "#9a6700")
-        posthog_url = os.environ.get("POSTHOG_DASHBOARD_URL", "") or "https://posthog.com"
-        sentry_url = settings.sentry_url
-
-        def card(label: str, value, sub: str = "") -> str:
-            return (f'<div class="card"><div class="label">{label}</div>'
-                    f'<div class="value">{value}</div>'
-                    f'<div class="sub">{sub}</div></div>')
-
-        html = f"""<!doctype html>
-<html><head><meta charset="utf-8"><title>CLS++ Metrics</title>
-<style>
-body{{font-family:-apple-system,system-ui,sans-serif;background:#0d1117;color:#e6edf3;margin:0;padding:24px}}
-h1{{font-size:20px;margin:0 0 4px}} .meta{{color:#8b949e;font-size:13px;margin-bottom:20px}}
-.grid{{display:flex;flex-wrap:wrap;gap:14px}}
-.card{{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:16px 18px;min-width:150px}}
-.label{{color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:.04em}}
-.value{{font-size:26px;font-weight:600;margin-top:6px}} .sub{{color:#8b949e;font-size:12px;margin-top:4px}}
-.verdict{{display:inline-block;padding:4px 12px;border-radius:999px;font-weight:600;font-size:13px;color:#fff}}
-.section{{font-size:13px;text-transform:uppercase;color:#8b949e;letter-spacing:.04em;margin:22px 0 10px}}
-code{{background:#21262d;padding:2px 6px;border-radius:4px}}
-a.btn{{display:inline-block;background:#21262d;border:1px solid #30363d;color:#e6edf3;text-decoration:none;
-padding:10px 18px;border-radius:8px;margin-right:10px;font-weight:600}}
-a.btn:hover{{background:#30363d}}
-</style></head><body>
-<h1>CLS++ — Launch Metrics</h1>
-<div class="meta">One pane over ops-health, KPIs, signups and weblab. Auto-refreshes every 60s.</div>
-
-<div class="section">Rollout health</div>
-<div style="margin-bottom:6px">
-  <span class="verdict" style="background:{status_color}">{status.upper()}</span>
-  &nbsp; weblab <code>{wl.get("launch_flag", "-")}</code> ·
-  auto-rollback {"ON" if wl.get("auto_rollback_enabled") else "OFF"}
-</div>
-
-<div class="section">Operations</div>
-<div class="grid">
-  {card("Requests", oh.get("total_requests", "-"))}
-  {card("Error rate", f'{oh.get("error_rate", 0)}%')}
-  {card("5xx rate", f'{oh.get("error_rate_5xx", 0)}%')}
-  {card("p95 latency", f'{lat.get("p95", "-")} ms')}
-</div>
-
-<div class="section">Business</div>
-<div class="grid">
-  {card("Total users", sm.get("total_users", "-"))}
-  {card("Paying", sm.get("paying_users", "-"))}
-  {card("MRR", f'${sm.get("monthly_revenue", "-")}')}
-  {card("Signups (7d)", last7)}
-</div>
-
-<div class="section">Deep dive</div>
-<a class="btn" href="{sentry_url}" target="_blank" rel="noopener">Errors &rarr; Sentry</a>
-<a class="btn" href="{posthog_url}" target="_blank" rel="noopener">Product &rarr; PostHog</a>
-
-<script>setTimeout(function(){{location.reload()}},60000)</script>
-</body></html>"""
-        return HTMLResponse(content=html)
 
     # =========================================================================
     # Admin — Launch waitlist view + lifecycle test runner
