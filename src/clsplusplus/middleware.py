@@ -129,6 +129,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
         key = get_api_key_from_request(auth_header)
 
         if key:
+            # API keys are never admin identities — admin routes require a JWT
+            # session. Block them here so an API key cannot reach /admin/*.
+            if _requires_admin(request.url.path):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Admin access required"},
+                )
+
             # 1a: Check legacy env-var keys
             if validate_api_key(key, self.settings):
                 request.state.api_key = key

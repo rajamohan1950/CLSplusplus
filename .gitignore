@@ -42,17 +42,28 @@ htmlcov/
 # Wiki script temp
 .wiki-temp/
 
+# Node
+node_modules/
+
 # Extension E2E (npm)
-extension/node_modules/
 extension/test-results/
 extension/playwright-report/
 
 # JavaScript SDK
-sdk-js/node_modules/
 sdk-js/dist/
+
+# Marketing website (Next.js) — build output only, source is tracked
+v0-cls-memory-website/.next/
+v0-cls-memory-website/out/
 
 # Built installer artifacts
 prototype/downloads/
+
+# Build artifacts / packaged extension zips
+*.zip
+
+# Claude Code local state
+.claude/scheduled_tasks.lock
 
 # OS
 .DS_Store

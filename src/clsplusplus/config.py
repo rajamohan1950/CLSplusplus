@@ -257,6 +257,10 @@ class Settings(BaseSettings):
     circuit_failure_threshold: int = 5        # CLS_CIRCUIT_FAILURE_THRESHOLD
     circuit_recovery_seconds: float = 30.0    # CLS_CIRCUIT_RECOVERY_SECONDS
 
+    # Error tracking (Sentry). Leave empty to disable — when set, unhandled
+    # exceptions are reported to Sentry with request context.
+    sentry_dsn: str = ""                      # CLS_SENTRY_DSN
+
     # Demo LLM keys (optional; demo uses these for real Claude/OpenAI/Gemini)
     anthropic_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None

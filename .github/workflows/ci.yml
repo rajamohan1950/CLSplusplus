@@ -54,3 +54,32 @@ jobs:
           CLS_MINIO_BUCKET: ""
           CLS_REQUIRE_API_KEY: "false"
         run: pytest tests/ -v --tb=short
+
+  extension-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validate manifest.json
+        run: |
+          node -e '
+            const m = require("./extension/manifest.json");
+            if (m.manifest_version !== 3) {
+              console.error("manifest_version must be 3, got " + m.manifest_version);
+              process.exit(1);
+            }
+            if (!m.version) { console.error("manifest.json missing version"); process.exit(1); }
+            console.log("manifest.json OK — v" + m.version + ", manifest_version 3");
+          '
+
+      - name: Syntax-check extension JS
+        run: |
+          for f in extension/*.js; do
+            echo "checking $f"
+            node --check "$f"
+          done

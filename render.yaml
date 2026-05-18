@@ -55,3 +55,44 @@ services:
         sync: false
       - key: CLS_COOKIE_DOMAIN
         sync: false
+      # Sentry error tracking — leave unset to disable. When set, unhandled
+      # exceptions are reported with request context.
+      - key: CLS_SENTRY_DSN
+        sync: false
+      # --- Launch-control hardening (see LAUNCH_CHECKLIST.md §2) ---
+      # Declared with explicit values so a fresh blueprint deploy is correct
+      # by default instead of silently relying on code defaults.
+      - key: CLS_REQUIRE_API_KEY
+        value: "true"
+      - key: CLS_ENFORCE_QUOTAS
+        value: "true"
+      - key: CLS_QUOTA_FAIL_CLOSED
+        value: "true"
+      - key: CLS_FREE_CAP_PER_HOUR
+        value: "120"
+      - key: CLS_FREE_CAP_PER_DAY
+        value: "1000"
+      - key: CLS_FREE_CAP_PER_WEEK
+        value: "4000"
+      - key: CLS_FREE_CAP_PER_MONTH
+        value: "8000"
+      - key: CLS_FREE_LAUNCH_MONTHLY_CAP
+        value: "8000"
+      - key: CLS_FREE_POSTTRIAL_MONTHLY_CAP
+        value: "800"
+      - key: CLS_MAX_ACTIVE_USERS
+        value: "100"
+      - key: CLS_WAITLIST_QUEUE_LIMIT
+        value: "500"
+      - key: CLS_WAITLIST_PROMOTE_BATCH
+        value: "5"
+      - key: CLS_GEO_GATING_ENABLED
+        value: "true"
+      - key: CLS_LAUNCH_COUNTRY
+        value: "IN"
+      - key: CLS_ABUSE_GUARD_ENABLED
+        value: "true"
+      - key: CLS_AUTH_RATE_LIMIT_PER_IP
+        value: "10"
+      - key: CLS_AUTH_RATE_LIMIT_WINDOW_SECONDS
+        value: "60"

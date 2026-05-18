@@ -2,7 +2,8 @@
 
 Operator checklist for a safe India-only, rate-limited, free-tier launch on Render.
 All env vars use the `CLS_` prefix (pydantic-settings, see `src/clsplusplus/config.py`).
-Items marked **(verify)** are expected from work-in-progress and are not yet in `config.py`.
+
+For incident response after launch, see [docs/RUNBOOKS.md](docs/RUNBOOKS.md).
 
 ---
 
@@ -78,11 +79,11 @@ Set these explicitly on Render — do not rely on code defaults for production-c
 | `CLS_GEO_GATING_ENABLED` | `true` | Route non-IN signups to waitlist instead of active status |
 | `CLS_LAUNCH_COUNTRY` | `IN` | ISO-3166-1 alpha-2 country code; flip `CLS_GEO_GATING_ENABLED` to open globally |
 
-### Abuse guard (verify — in-progress, not yet in config.py)
+### Abuse guard
 
 | Env Var | Value for launch | Notes |
 |---|---|---|
-| `CLS_ABUSE_GUARD_ENABLED` | `true` **(verify)** | Enable abuse detection at launch |
+| `CLS_ABUSE_GUARD_ENABLED` | `true` | Enable abuse detection at launch |
 
 ### Auth endpoint per-IP throttle
 
