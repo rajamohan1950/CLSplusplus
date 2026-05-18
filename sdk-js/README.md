@@ -53,6 +53,21 @@ const brain = new Brain("alice", {
 });
 ```
 
+## Namespaces
+
+The first argument to `new Brain(...)` is a **namespace** — a logical
+partition you choose. Memories in one namespace are fully isolated from
+another:
+
+```ts
+const alice = new Brain("alice");
+const bob = new Brain("bob"); // completely separate memories
+```
+
+Your API key authorizes the request; the namespace scopes it. One key can
+use many namespaces — the usual pattern is **one namespace per end-user** of
+your app (e.g. their user id).
+
 ## Full API
 
 | Method | Description |
