@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - 'v*'
+  # Manual trigger — publish the SDK on its own, decoupled from the
+  # server-version tags (which also drive the PyPI release).
+  workflow_dispatch:
 
 permissions:
   contents: read
