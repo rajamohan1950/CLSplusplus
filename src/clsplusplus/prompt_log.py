@@ -62,10 +62,16 @@ class PromptLogStore:
             ddl = _DDL_PATH.read_text()
             # Execute each statement separately (asyncpg doesn't support multi-statement)
             for stmt in ddl.split(";"):
-                stmt = stmt.strip()
-                if stmt and not stmt.startswith("--"):
+                # Strip comment-only lines first. A leading comment block must
+                # not mask the SQL that follows it within the same ;-delimited
+                # statement — otherwise CREATE TABLE prompt_log never runs.
+                sql = "\n".join(
+                    ln for ln in stmt.splitlines()
+                    if not ln.strip().startswith("--")
+                ).strip()
+                if sql:
                     try:
-                        await conn.execute(stmt)
+                        await conn.execute(sql)
                     except Exception as e:
                         # Non-fatal: table may already exist, index may conflict
                         logger.debug("DDL statement skipped: %s", e)
