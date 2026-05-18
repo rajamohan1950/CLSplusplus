@@ -51,6 +51,48 @@ from clsplusplus.models import _validate_namespace as validate_namespace
 from clsplusplus.sleep_cycle import SleepOrchestrator
 
 
+async def _file_github_bug_issue(settings, *, comment, context, score, user_email):
+    """Best-effort: file a customer bug report into the central GitHub tracker.
+
+    Customer-reported bugs are prod-cx — they go straight to GitHub Issues,
+    labeled and prioritised. Never raises: a tracker hiccup must not fail the
+    feedback write. No-op when no token is configured.
+    """
+    token = getattr(settings, "github_issue_token", "")
+    if not token:
+        return
+    repo = getattr(settings, "github_issue_repo", "")
+    summary = (comment or "Customer bug report").strip().splitlines()[0][:80]
+    body = (
+        "Customer-reported via the in-app feedback widget.\n\n"
+        f"- **Rating:** {score}/5\n"
+        f"- **Where:** {context or '—'}\n"
+        f"- **Reporter:** {user_email or 'unknown'}\n\n"
+        "---\n\n"
+        f"{comment or '(no description provided)'}"
+    )
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"https://api.github.com/repos/{repo}/issues",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                json={
+                    "title": f"[prod-cx] {summary}",
+                    "body": body,
+                    "labels": ["bug", "prod-cx", "source:user", "priority:P1"],
+                },
+            )
+            resp.raise_for_status()
+    except Exception as e:  # noqa: BLE001
+        logging.getLogger(__name__).warning(
+            "feedback: GitHub issue creation failed: %s", e)
+
+
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
     """Create FastAPI application."""
     settings = settings or Settings()
@@ -2283,6 +2325,17 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 await record_signal(user_id, "thumbs_down", settings)
             except Exception:
                 pass
+
+        # A customer bug report is a prod-cx ticket — file it into the central
+        # GitHub tracker. Best-effort; never fails the feedback write.
+        if context and context.lower().startswith("bug"):
+            await _file_github_bug_issue(
+                settings,
+                comment=comment,
+                context=context,
+                score=score,
+                user_email=getattr(request.state, "user_email", None),
+            )
 
         return {"status": "ok", "id": row["id"]}
 

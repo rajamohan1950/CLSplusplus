@@ -282,6 +282,11 @@ class Settings(BaseSettings):
     # Sentry project URL — the "Errors" deep-link on the admin metrics page.
     sentry_url: str = "https://sentry.io"     # CLS_SENTRY_URL
 
+    # Customer bug reports from the feedback widget are filed into the central
+    # GitHub tracker when a token is set. Empty token = feature disabled.
+    github_issue_token: str = ""                          # CLS_GITHUB_ISSUE_TOKEN
+    github_issue_repo: str = "rajamohan1950/CLSplusplus"   # CLS_GITHUB_ISSUE_REPO
+
     # Demo LLM keys (optional; demo uses these for real Claude/OpenAI/Gemini)
     anthropic_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None

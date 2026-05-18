@@ -62,6 +62,22 @@ echo "cls_live_$(openssl rand -hex 24)"
 
 ---
 
+## Namespaces
+
+A **namespace** is a logical partition of memories — a string you choose. Pass
+it as the `namespace` field on every memory call (`write`, `read`, `forget`).
+Memories in one namespace are fully isolated from those in another.
+
+- The **API key authorizes** the request; the **namespace scopes** it.
+- One API key (your application) can use **many namespaces**. The usual
+  pattern is **one namespace per end-user** of your app, e.g.
+  `namespace: "user-42"`.
+- Omit it and memories land in the `"default"` namespace.
+- In the SDK, the `Brain("alice")` constructor argument *is* the namespace —
+  every call that `Brain` makes is scoped to `"alice"`.
+
+---
+
 ## API Endpoints
 
 | Method | Path | Description |
